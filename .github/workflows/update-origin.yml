@@ -7,9 +7,10 @@ jobs:
     steps:
       - uses: tgymnich/fork-sync@v1.4
         with:
-          # owner: ledgerwatch
+          owner: ledgerwatch
           base: devel
           head: devel
           merge_method: merge
           pr_message: Update from origin
           token: ${{ secrets.CI_TOKEN }}
+          auto_approve: true
