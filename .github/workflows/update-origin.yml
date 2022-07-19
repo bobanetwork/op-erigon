@@ -1,7 +1,7 @@
 name: Update from origin
 on: 
   push: 
-    branches: devel
+    branches: devel # only create PR on pushes to main branch
 jobs:
   sync:
     runs-on: ubuntu-latest
