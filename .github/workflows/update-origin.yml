@@ -11,6 +11,7 @@ jobs:
           base: devel
           head: devel
           merge_method: merge
-          pr_message: Update from origin
+          pr_message: Sync fork with original repository
+          pr_title: Update from origin
           token: ${{ secrets.CI_TOKEN }}
-          auto_approve: true
+          auto_approve: false
