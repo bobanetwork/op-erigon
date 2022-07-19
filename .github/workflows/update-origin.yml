@@ -12,4 +12,4 @@ jobs:
           head: devel
           merge_method: merge
           pr_message: Update from origin
-          token: ${{ secrets.PERSONAL_TOKEN }}
+          token: ${{ secrets.CI_TOKEN }}
