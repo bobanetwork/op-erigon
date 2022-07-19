@@ -13,5 +13,5 @@ jobs:
           merge_method: merge
           pr_message: Sync fork with original repository
           pr_title: Update from origin
-          #token: ${{ secrets.CI_TOKEN }}
+          token: ${{ secrets.CI_TOKEN }}
           #auto_approve: false
