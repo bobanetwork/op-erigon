@@ -1,8 +1,7 @@
 name: Update from origin
 on: 
-  push:
-    branches-ignore:
-      - devel
+  push: 
+    branches: devel
 jobs:
   sync:
     runs-on: ubuntu-latest
