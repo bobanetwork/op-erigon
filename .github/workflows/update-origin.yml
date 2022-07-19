@@ -1,25 +1,14 @@
 name: Update from origin
 on: push
 jobs:
-  date:
+  sync:
     runs-on: ubuntu-latest
-    steps:
-      # Checkout the branch
-      - name: checkout
-        uses: actions/checkout@v3
 
-      - name: setup git config
-        run: |
-          # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
-          git config user.name "GitHub Actions Bot"
-          git config user.email "<>"
-      - name: update from original repository
-        run: |
-          # Stage the file, commit and push
-          git remote add upstream https://github.com/ledgerwatch/erigon.git
-          git fetch upstream
-          git merge upstream/devel
-          git add .
-          git commit -m "Update origin"
-          git push origin devel
-          git push --tags 
+    steps:
+      - uses: tgymnich/fork-sync@v1.4
+        with:
+          owner: ledgerwatch
+          base: devel
+          head: devel
+          merge_method: merge
+          pr_message: Update from origin
