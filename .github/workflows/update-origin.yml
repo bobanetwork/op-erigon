@@ -1,8 +1,7 @@
 name: Update from origin
 on: 
-  push:
-    branches-ignore:
-      - devel
+  push: 
+    branches: devel
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -18,4 +17,3 @@ jobs:
           pr_title: Update from origin
           token: ${{ secrets.CI_TOKEN }}
           ignore_fail: true # to just have a PR
-          #auto_approve: false
