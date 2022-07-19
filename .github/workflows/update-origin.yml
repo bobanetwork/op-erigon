@@ -14,4 +14,5 @@ jobs:
           pr_message: Sync fork with original repository
           pr_title: Update from origin
           token: ${{ secrets.CI_TOKEN }}
+          ignore_fail: true # to just have a PR
           #auto_approve: false
