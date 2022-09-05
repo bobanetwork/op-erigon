@@ -4,3 +4,6 @@
 [submodule "libmdbx"]
 	path = libmdbx
 	url = https://github.com/torquem-ch/libmdbx.git
+[submodule "erigon-lib"]
+	path = erigon-lib
+	url = git@github.com-wsdt:bobanetwork/v3-erigon-lib.git

@@ -11,6 +11,8 @@ require (
 	github.com/ledgerwatch/trackerslist v1.0.0
 )
 
+replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
+
 require (
 	github.com/RoaringBitmap/roaring v1.2.1
 	github.com/VictoriaMetrics/fastcache v1.10.0
