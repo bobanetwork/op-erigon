@@ -261,3 +261,11 @@ type AccountResult struct {
 	Code     hexutil.Bytes  `json:"code"`
 	CodeHash common.Hash    `json:"codeHash"`
 }
+
+type AccountResultExt struct {
+	AccountResult
+	Address      common.Address
+	AccountProof string
+	StorageHash  common.Hash
+	Root         common.Hash
+}
