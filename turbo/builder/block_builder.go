@@ -7,6 +7,7 @@ import (
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/log/v3"
+	//"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 type BlockBuilderFunc func(param *core.BlockBuilderParameters, interrupt *int32) (*types.Block, error)
@@ -35,6 +36,38 @@ func NewBlockBuilder(build BlockBuilderFunc, param *core.BlockBuilderParameters,
 		b.syncCond.Broadcast()
 	}()
 
+	return b
+}
+
+func NewBlockBuilderMM(
+	build BlockBuilderFunc,
+	param *core.BlockBuilderParameters,
+	emptyHeader *types.Header,
+	deposits [][]byte,
+	noTxPool bool,
+	mmChan chan int,
+	) *BlockBuilder {
+
+	b := new(BlockBuilder)
+	b.emptyHeader = emptyHeader
+	b.syncCond = sync.NewCond(new(sync.Mutex))
+        
+        param.Deposits = deposits
+	param.NoTxPool = noTxPool
+        log.Debug("MMDBG NewBlockBuilderMM", "deposits", deposits, "param", param)
+
+	go func() {
+		block, err := build(param, &b.interrupt)
+		b.syncCond.L.Lock()
+		defer b.syncCond.L.Unlock()
+		b.block = block
+		b.err = err
+		log.Debug("MMDBG NewBlockBuilderMM notifying mmChan")
+		mmChan <- 1
+		log.Debug("MMDBG NewBlockBuilderMM broadcasting syncCond", "b", b)
+		b.syncCond.Broadcast()
+	}()
+	log.Debug("MMDBG NewBlockBuilderMM returning", "b", b)
 	return b
 }
 

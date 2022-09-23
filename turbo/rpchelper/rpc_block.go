@@ -41,7 +41,7 @@ func GetFinalizedBlockNumber(tx kv.Tx) (uint64, error) {
 		}
 	}
 
-	return 0, UnknownBlockError
+	return 0, nil // UnknownBlockError
 }
 
 func GetSafeBlockNumber(tx kv.Tx) (uint64, error) {

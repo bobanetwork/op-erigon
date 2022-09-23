@@ -46,9 +46,11 @@ type ForkChoiceState struct {
 
 // PayloadAttributes represent the attributes required to start assembling a payload
 type PayloadAttributes struct {
-	Timestamp             hexutil.Uint64 `json:"timestamp"             gencodec:"required"`
-	PrevRandao            common.Hash    `json:"prevRandao"            gencodec:"required"`
-	SuggestedFeeRecipient common.Address `json:"suggestedFeeRecipient" gencodec:"required"`
+	Timestamp             hexutil.Uint64  `json:"timestamp"             gencodec:"required"`
+	PrevRandao            common.Hash     `json:"prevRandao"            gencodec:"required"`
+	SuggestedFeeRecipient common.Address  `json:"suggestedFeeRecipient" gencodec:"required"`
+	Transactions          []hexutil.Bytes `json:"transactions"          gencodec:"required"`
+	NoTxPool              bool            `json:"noTxPool"              gencodec:"required"`
 }
 
 // TransitionConfiguration represents the correct configurations of the CL and the EL
@@ -88,17 +90,32 @@ func convertPayloadStatus(x *remote.EnginePayloadStatus) map[string]interface{} 
 }
 
 func (e *EngineImpl) ForkchoiceUpdatedV1(ctx context.Context, forkChoiceState *ForkChoiceState, payloadAttributes *PayloadAttributes) (map[string]interface{}, error) {
-	log.Debug("Received ForkchoiceUpdated", "head", forkChoiceState.HeadHash, "safe", forkChoiceState.HeadHash, "finalized", forkChoiceState.FinalizedBlockHash,
+	log.Debug("MMDBG >>> ForkchoiceUpdatedV1 Request", "fcs", forkChoiceState, "pa", payloadAttributes)
+
+        log.Debug("Received ForkchoiceUpdated", "head", forkChoiceState.HeadHash, "safe", forkChoiceState.HeadHash, "finalized", forkChoiceState.FinalizedBlockHash,
 		"build", payloadAttributes != nil)
 
 	var prepareParameters *remote.EnginePayloadAttributes
 	if payloadAttributes != nil {
+ 	
+        	//MMDBG
+                //log.Debug("MMDBG Preparing payloadAttributes", "tLen", len(payloadAttributes.Transactions))
+        	transactions := make([][]byte, len(payloadAttributes.Transactions))
+		for i, transaction := range payloadAttributes.Transactions {
+			transactions[i] = ([]byte)(transaction)
+                        //log.Debug("MMDBG  -> ", "idx", i, "in", transaction, "out", transactions[i])
+		}
+       
 		prepareParameters = &remote.EnginePayloadAttributes{
 			Timestamp:             uint64(payloadAttributes.Timestamp),
 			PrevRandao:            gointerfaces.ConvertHashToH256(payloadAttributes.PrevRandao),
 			SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
+                        Transactions:          transactions,
+			NoTxPool:              payloadAttributes.NoTxPool,
 		}
 	}
+        //log.Debug("MMDBG prepared", "prepareParameters", prepareParameters)
+
 	reply, err := e.api.EngineForkchoiceUpdatedV1(ctx, &remote.EngineForkChoiceUpdatedRequest{
 		ForkchoiceState: &remote.EngineForkChoiceState{
 			HeadBlockHash:      gointerfaces.ConvertHashToH256(forkChoiceState.HeadHash),
@@ -136,6 +153,7 @@ func (e *EngineImpl) ForkchoiceUpdatedV1(ctx context.Context, forkChoiceState *F
 		binary.BigEndian.PutUint64(encodedPayloadId, reply.PayloadId)
 		json["payloadId"] = hexutil.Bytes(encodedPayloadId)
 	}
+	log.Debug("MMDBG <<< ForkchoiceUpdatedV1 Response", "json", json)
 
 	return json, nil
 }
@@ -143,6 +161,8 @@ func (e *EngineImpl) ForkchoiceUpdatedV1(ctx context.Context, forkChoiceState *F
 // NewPayloadV1 processes new payloads (blocks) from the beacon chain.
 // See https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_newpayloadv1
 func (e *EngineImpl) NewPayloadV1(ctx context.Context, payload *ExecutionPayload) (map[string]interface{}, error) {
+	log.Debug("MMDBG >>> NewPayloadV1 Request", "payload", payload)
+
 	log.Debug("Received NewPayload", "height", uint64(payload.BlockNumber), "hash", payload.BlockHash)
 
 	var baseFee *uint256.Int
@@ -197,10 +217,15 @@ func (e *EngineImpl) NewPayloadV1(ctx context.Context, payload *ExecutionPayload
 			payloadStatus["latestValidHash"] = common.Hash{}
 		}
 	}
+
+	log.Debug("MMDBG <<< NewPayloadV1 Response", "payloadStatus", payloadStatus)
+
 	return payloadStatus, nil
 }
 
 func (e *EngineImpl) GetPayloadV1(ctx context.Context, payloadID hexutil.Bytes) (*ExecutionPayload, error) {
+	log.Debug("MMDBG >>> GetPayloadV1 Request", "id", payloadID)
+
 	decodedPayloadId := binary.BigEndian.Uint64(payloadID)
 	log.Info("Received GetPayload", "payloadId", decodedPayloadId)
 
@@ -220,6 +245,8 @@ func (e *EngineImpl) GetPayloadV1(ctx context.Context, payloadID hexutil.Bytes) 
 	for i, transaction := range payload.Transactions {
 		transactions[i] = transaction
 	}
+
+	log.Debug("MMDBG <<< GetPayloadV1 Response", "id", payloadID, "Transactions", transactions)
 	return &ExecutionPayload{
 		ParentHash:    gointerfaces.ConvertH256ToHash(payload.ParentHash),
 		FeeRecipient:  gointerfaces.ConvertH160toAddress(payload.Coinbase),

@@ -30,6 +30,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/log/v3"
 )
 
 var emptyCodeHash = crypto.Keccak256Hash(nil)
@@ -89,6 +90,8 @@ type Message interface {
 	CheckNonce() bool
 	Data() []byte
 	AccessList() types.AccessList
+	IsSystemTx() bool
+	Mint() *uint256.Int
 }
 
 // ExecutionResult includes all output after executing given evm
@@ -295,6 +298,22 @@ func CheckEip1559TxGasFeeCap(from common.Address, gasFeeCap, tip, baseFee *uint2
 
 // DESCRIBED: docs/programmers_guide/guide.md#nonce
 func (st *StateTransition) preCheck(gasBailout bool) error {
+       if st.msg.Nonce() == 0xffff_ffff_ffff_fffd { //types.DepositsNonce
+       		log.Debug("MMDBG preCheck for Deposit txn")
+	
+		// Following section copied from Optimism patchset
+		
+	       // No fee fields to check, no nonce to check, and no need to check if EOA (L1 already verified it for us)
+	       // Gas is free, but no refunds!
+	       st.initialGas = st.msg.Gas()
+	       st.gas += st.msg.Gas() // Add gas here in order to be able to execute calls.
+	       // Don't touch the gas pool for system transactions
+	       if true { // FIXME st.msg.IsSystemTx() {
+		       return nil
+	       }
+	       return st.gp.SubGas(st.msg.Gas()) // gas used by deposits may not be used by other txs
+       }
+
 	// Make sure this transaction's nonce is correct.
 	if st.msg.CheckNonce() {
 		stNonce := st.state.GetNonce(st.msg.From())
@@ -331,6 +350,37 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 	return st.buyGas(gasBailout)
 }
 
+func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
+       if mint := st.msg.Mint(); mint != nil {
+	       st.state.AddBalance(st.msg.From(), mint)
+       }
+       snap := st.state.Snapshot()
+
+       result, err := st.innerTransitionDb(refunds, gasBailout)
+       // Failed deposits must still be included. Unless we cannot produce the block at all due to the gas limit.
+       // On deposit failure, we rewind any state changes from after the minting, and increment the nonce.
+       if err != nil && err != ErrGasLimitReached && st.msg.Nonce() == types.DepositsNonce {
+	       st.state.RevertToSnapshot(snap)
+	       // Even though we revert the state changes, always increment the nonce for the next deposit transaction
+	       st.state.SetNonce(st.msg.From(), st.state.GetNonce(st.msg.From())+1)
+	       // Record deposits as using all their gas (matches the gas pool)
+	       // System Transactions are special & are not recorded as using any gas (anywhere)
+	       gasUsed := st.msg.Gas()
+	       if st.msg.IsSystemTx() {
+		       gasUsed = 0
+	       }
+	       result = &ExecutionResult{
+		       UsedGas:    gasUsed,
+		       Err:	   fmt.Errorf("failed deposit: %w", err),
+		       ReturnData: nil,
+	       }
+	       err = nil
+       }
+       return result, err
+}
+
+
+
 // TransitionDb will transition the state by applying the current message and
 // returning the evm execution result with following fields.
 //
@@ -344,7 +394,7 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 //
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
-func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
+func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
 	var input1 *uint256.Int
 	var input2 *uint256.Int
 	if st.isBor {

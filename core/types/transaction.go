@@ -31,6 +31,7 @@ import (
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
+	"github.com/ledgerwatch/log/v3"
 )
 
 var (
@@ -46,7 +47,12 @@ const (
 	AccessListTxType
 	DynamicFeeTxType
 	StarknetType
+	DepositTxType = 0x7e
 )
+
+// DepositsNonce identifies a deposit, since go-ethereum/Erigon abstracts all transaction types to a core.Message.
+// Deposits do not set a nonce, deposits are included by the system and cannot be repeated or included elsewhere.
+const DepositsNonce uint64 = 0xffff_ffff_ffff_fffd
 
 // Transaction is an Ethereum transaction.
 type Transaction interface {
@@ -119,6 +125,7 @@ func (tm TransactionMisc) From() *atomic.Value {
 
 func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 	kind, size, err := s.Kind()
+        //log.Debug("MMDBG transaction.go DecodeTransaction", "kind", kind, "size", size, "err", err)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +147,7 @@ func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 		return nil, fmt.Errorf("%w, got %d bytes", rlp.ErrWrongTxTypePrefix, len(b))
 	}
 	var tx Transaction
+	//log.Debug("MMDBG Decoding", "b[0]", b[0], "s", s)
 	switch b[0] {
 	case AccessListTxType:
 		t := &AccessListTx{}
@@ -155,6 +163,13 @@ func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 		tx = t
 	case StarknetType:
 		t := &StarknetTransaction{}
+		if err = t.DecodeRLP(s); err != nil {
+			return nil, err
+		}
+		tx = t
+	case DepositTxType:
+		log.Debug("MMDBG transaction.go Decoding as DepositTxType")
+		t := &DepositTransaction{}
 		if err = t.DecodeRLP(s); err != nil {
 			return nil, err
 		}
@@ -186,6 +201,7 @@ func MarshalTransactionsBinary(txs Transactions) ([][]byte, error) {
 		}
 		buf.Reset()
 		err = txs[i].MarshalBinary(&buf)
+		//log.Debug("MMDBG transaction MarshalBinary", "i", i, "err", err, "buf", buf)
 		if err != nil {
 			return nil, err
 		}
@@ -451,9 +467,11 @@ func (t *TransactionsFixedOrder) Pop() {
 //
 // NOTE: In a future PR this will be removed.
 type Message struct {
+	sourceHash *common.Hash
 	to         *common.Address
 	from       common.Address
 	nonce      uint64
+	mint       uint256.Int
 	amount     uint256.Int
 	gasLimit   uint64
 	gasPrice   uint256.Int
@@ -462,6 +480,7 @@ type Message struct {
 	data       []byte
 	accessList AccessList
 	checkNonce bool
+	isSystemTx bool
 }
 
 func NewMessage(from common.Address, to *common.Address, nonce uint64, amount *uint256.Int, gasLimit uint64, gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList AccessList, checkNonce bool) Message {
@@ -493,8 +512,10 @@ func (m Message) GasPrice() *uint256.Int { return &m.gasPrice }
 func (m Message) FeeCap() *uint256.Int   { return &m.feeCap }
 func (m Message) Tip() *uint256.Int      { return &m.tip }
 func (m Message) Value() *uint256.Int    { return &m.amount }
+func (m Message) Mint() *uint256.Int     { return &m.mint }
 func (m Message) Gas() uint64            { return m.gasLimit }
 func (m Message) Nonce() uint64          { return m.nonce }
 func (m Message) Data() []byte           { return m.data }
 func (m Message) AccessList() AccessList { return m.accessList }
 func (m Message) CheckNonce() bool       { return m.checkNonce }
+func (m Message) IsSystemTx() bool       { return m.isSystemTx }

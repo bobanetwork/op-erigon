@@ -28,6 +28,7 @@ import (
 	"github.com/ledgerwatch/log/v3"
 	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 // EthBackendAPIVersion
@@ -282,6 +283,9 @@ func (s *EthBackendServer) stageLoopIsBusy() bool {
 func (s *EthBackendServer) EngineNewPayloadV1(ctx context.Context, req *types2.ExecutionPayload) (*remote.EnginePayloadStatus, error) {
 	var baseFee *big.Int
 	eip1559 := false
+        
+	//log.Debug("MMDBG ethbackend.go EngineNewPayloadV1 request", "req", req)
+	log.Debug("MMDBG ethbackend.go EngineNewPayloadV1 request for", "block", req.BlockNumber)
 
 	if req.BaseFeePerGas != nil {
 		baseFee = gointerfaces.ConvertH256ToUint256Int(req.BaseFeePerGas).ToBig()
@@ -494,7 +498,9 @@ func (s *EthBackendServer) getQuickPayloadStatusIfPossible(blockHash common.Hash
 
 // EngineGetPayloadV1 retrieves previously assembled payload (Validators only)
 func (s *EthBackendServer) EngineGetPayloadV1(ctx context.Context, req *remote.EngineGetPayloadRequest) (*types2.ExecutionPayload, error) {
-	if !s.proposing {
+	log.Debug("MMDBG ethbackend.go EngineGetPayloadV1 request", "req", req)
+        
+        if !s.proposing {
 		return nil, fmt.Errorf("execution layer not running as a proposer. enable proposer by taking out the --proposer.disable flag on startup")
 	}
 
@@ -521,8 +527,11 @@ func (s *EthBackendServer) EngineGetPayloadV1(ctx context.Context, req *remote.E
 		baseFee.SetFromBig(block.Header().BaseFee)
 		baseFeeReply = gointerfaces.ConvertUint256IntToH256(&baseFee)
 	}
+        //log.Debug("MMDBG EngineGetPayloadV1", "txs", block.Transactions(), "block", block)
 
 	encodedTransactions, err := types.MarshalTransactionsBinary(block.Transactions())
+	log.Debug("MMDBG EngineGetPayloadV1 response", "err", err, "encoded", encodedTransactions)
+	
 	if err != nil {
 		return nil, err
 	}
@@ -559,6 +568,7 @@ func (s *EthBackendServer) EngineForkChoiceUpdatedV1(ctx context.Context, req *r
 		SafeBlockHash:      gointerfaces.ConvertH256ToHash(req.ForkchoiceState.SafeBlockHash),
 		FinalizedBlockHash: gointerfaces.ConvertH256ToHash(req.ForkchoiceState.FinalizedBlockHash),
 	}
+        log.Debug("MMDBG ethbackend.go EngineForkChoiceUpdatedV1 got", "req", req)
 
 	status, err := s.getQuickPayloadStatusIfPossible(forkChoice.HeadBlockHash, 0, common.Hash{}, &forkChoice, false)
 	if err != nil {
@@ -580,6 +590,7 @@ func (s *EthBackendServer) EngineForkChoiceUpdatedV1(ctx context.Context, req *r
 			return nil, status.CriticalError
 		}
 	}
+        log.Debug("MMDBG EngineForkChoiceUpdatedV1 Payload", "status", status.Status, "attrs", req.PayloadAttributes)
 
 	// No need for payload building
 	if req.PayloadAttributes == nil || status.Status != remote.EngineStatus_VALID {
@@ -589,7 +600,9 @@ func (s *EthBackendServer) EngineForkChoiceUpdatedV1(ctx context.Context, req *r
 	if !s.proposing {
 		return nil, fmt.Errorf("execution layer not running as a proposer. enable proposer by taking out the --proposer.disable flag on startup")
 	}
-
+	
+        log.Debug("MMDBG continuing EngineForkChoiceUpdatedV1")
+        
 	tx2, err := s.db.BeginRo(ctx)
 	if err != nil {
 		return nil, err
@@ -618,7 +631,10 @@ func (s *EthBackendServer) EngineForkChoiceUpdatedV1(ctx context.Context, req *r
 	}
 
 	// Initiate payload building
-
+	log.Debug("MMDBG ethbackend.go Initiate payload building", "len", len(req.PayloadAttributes.Transactions), "depositTx", req.PayloadAttributes.Transactions)
+        hB := hexutil.Bytes(req.PayloadAttributes.Transactions[0])
+	log.Debug("MMDBG ","hB", hB)
+        
 	s.evictOldBuilders()
 
 	// payload IDs start from 1 (0 signifies null)
@@ -635,8 +651,20 @@ func (s *EthBackendServer) EngineForkChoiceUpdatedV1(ctx context.Context, req *r
 		SuggestedFeeRecipient: emptyHeader.Coinbase,
 	}
 
-	s.builders[s.payloadId] = builder.NewBlockBuilder(s.builderFunc, &param, emptyHeader)
+	mmChan := make(chan int)
+	builder := builder.NewBlockBuilderMM(
+		s.builderFunc, 
+		&param, 
+		emptyHeader, 
+		req.PayloadAttributes.Transactions,
+		req.PayloadAttributes.NoTxPool,
+		mmChan)
 
+        
+	s.builders[s.payloadId] = builder
+        log.Debug("MMDBG waiting before EngineForkChoiceUpdatedReply", "param", param, "builder", builder)
+	<-mmChan
+	log.Debug("MMDBG continuing with EngineForkChoiceUpdatedReply")
 	return &remote.EngineForkChoiceUpdatedReply{
 		PayloadStatus: &remote.EnginePayloadStatus{
 			Status:          remote.EngineStatus_VALID,

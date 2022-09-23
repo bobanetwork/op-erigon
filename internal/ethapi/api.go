@@ -292,6 +292,7 @@ func RPCMarshalBlockEx(block *types.Block, inclTx bool, fullTx bool, borTx types
 	if _, ok := fields["transactions"]; !ok {
 		fields["transactions"] = make([]interface{}, 0)
 	}
+	log.Debug("MMDBG RPCMarshalBlockEx", "inclTx", inclTx, "fullTx", fullTx)
 
 	if inclTx {
 		formatTx := func(tx types.Transaction, index int) (interface{}, error) {
@@ -376,6 +377,9 @@ type RPCTransaction struct {
 	V                *hexutil.Big      `json:"v"`
 	R                *hexutil.Big      `json:"r"`
 	S                *hexutil.Big      `json:"s"`
+	SourceHash       *common.Hash      `json:"sourceHash,omitempty"`
+	Mint             *hexutil.Big      `json:"mint,omitempty"`
+	IsSystemTx       bool              `json:"isSystemTx,omitempty"`
 }
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
@@ -432,6 +436,12 @@ func newRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		} else {
 			result.GasPrice = nil
 		}
+	case *types.DepositTransaction:
+		log.Debug("MMDBG newRPCTransaction as DepositTransaction")
+		result.SourceHash = t.SourceHash
+		result.IsSystemTx = t.IsSystemTx
+		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
+		result.Nonce = 0
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	var err error
@@ -494,6 +504,7 @@ func newRPCTransactionFromBlockIndex(b *types.Block, index uint64) *RPCTransacti
 
 // newRPCTransactionFromBlockAndTxGivenIndex returns a transaction that will serialize to the RPC representation.
 func newRPCTransactionFromBlockAndTxGivenIndex(b *types.Block, tx types.Transaction, index uint64) *RPCTransaction {
+	log.Debug("MMDBG newRPCTransactionFromBlockAndTxGivenIndex")
 	return newRPCTransaction(tx, b.Hash(), b.NumberU64(), index, b.BaseFee())
 }
 

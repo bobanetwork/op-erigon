@@ -24,7 +24,7 @@ x-erigon-service: &default-erigon-service
 
 services:
   erigon:
-    image: thorax/erigon:${TAG:-latest}
+    image: bobanetwork/erigon-base:${TAG:-latest}
     build:
       args:
         UID: ${DOCKER_UID:-1000}

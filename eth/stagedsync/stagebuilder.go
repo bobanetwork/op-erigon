@@ -9,6 +9,7 @@ import (
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/ethdb/privateapi"
 	"github.com/ledgerwatch/erigon/turbo/shards"
+	"github.com/ledgerwatch/log/v3"
 )
 
 type ChainEventNotifier interface {
@@ -37,6 +38,7 @@ func MiningStages(
 			ID:          stages.MiningCreateBlock,
 			Description: "Mining: construct new block from tx pool",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx) error {
+                        	log.Debug("MMDBG stagebuilder stages.MiningCreateBlock", "cfg", createBlockCfg)
 				return SpawnMiningCreateBlockStage(s, tx, createBlockCfg, ctx.Done())
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx) error { return nil },
@@ -46,7 +48,8 @@ func MiningStages(
 			ID:          stages.MiningExecution,
 			Description: "Mining: construct new block from tx pool",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx) error {
-				return SpawnMiningExecStage(s, tx, execCfg, ctx.Done())
+				log.Debug("MMDBG stagebuilder stages.MiningExecution", "tx", tx)
+                                return SpawnMiningExecStage(s, tx, execCfg, ctx.Done())
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx) error { return nil },
 			Prune:  func(firstCycle bool, u *PruneState, tx kv.RwTx) error { return nil },
@@ -78,7 +81,8 @@ func MiningStages(
 			ID:          stages.MiningFinish,
 			Description: "Mining: create and propagate valid block",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx) error {
-				return SpawnMiningFinishStage(s, tx, finish, ctx.Done())
+				log.Debug("MMDBG stagebuilder stages.MiningFinish")
+                                return SpawnMiningFinishStage(s, tx, finish, ctx.Done())
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx) error { return nil },
 			Prune:  func(firstCycle bool, u *PruneState, tx kv.RwTx) error { return nil },

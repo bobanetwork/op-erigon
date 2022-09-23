@@ -76,9 +76,19 @@ type MiningCreateBlockCfg struct {
 	txPool2DB              kv.RoDB
 	tmpdir                 string
 	blockBuilderParameters *core.BlockBuilderParameters
+        deposits               [][]byte
+	noTxPool               bool
 }
 
 func StageMiningCreateBlockCfg(db kv.RwDB, miner MiningState, chainConfig params.ChainConfig, engine consensus.Engine, txPool2 *txpool.TxPool, txPool2DB kv.RoDB, blockBuilderParameters *core.BlockBuilderParameters, tmpdir string) MiningCreateBlockCfg {
+	var tmpDeposits [][]byte
+	var noTxPool    bool
+	
+	if blockBuilderParameters != nil {
+		tmpDeposits = blockBuilderParameters.Deposits
+		noTxPool = blockBuilderParameters.NoTxPool
+	}
+	
 	return MiningCreateBlockCfg{
 		db:                     db,
 		miner:                  miner,
@@ -88,6 +98,8 @@ func StageMiningCreateBlockCfg(db kv.RwDB, miner MiningState, chainConfig params
 		txPool2DB:              txPool2DB,
 		tmpdir:                 tmpdir,
 		blockBuilderParameters: blockBuilderParameters,
+		deposits:               tmpDeposits,
+		noTxPool:               noTxPool,
 	}
 }
 
@@ -129,16 +141,40 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	blockNum := executionAt + 1
 	var txs []types.Transaction
 	if err = cfg.txPool2DB.View(context.Background(), func(poolTx kv.Tx) error {
-		txSlots := types2.TxsRlp{}
-		if err := cfg.txPool2.Best(200, &txSlots, poolTx); err != nil {
+		tmpSlots := types2.TxsRlp{}
+		if err := cfg.txPool2.Best(200, &tmpSlots, poolTx); err != nil {
+       			log.Debug("MMDBG SpawnMiningCreateBlockStage 1 returing", "err", err)
 			return err
 		}
+                log.Debug("MMDBG SpawnMiningCreateBlockStage before", "tmpSlots", tmpSlots, "deposits", cfg.deposits)
+		
+		txSlots := types2.TxsRlp{}
+		txSlots.Resize(uint(len(cfg.deposits) + len(tmpSlots.Txs)))
+
+		for i := range cfg.deposits {
+		  txSlots.Txs[i] = cfg.deposits[i]
+		  copy(txSlots.Senders.At(i), (common.Address{}).Bytes())
+		  txSlots.IsLocal[i] = true
+		}
+		j := len(cfg.deposits)
+		
+		if !cfg.noTxPool {
+			for i := range tmpSlots.Txs {
+			  txSlots.Txs[i+j] = tmpSlots.Txs[i]
+			  copy(txSlots.Senders.At(i+j), tmpSlots.Senders.At(i))
+		 	 txSlots.IsLocal[i+j] = tmpSlots.IsLocal[i]
+			}
+		}
+
+        	log.Debug("MMDBG SpawnMiningCreateBlockStage after merge", "txSlots", txSlots)
 
 		var skipByChainIDMismatch uint64 = 0
 		for i := range txSlots.Txs {
 			s := rlp.NewStream(bytes.NewReader(txSlots.Txs[i]), uint64(len(txSlots.Txs[i])))
+                        log.Debug("MMDBG Candidate transaction", "i", i, "tx", txSlots.Txs[i], "s", s)
 
 			transaction, err := types.DecodeTransaction(s)
+                        log.Debug("MMDBG SpawnMiningCreateBlockStage Decoded", "err", err, "tx", transaction)
 			if err == io.EOF {
 				continue
 			}
@@ -149,6 +185,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 				skipByChainIDMismatch++
 				continue
 			}
+			log.Debug("MMDBG processing", "i", i, "txSlots", txSlots)
 			var sender common.Address
 			copy(sender[:], txSlots.Senders.At(i))
 			// Check if tx nonce is too low
@@ -157,6 +194,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		}
 		return nil
 	}); err != nil {
+        	log.Debug("MMDBG SpawnMiningCreateBlockStage 2 returing", "err", err)
 		return err
 	}
 	log.Debug(fmt.Sprintf("[%s] Candidate txs", logPrefix), "amount", len(txs))
@@ -181,7 +219,6 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		}
 		return
 	}
-
 	type envT struct {
 		signer    *types.Signer
 		ancestors mapset.Set // ancestor set (used for checking uncle parent validity)
@@ -213,11 +250,13 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 
 	txs, err = filterBadTransactions(tx, txs, cfg.chainConfig, blockNum, header.BaseFee)
 	if err != nil {
+		log.Debug("MMDBG SpawnMiningCreateBlockStage filterBadTx returing", "err", err)
 		return err
 	}
 	current.RemoteTxs = types.NewTransactionsFixedOrder(txs)
 	// txpool v2 - doesn't prioritise local txs over remote
 	current.LocalTxs = types.NewTransactionsFixedOrder(nil)
+	log.Debug("MMDBG SpawnMiningCreateBlockStage continuing", "local", current.LocalTxs, "rmt", current.RemoteTxs) 
 
 	log.Info(fmt.Sprintf("[%s] Start mine", logPrefix), "block", executionAt+1, "baseFee", header.BaseFee, "gasLimit", header.GasLimit)
 
@@ -244,6 +283,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		return nil
 	}
 
+	log.Debug("MMDBG before daoBlock check (cfg.blockBuilderParameters == nil)")
 	// If we are care about TheDAO hard-fork check whether to override the extra-data or not
 	if daoBlock := cfg.chainConfig.DAOForkBlock; daoBlock != nil {
 		// Check whether the block is among the fork extra-override range
@@ -352,6 +392,8 @@ func readNonCanonicalHeaders(tx kv.Tx, blockNum uint64, engine consensus.Engine,
 }
 
 func filterBadTransactions(tx kv.Tx, transactions []types.Transaction, config params.ChainConfig, blockNumber uint64, baseFee *big.Int) ([]types.Transaction, error) {
+	log.Debug("MMDBG entering filterBadTransactions")
+
 	var filtered []types.Transaction
 	simulationTx := memdb.NewMemoryBatch(tx)
 	defer simulationTx.Rollback()
@@ -360,11 +402,21 @@ func filterBadTransactions(tx kv.Tx, transactions []types.Transaction, config pa
 	missedTxs := 0
 	for len(transactions) > 0 && missedTxs != len(transactions) {
 		transaction := transactions[0]
+		log.Debug("MMDBG filterBadTransactions evaluating", "tx", transaction)
+		
 		sender, ok := transaction.GetSender()
 		if !ok {
 			transactions = transactions[1:]
 			continue
 		}
+		if int(transaction.Type()) == types2.DepositTxType {
+			// FIXME - may need to include some of the later checks
+			log.Debug("MMDBG bypassing filterBadTransactions for Deposit tx")
+			filtered = append(filtered, transaction)
+			transactions = transactions[1:]
+			continue
+		}
+			
 		var account accounts.Account
 		ok, err := rawdb.ReadAccount(simulationTx, sender, &account)
 		if err != nil {
@@ -450,5 +502,6 @@ func filterBadTransactions(tx kv.Tx, transactions []types.Transaction, config pa
 		filtered = append(filtered, transaction)
 		transactions = transactions[1:]
 	}
+	log.Debug("MMDBG leaving filterBadTransactions", "filtered", filtered)
 	return filtered, nil
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/secp256k1"
+	"github.com/ledgerwatch/log/v3"
 )
 
 var ErrInvalidChainId = errors.New("invalid chain id for signer")
@@ -254,6 +255,12 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 		// id, add 27 to become equivalent to unprotected Homestead signatures.
 		V.Add(&t.V, u256.Num27)
 		R, S = &t.R, &t.S
+	case *DepositTransaction:
+		// This type contains an explicit From: field
+		log.Debug("MMDBG transaction_signing DepositTransaction handler")
+		sender,_ := tx.GetSender()
+		return sender, nil
+		
 	default:
 		return common.Address{}, ErrTxTypeNotSupported
 	}

@@ -28,6 +28,7 @@ import (
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/rlp"
+	"github.com/ledgerwatch/log/v3"
 )
 
 // go:generate gencodec -type Receipt -field-override receiptMarshaling -out gen_receipt_json.go
@@ -250,6 +251,9 @@ func (r *Receipt) DecodeRLP(s *rlp.Stream) error {
 			if err := r.decodePayload(s); err != nil {
 				return err
 			}
+		case DepositTxType:
+			log.Debug("MMDBG receipt DepositTxType handler")
+			return ErrTxTypeNotSupported
 		default:
 			return ErrTxTypeNotSupported
 		}

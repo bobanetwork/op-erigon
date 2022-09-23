@@ -303,6 +303,7 @@ func startHandlingForkChoice(
 	}
 	headerHash := forkChoice.HeadBlockHash
 	log.Debug(fmt.Sprintf("[%s] Handling fork choice", s.LogPrefix()), "headerHash", headerHash)
+        log.Debug("MMDBG Handling fork choice", "fc", forkChoice)
 
 	currentHeadHash := rawdb.ReadHeadHeaderHash(tx)
 	if currentHeadHash == headerHash { // no-op

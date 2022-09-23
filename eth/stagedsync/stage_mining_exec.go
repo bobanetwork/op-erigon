@@ -90,9 +90,11 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	// Short circuit if there is no available pending transactions.
 	// But if we disable empty precommit already, ignore it. Since
 	// empty block is necessary to keep the liveness of the network.
+	log.Debug("MMDBG stage_mining_exec 1")
 	if noempty {
 		if !localTxs.Empty() {
 			logs, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, localTxs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt)
+			log.Debug("MMDBG stage_mining_exec added local txns", "err", err)
 			if err != nil {
 				return err
 			}
@@ -105,6 +107,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 		}
 		if !remoteTxs.Empty() {
 			logs, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, remoteTxs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt)
+			log.Debug("MMDBG stage_mining_exec added remote txns", "err", err)
 			if err != nil {
 				return err
 			}
@@ -127,10 +130,14 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	if current.Receipts == nil {
 		current.Receipts = types.Receipts{}
 	}
+	log.Debug("MMDBG stage_mining_exec 2", "header", current.Header)
 
 	var err error
 	_, current.Txs, current.Receipts, err = core.FinalizeBlockExecution(cfg.engine, stateReader, current.Header, current.Txs, current.Uncles, stateWriter,
 		&cfg.chainConfig, ibs, current.Receipts, epochReader{tx: tx}, chainReader{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, true)
+
+	log.Debug("MMDBG stage_mining_exec 3", "err", err)
+	
 	if err != nil {
 		return err
 	}
@@ -187,11 +194,13 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		log.Info("addTransactionsToMiningBlock", "txn hash", txn.Hash())
 		receipt, _, err := core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig)
 		if err != nil {
+			log.Debug("MMDBG addTransactionsToMiningBlock reverting", "txn", txn)
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap) // restore gasPool as well as ibs
 			return nil, err
 		}
 
+		log.Debug("MMDBG addTransactionsToMiningBlock adding", "txn", txn)
 		current.Txs = append(current.Txs, txn)
 		current.Receipts = append(current.Receipts, receipt)
 		return receipt.Logs, nil
@@ -235,7 +244,11 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		}
 
 		// Start executing the transaction
+		//ibs.Prepare(txn.Hash(), common.Hash{}, tcount) // FIXME - still needed?
+		log.Debug("MMDBG stage_mining_exec prepared", "tcount", tcount, "txn", txn)
+		
 		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current)
+		log.Debug("MMDBG stage_mining_exec result", "err", err, "logs", logs)
 
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account

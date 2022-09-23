@@ -228,6 +228,8 @@ func StageLoopStep(
 }
 
 func MiningStep(ctx context.Context, kv kv.RwDB, mining *stagedsync.Sync) (err error) {
+	log.Debug("MMDBG entering MiningStep")
+        
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = fmt.Errorf("%+v, trace: %s", rec, dbg.Stack())
@@ -235,6 +237,7 @@ func MiningStep(ctx context.Context, kv kv.RwDB, mining *stagedsync.Sync) (err e
 	}() // avoid crash because Erigon's core does many things
 
 	tx, err := kv.BeginRo(ctx)
+        log.Debug("MMDBG kv.BeginRo", "err", err, "tx", tx)
 	if err != nil {
 		return err
 	}
@@ -243,9 +246,12 @@ func MiningStep(ctx context.Context, kv kv.RwDB, mining *stagedsync.Sync) (err e
 	miningBatch := memdb.NewMemoryBatch(tx)
 	defer miningBatch.Rollback()
 
+	log.Debug("MMDBG before mining.Run", "batch", miningBatch)
 	if err = mining.Run(nil, miningBatch, false); err != nil {
+        	log.Debug("MMDBG mining.Run", "err", err)
 		return err
 	}
+        log.Debug("MMDBG after mining.Run")
 	tx.Rollback()
 	return nil
 }
