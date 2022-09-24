@@ -271,7 +271,6 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi.CallArgs,
 	return hexutil.Uint64(hi), nil
 }
 
-// GetProof not implemented
 func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResult, error) {
 
 	tx, err := api.db.BeginRo(ctx)
