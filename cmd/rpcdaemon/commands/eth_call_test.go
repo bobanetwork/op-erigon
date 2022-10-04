@@ -395,8 +395,50 @@ func TestGetProof(t *testing.T) {
 	if err != nil {
 		t.Errorf("getProof failed: %v", err)
 	}
-	t.Log(res.AccountProof)
+	t.Logf("Proof - Succeeded: %s", res.AccountProof)
 	assert.NotNil(t, res.AccountProof)
 
-	// TODO: Check for proof validity
+	//assert.Nil(t, t, res.Verify(res.Root)) // TODO: If this goes through, then client has different root
 }
+
+/*
+// Verify an account proof from the getProof RPC. See https://eips.ethereum.org/EIPS/eip-1186
+func (res *AccountResult) Verify(stateRoot common.Hash) error {
+	accountClaimed := []interface{}{uint64(res.Nonce), (*big.Int)(res.Balance).Bytes(), res.StorageHash, res.CodeHash}
+	accountClaimedValue, err := rlp.EncodeToBytes(accountClaimed)
+	if err != nil {
+		return fmt.Errorf("failed to encode account from retrieved values: %w", err)
+	}
+
+	// create a db with all trie nodes
+	db := memorydb.New()
+	for i, encodedNode := range res.AccountProof {
+		nodeKey := crypto.Keccak256(encodedNode)
+		if err := db.Put(nodeKey, encodedNode); err != nil {
+			return fmt.Errorf("failed to load proof value %d into mem db: %w", i, err)
+		}
+	}
+
+	key := crypto.Keccak256Hash(res.Address[:])
+	trieDB := trie.NewDatabase(db)
+
+	// wrap our DB of trie nodes with a Trie interface, and anchor it at the trusted state root
+	proofTrie, err := trie.New(common2.Hash(stateRoot), common2.Hash(stateRoot), trieDB)
+	if err != nil {
+		return fmt.Errorf("failed to load db wrapper around kv store")
+	}
+
+	// now get the full value from the account proof, and check that it matches the JSON contents
+	accountProofValue, err := proofTrie.TryGet(key[:])
+	if err != nil {
+		return fmt.Errorf("failed to retrieve account value: %w", err)
+	}
+
+	if !bytes.Equal(accountClaimedValue, accountProofValue) {
+		return fmt.Errorf("L1 RPC is tricking us, account proof does not match provided deserialized values:\n"+
+			"  claimed: %x\n"+
+			"  proof:   %x", accountClaimedValue, accountProofValue)
+	}
+	return err
+}
+*/

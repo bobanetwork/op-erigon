@@ -89,6 +89,7 @@ type FlatDBTrieLoader struct {
 	receiver        StreamReceiver
 	defaultReceiver *RootHashAggregator
 	hc              HashCollector2
+	pc              ProofCollector
 	shc             StorageHashCollector2
 }
 
@@ -154,9 +155,10 @@ func NewFlatDBTrieLoader(logPrefix string) *FlatDBTrieLoader {
 }
 
 // Reset prepares the loader for reuse
-func (l *FlatDBTrieLoader) Reset(rd RetainDeciderWithMarker, hc HashCollector2, shc StorageHashCollector2, trace bool) error {
+func (l *FlatDBTrieLoader) Reset(rd RetainDeciderWithMarker, hc HashCollector2, pc ProofCollector, shc StorageHashCollector2, trace bool) error {
 	l.defaultReceiver.Reset(hc, shc, trace)
 	l.hc = hc
+	l.pc = pc
 	l.shc = shc
 	l.receiver = l.defaultReceiver
 	l.trace = trace
@@ -568,7 +570,13 @@ func (r *RootHashAggregator) genStructStorage() error {
 			return nil
 		}
 		return r.shc(r.currAccK, keyHex, hasState, hasTree, hasHash, hashes, rootHash)
-	}, data, r.groupsStorage, r.hasTreeStorage, r.hasHashStorage,
+	}, func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+		if r.shc == nil {
+			return nil
+		}
+		return r.shc(r.currAccK, keyHex, hasState, hasTree, hasHash, hashes, rootHash)
+	},
+		data, r.groupsStorage, r.hasTreeStorage, r.hasHashStorage,
 		r.trace,
 	)
 	if err != nil {
@@ -636,7 +644,13 @@ func (r *RootHashAggregator) genStructAccount() error {
 			return nil
 		}
 		return r.hc(keyHex, hasState, hasTree, hasHash, hashes, rootHash)
-	}, data, r.groups, r.hasTree, r.hasHash,
+	}, func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+		if r.hc == nil {
+			return nil
+		}
+		return r.hc(keyHex, hasState, hasTree, hasHash, hashes, rootHash)
+	},
+		data, r.groups, r.hasTree, r.hasHash,
 		false,
 		//r.trace,
 	); err != nil {
@@ -1486,7 +1500,7 @@ func CastTrieNodeValue(hashes, rootHash []byte) []common.Hash {
 // DESCRIBED: docs/programmers_guide/guide.md#organising-ethereum-state-into-a-merkle-tree
 func CalcRoot(logPrefix string, tx kv.Tx) (common.Hash, error) {
 	loader := NewFlatDBTrieLoader(logPrefix)
-	if err := loader.Reset(NewRetainList(0), nil, nil, false); err != nil {
+	if err := loader.Reset(NewRetainList(0), nil, nil, nil, false); err != nil {
 		return EmptyRoot, err
 	}
 

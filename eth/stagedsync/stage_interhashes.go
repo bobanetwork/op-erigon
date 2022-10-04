@@ -151,7 +151,7 @@ func RegenerateIntermediateHashes(logPrefix string, db kv.RwTx, cfg TrieCfg, exp
 	stTrieCollectorFunc := storageTrieCollector(stTrieCollector)
 
 	loader := trie.NewFlatDBTrieLoader(logPrefix)
-	if err := loader.Reset(trie.NewRetainList(0), accTrieCollectorFunc, stTrieCollectorFunc, false); err != nil {
+	if err := loader.Reset(trie.NewRetainList(0), accTrieCollectorFunc, nil, stTrieCollectorFunc, false); err != nil {
 		return trie.EmptyRoot, err
 	}
 	hash, err := loader.CalcTrieRoot(db, []byte{}, quit)
@@ -587,7 +587,7 @@ func incrementIntermediateHashes(logPrefix string, s *StageState, db kv.RwTx, to
 	stTrieCollectorFunc := storageTrieCollector(stTrieCollector)
 
 	loader := trie.NewFlatDBTrieLoader(logPrefix)
-	if err := loader.Reset(rl, accTrieCollectorFunc, stTrieCollectorFunc, false); err != nil {
+	if err := loader.Reset(rl, accTrieCollectorFunc, nil, stTrieCollectorFunc, false); err != nil {
 		return trie.EmptyRoot, err
 	}
 	hash, err := loader.CalcTrieRoot(db, []byte{}, quit)
@@ -680,7 +680,7 @@ func unwindIntermediateHashesStageImpl(logPrefix string, u *UnwindState, s *Stag
 	stTrieCollectorFunc := storageTrieCollector(stTrieCollector)
 
 	loader := trie.NewFlatDBTrieLoader(logPrefix)
-	if err := loader.Reset(rl, accTrieCollectorFunc, stTrieCollectorFunc, false); err != nil {
+	if err := loader.Reset(rl, accTrieCollectorFunc, nil, stTrieCollectorFunc, false); err != nil {
 		return err
 	}
 	hash, err := loader.CalcTrieRoot(db, []byte{}, quit)

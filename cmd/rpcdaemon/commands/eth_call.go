@@ -271,8 +271,7 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi.CallArgs,
 	return hexutil.Uint64(hi), nil
 }
 
-// GetProof not implemented
-func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResultExt, error) {
+func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResult, error) {
 
 	tx, err := api.db.BeginRo(ctx)
 	if err != nil {
@@ -306,10 +305,11 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	trieConfig := stagedsync.TrieCfg{
 		//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
 	}
-	proof, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
+	root, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Root by spawnIntermediateHashes: %s", root)
 
 	rl := trie.NewRetainList(0)
 	addrHash, err := common.HashData(address[:])
@@ -329,9 +329,12 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 	loader := trie.NewFlatDBTrieLoader("getProof")
 
+	// TODO: either newVHash or hashes from callback = proof!
 	newVHash := make([]byte, 0, 1024)
-	accountProof := common.BytesToHash(newVHash)
-	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, _ []byte) error {
+	var proofHashes []byte = nil
+	var actualRoot []byte = nil
+	// NOTE: This function shall return the proof
+	proofCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
 		if len(keyHex) == 0 {
 			return nil
 		}
@@ -339,13 +342,40 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
 		}
 		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
+		proofHashes = append(proofHashes, hashes...)
+
+		if len(rootHash) != 0 {
+			actualRoot = rootHash // always 0 length
+		}
+		//fmt.Printf("hashCollector: %s", proofHashes)
 		return nil
 	}
+	/*hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+		if len(keyHex) == 0 {
+			return nil
+		}
+		if bits.OnesCount16(hasHash) != len(hashes)/length.Hash {
+			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
+		}
+		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
+		proofHashes = append(proofHashes, hashes...)
+
+		if len(rootHash) != 0 {
+			actualRoot = rootHash // always 0 length
+		}
+		//fmt.Printf("hashCollector: %s", proofHashes)
+		return nil
+	}*/
+	fmt.Printf("Proof hashes: %s", proofHashes)
+	fmt.Printf("Actual root: %s", actualRoot)
+
+	// var actualRootHash = *(*common.Hash)(actualRoot)
 
 	acc := accounts.Account{}
 	newKStorage := make([]byte, 0, 128)
 	newVStorage := make([]byte, 0, 1024)
-	storageProof := common.BytesToHash(newVStorage)
+	storageHash := common.BytesToHash(newVStorage)
+	// TODO: StorageCollector doesn't seem to be called, since acc and storageHash are both 0 on client (see Slack)
 	storageCollector := func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
 		newKStorage = append(append(newKStorage[:0], accWithInc...), keyHex...)
 		if len(keyHex) > 0 && hasHash == 0 && hasTree == 0 {
@@ -356,10 +386,11 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		}
 		newVStorage = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, rootHash, newVStorage)
 
+		fmt.Printf("Called storageCollector")
 		return accounts.Deserialise2(&acc, accWithInc)
 	}
 
-	if err := loader.Reset(rl, hashCollector, storageCollector, false); err != nil {
+	if err := loader.Reset(rl, nil, proofCollector, storageCollector, false); err != nil {
 		return nil, err
 	}
 
@@ -368,23 +399,22 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		return nil, err
 	}
 
-	fmt.Print(proof)
-	//loader.accountValue
+	// TODO: trRoot = root? According to Erigon team
+	fmt.Printf("/ TrRoot: %s", trRoot)
 
 	accRes := &AccountResult{
-		CodeHash: acc.CodeHash,
-		Nonce:    hexutil.Uint64(acc.Nonce),
-	}
-	accRes.Balance.ToInt().Set(acc.Balance.ToBig())
-
-	return &AccountResultExt{
-		*accRes,
-		address,
-		hexutil.Encode(accountProof.Bytes()),
-		storageProof,
-		trRoot,
+		Balance:      (*hexutil.Big)(acc.Balance.ToBig()),
+		CodeHash:     acc.CodeHash,
+		Nonce:        hexutil.Uint64(acc.Nonce),
+		Address:      address,
+		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(newVHash)},
+		StorageHash:  storageHash,
+		Root:         trRoot,
 		//StorageProof: storageProof,
-	}, nil
+	}
+	// fmt.Printf("/ ACC: %s", accRes)
+
+	return accRes, nil
 }
 
 // accessListResult returns an optional accesslist

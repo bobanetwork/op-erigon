@@ -47,7 +47,9 @@ type structInfoReceiver interface {
 type HashCollector func(keyHex []byte, hash []byte) error
 type StorageHashCollector func(accWithInc []byte, keyHex []byte, hash []byte) error
 
+type HashTrieCollector func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error
 type HashCollector2 func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error
+type ProofCollector func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error
 type StorageHashCollector2 func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error
 
 func calcPrecLen(groups []uint16) int {
@@ -104,6 +106,7 @@ func GenStructStep(
 	curr, succ []byte,
 	e structInfoReceiver,
 	h HashCollector2,
+	p ProofCollector,
 	data GenStructStepData,
 	groups []uint16,
 	hasTree []uint16,
@@ -210,6 +213,11 @@ func GenStructStep(
 						if err := h(curr[:i], 0, 0, 0, nil, nil); err != nil {
 							return nil, nil, nil, err
 						}
+					} else if p != nil {
+						// TODO new
+						if err := p(curr[:i], 0, 0, 0, nil, nil); err != nil {
+							return nil, nil, nil, err
+						}
 					}
 				}
 				hasTree = hasTree[:from]
@@ -249,6 +257,11 @@ func GenStructStep(
 				if err := h(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, nil); err != nil {
 					return nil, nil, nil, err
 				}
+			} else {
+				// TODO new
+				if err := p(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, nil); err != nil {
+					return nil, nil, nil, err
+				}
 			}
 		}
 
@@ -285,6 +298,11 @@ func GenStructStep(
 			send = send || (maxLen == 1 && groups[maxLen] != 0)                   // first level of trie_account - store in any case
 			if send {
 				if err := h(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, e.topHash()); err != nil {
+					return nil, nil, nil, err
+				}
+			} else {
+				// TODO new
+				if err := p(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, e.topHash()); err != nil {
 					return nil, nil, nil, err
 				}
 			}
