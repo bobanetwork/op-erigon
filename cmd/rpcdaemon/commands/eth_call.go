@@ -305,10 +305,11 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	trieConfig := stagedsync.TrieCfg{
 		//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
 	}
-	proof, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
+	root, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Root by spawnIntermediateHashes: %s", root)
 
 	rl := trie.NewRetainList(0)
 	addrHash, err := common.HashData(address[:])
@@ -328,7 +329,10 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 	loader := trie.NewFlatDBTrieLoader("getProof")
 
+	// TODO: either newVHash or hashes from callback = proof!
 	newVHash := make([]byte, 0, 1024)
+	var proofHashes []byte = nil
+	// NOTE: This function shall return the proof
 	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, _ []byte) error {
 		if len(keyHex) == 0 {
 			return nil
@@ -337,8 +341,10 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
 		}
 		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
+		proofHashes = hashes
 		return nil
 	}
+	fmt.Printf("Proof hashes: %s", proofHashes)
 
 	acc := accounts.Account{}
 	newKStorage := make([]byte, 0, 128)
@@ -366,13 +372,15 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	if err != nil {
 		return nil, err
 	}
+	// TODO: trRoot = root? According to Erigon team
+	fmt.Printf("/ TrRoot: %s", trRoot)
 
 	accRes := &AccountResult{
 		Balance:      (*hexutil.Big)(acc.Balance.ToBig()),
 		CodeHash:     acc.CodeHash,
 		Nonce:        hexutil.Uint64(acc.Nonce),
 		Address:      address,
-		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(proof.Bytes())},
+		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(newVHash)},
 		StorageHash:  storageHash,
 		Root:         trRoot,
 		//StorageProof: storageProof,
