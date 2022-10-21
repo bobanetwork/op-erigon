@@ -2,7 +2,6 @@ package ethapi
 
 import (
 	"bytes"
-
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/core/types/accounts"

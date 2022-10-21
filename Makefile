@@ -66,7 +66,7 @@ docker: validate_docker_build_args git-submodules
 		${DOCKER_FLAGS} \
 		.
 
-xdg_data_home :=  ~/.local/share
+xdg_data_home := ~/.local/share
 ifdef XDG_DATA_HOME
 	xdg_data_home = $(XDG_DATA_HOME)
 endif

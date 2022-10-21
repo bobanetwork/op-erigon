@@ -3,4 +3,4 @@
 	url = https://github.com/ethereum/tests
 [submodule "erigon-lib"]
 	path = erigon-lib
-	url = git@github.com:bobanetwork/v3-erigon-lib
+	url = https://github.com/bobanetwork/v3-erigon-lib

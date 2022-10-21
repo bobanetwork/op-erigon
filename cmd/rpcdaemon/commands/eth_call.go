@@ -4,28 +4,33 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/big"
-
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/common/length"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
 	txpool_proto "github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv"
-	"github.com/ledgerwatch/log/v3"
-	"google.golang.org/grpc"
-
+	"github.com/ledgerwatch/erigon-lib/kv/memdb"
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
+	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/erigon/eth/stagedsync"
+	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/eth/tracers/logger"
 	"github.com/ledgerwatch/erigon/internal/ethapi"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/erigon/turbo/transactions"
+	"github.com/ledgerwatch/erigon/turbo/trie"
+	"github.com/ledgerwatch/log/v3"
+	"google.golang.org/grpc"
+	"math/big"
+	"math/bits"
 )
 
 // Call implements eth_call. Executes a new message call immediately without creating a transaction on the block chain.
@@ -274,10 +279,112 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi.CallArgs,
 	return hexutil.Uint64(hi), nil
 }
 
-// GetProof not implemented
-func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*interface{}, error) {
-	var stub interface{}
-	return &stub, fmt.Errorf(NotImplemented, "eth_getProof")
+func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResult, error) {
+
+	tx, err := api.db.BeginRo(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	memMutation := memdb.NewMemoryBatch(tx)
+	// TODO: Both needed?
+	defer tx.Rollback()
+	defer memMutation.Rollback()
+
+	//block := uint64(blockNr.Int64()) + 1
+
+	s := stagedsync.New(nil, stagedsync.DefaultUnwindOrder, stagedsync.DefaultPruneOrder)
+
+	// "Probably you need do the same - run all 3 stages (exec, hashState, interHashes) on in-memory-mutation."
+	_, err = s.StageState(stages.Execution, memMutation, api.db)
+	if err != nil {
+		return nil, err
+	}
+	_, err = s.StageState(stages.HashState, memMutation, api.db)
+	if err != nil {
+		return nil, err
+	}
+	stageStateInterHash, err := s.StageState(stages.IntermediateHashes, memMutation, api.db)
+
+	if err != nil {
+		return nil, err
+	}
+
+	trieConfig := stagedsync.TrieCfg{
+		//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
+	}
+	proof, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rl := trie.NewRetainList(0)
+	addrHash, err := common.HashData(address[:])
+	if err != nil {
+		return nil, err
+	}
+	rl.AddKey(addrHash[:])
+	for _, key := range storageKeys {
+		keyAsHash := common.HexToHash(key)
+		if keyHash, err1 := common.HashData(keyAsHash[:]); err1 == nil {
+			trieKey := append(addrHash[:], keyHash[:]...)
+			rl.AddKey(trieKey)
+		} else {
+			return nil, err1
+		}
+	}
+
+	loader := trie.NewFlatDBTrieLoader("getProof")
+
+	newVHash := make([]byte, 0, 1024)
+	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, _ []byte) error {
+		if len(keyHex) == 0 {
+			return nil
+		}
+		if bits.OnesCount16(hasHash) != len(hashes)/length.Hash {
+			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
+		}
+		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
+		return nil
+	}
+
+	acc := accounts.Account{}
+	newKStorage := make([]byte, 0, 128)
+	newVStorage := make([]byte, 0, 1024)
+	storageHash := common.BytesToHash(newVStorage)
+	storageCollector := func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+		newKStorage = append(append(newKStorage[:0], accWithInc...), keyHex...)
+		if len(keyHex) > 0 && hasHash == 0 && hasTree == 0 {
+			return nil
+		}
+		if bits.OnesCount16(hasHash) != len(hashes)/length.Hash {
+			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
+		}
+		newVStorage = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, rootHash, newVStorage)
+
+		return accounts.Deserialise2(&acc, accWithInc)
+	}
+
+	if err := loader.Reset(rl, hashCollector, storageCollector, false); err != nil {
+		return nil, err
+	}
+
+	trRoot, err := loader.CalcTrieRoot(tx, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	accRes := &AccountResult{
+		Balance:      (*hexutil.Big)(acc.Balance.ToBig()),
+		CodeHash:     acc.CodeHash,
+		Nonce:        hexutil.Uint64(acc.Nonce),
+		Address:      address,
+		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(proof.Bytes())},
+		StorageHash:  storageHash,
+		Root:         trRoot,
+		//StorageProof: storageProof,
+	}
+	return accRes, nil
 }
 
 // accessListResult returns an optional accesslist
