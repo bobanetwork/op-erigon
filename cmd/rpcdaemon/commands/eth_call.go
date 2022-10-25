@@ -315,11 +315,12 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	trieConfig := stagedsync.TrieCfg{
 		//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
 	}
-	proof, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx, false)
-	log.Debug("MMDBG GetProof SpawnIntermediateHashesStage", "err", err, "proof", proof, "ihash", stageStateInterHash)
+
+	root, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Root by spawnIntermediateHashes: %s", root)
 
 	rl := trie.NewRetainList(0)
 	addrHash, err := common.HashData(address[:])
@@ -341,8 +342,14 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 	loader := trie.NewFlatDBTrieLoader("getProof")
 
+	// TODO: either newVHash or hashes from callback = proof!
 	newVHash := make([]byte, 0, 1024)
-	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, _ []byte) error {
+
+	var proofHashes []byte = nil
+	var actualRoot []byte = nil
+	// NOTE: This function shall return the proof
+	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+
 		if len(keyHex) == 0 {
 			return nil
 		}
@@ -351,13 +358,25 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		}
 		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
 		log.Debug("MMDBG GetProof hashCollector", "keyHex", hexutil.Bytes(keyHex), "newVHash", hexutil.Bytes(newVHash), "hasState", hasState, "hasTree", hasTree, "hasHash", hasHash, "hashes", hexutil.Bytes(hashes))
+		proofHashes = append(proofHashes, hashes...)
+
+		if len(rootHash) != 0 {
+			actualRoot = rootHash // always 0 length
+		}
+		//fmt.Printf("hashCollector: %s", proofHashes)
 		return nil
 	}
+	fmt.Printf("Proof hashes: %s", proofHashes)
+	fmt.Printf("Actual root: %s", actualRoot)
+
+	// var actualRootHash = *(*common.Hash)(actualRoot)
 
 	acc := accounts.Account{}
 	newKStorage := make([]byte, 0, 128)
 	newVStorage := make([]byte, 0, 1024)
 	storageHash := common.BytesToHash(newVStorage)
+
+	// TODO: StorageCollector doesn't seem to be called, since acc and storageHash are both 0 on client (see Slack)
 	storageCollector := func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
 		newKStorage = append(append(newKStorage[:0], accWithInc...), keyHex...)
 		if len(keyHex) > 0 && hasHash == 0 && hasTree == 0 {
@@ -370,6 +389,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		
 		log.Debug("MMDBG GetProof Deserialize2", "keyHex", hexutil.Bytes(keyHex), "accWithInc", hexutil.Bytes(accWithInc))
 
+		fmt.Printf("Called storageCollector")
 		return accounts.Deserialise2(&acc, accWithInc)
 	}
 
@@ -384,17 +404,22 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	}
 	log.Debug("MMDBG GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "tx", tx)
 
+	// TODO: trRoot = root? According to Erigon team
+	fmt.Printf("/ TrRoot: %s", trRoot)
+
 	accRes := &AccountResult{
 		Balance:      (*hexutil.Big)(acc.Balance.ToBig()),
 		CodeHash:     acc.CodeHash,
 		Nonce:        hexutil.Uint64(acc.Nonce),
 		Address:      address,
-		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(proof.Bytes())},
+		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(newVHash)},
 		StorageHash:  storageHash,
 		Root:         trRoot,
 		//StorageProof: storageProof,
 	}
 	log.Debug("MMDBG GetProof returning", "accRes", accRes)
+	// fmt.Printf("/ ACC: %s", accRes)
+
 	return accRes, nil
 }
 

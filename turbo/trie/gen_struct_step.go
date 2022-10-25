@@ -47,6 +47,7 @@ type structInfoReceiver interface {
 type HashCollector func(keyHex []byte, hash []byte) error
 type StorageHashCollector func(accWithInc []byte, keyHex []byte, hash []byte) error
 
+type HashTrieCollector func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error
 type HashCollector2 func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error
 type StorageHashCollector2 func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error
 
@@ -210,6 +211,8 @@ func GenStructStep(
 						if err := h(curr[:i], 0, 0, 0, nil, nil); err != nil {
 							return nil, nil, nil, err
 						}
+					} else {
+						// TODO new
 					}
 				}
 				hasTree = hasTree[:from]
@@ -249,6 +252,9 @@ func GenStructStep(
 				if err := h(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, nil); err != nil {
 					return nil, nil, nil, err
 				}
+			} else {
+				// TODO new
+
 			}
 		}
 
@@ -287,6 +293,8 @@ func GenStructStep(
 				if err := h(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, e.topHash()); err != nil {
 					return nil, nil, nil, err
 				}
+			} else {
+				// TODO new
 			}
 		}
 		groups = groups[:maxLen]
