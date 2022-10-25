@@ -395,10 +395,8 @@ func TestGetProof(t *testing.T) {
 	if err != nil {
 		t.Errorf("getProof failed: %v", err)
 	}
-	t.Log(res.AccountProof)
+	t.Logf("Proof - Succeeded: %s", res.AccountProof)
 	assert.NotNil(t, res.AccountProof)
-
-	t.Errorf("Proof: %s", res.AccountProof)
 
 	//assert.Nil(t, t, res.Verify(res.Root)) // TODO: If this goes through, then client has different root
 }

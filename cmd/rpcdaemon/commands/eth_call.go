@@ -332,8 +332,9 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	// TODO: either newVHash or hashes from callback = proof!
 	newVHash := make([]byte, 0, 1024)
 	var proofHashes []byte = nil
+	var actualRoot []byte = nil
 	// NOTE: This function shall return the proof
-	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, _ []byte) error {
+	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
 		if len(keyHex) == 0 {
 			return nil
 		}
@@ -341,10 +342,18 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
 		}
 		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
-		proofHashes = hashes
+		proofHashes = append(proofHashes, hashes...)
+
+		if len(rootHash) != 0 {
+			actualRoot = rootHash // always 0 length
+		}
+		//fmt.Printf("hashCollector: %s", proofHashes)
 		return nil
 	}
 	fmt.Printf("Proof hashes: %s", proofHashes)
+	fmt.Printf("Actual root: %s", actualRoot)
+
+	// var actualRootHash = *(*common.Hash)(actualRoot)
 
 	acc := accounts.Account{}
 	newKStorage := make([]byte, 0, 128)
@@ -361,6 +370,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		}
 		newVStorage = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, rootHash, newVStorage)
 
+		fmt.Printf("Called storageCollector")
 		return accounts.Deserialise2(&acc, accWithInc)
 	}
 
@@ -372,6 +382,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	if err != nil {
 		return nil, err
 	}
+
 	// TODO: trRoot = root? According to Erigon team
 	fmt.Printf("/ TrRoot: %s", trRoot)
 
@@ -385,6 +396,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		Root:         trRoot,
 		//StorageProof: storageProof,
 	}
+	// fmt.Printf("/ ACC: %s", accRes)
+
 	return accRes, nil
 }
 
