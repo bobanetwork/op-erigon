@@ -281,12 +281,14 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi.CallArgs,
 
 func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResult, error) {
 
+	log.Debug("MMDBG GetProof", "addr", address, "stor", storageKeys, "BN", blockNr)
+	
 	tx, err := api.db.BeginRo(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	memMutation := memdb.NewMemoryBatch(tx)
+	memMutation := memdb.NewMemoryBatch(tx, "")
 	// TODO: Both needed?
 	defer tx.Rollback()
 	defer memMutation.Rollback()
@@ -313,7 +315,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	trieConfig := stagedsync.TrieCfg{
 		//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
 	}
-	proof, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
+	proof, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx, false)
+	log.Debug("MMDBG GetProof SpawnIntermediateHashesStage", "err", err, "proof", proof, "ihash", stageStateInterHash)
 	if err != nil {
 		return nil, err
 	}
@@ -323,6 +326,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	if err != nil {
 		return nil, err
 	}
+	log.Debug("MMDBG GetProof", "addr", address, "addrHash", addrHash)
+	
 	rl.AddKey(addrHash[:])
 	for _, key := range storageKeys {
 		keyAsHash := common.HexToHash(key)
@@ -345,6 +350,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
 		}
 		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
+		log.Debug("MMDBG GetProof hashCollector", "keyHex", hexutil.Bytes(keyHex), "newVHash", hexutil.Bytes(newVHash), "hasState", hasState, "hasTree", hasTree, "hasHash", hasHash, "hashes", hexutil.Bytes(hashes))
 		return nil
 	}
 
@@ -361,6 +367,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
 		}
 		newVStorage = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, rootHash, newVStorage)
+		
+		log.Debug("MMDBG GetProof Deserialize2", "keyHex", hexutil.Bytes(keyHex), "accWithInc", hexutil.Bytes(accWithInc))
 
 		return accounts.Deserialise2(&acc, accWithInc)
 	}
@@ -368,11 +376,13 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	if err := loader.Reset(rl, hashCollector, storageCollector, false); err != nil {
 		return nil, err
 	}
+	log.Debug("MMDBG GetProof loader.Reset", "err", err)
 
 	trRoot, err := loader.CalcTrieRoot(tx, nil, nil)
 	if err != nil {
 		return nil, err
 	}
+	log.Debug("MMDBG GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "tx", tx)
 
 	accRes := &AccountResult{
 		Balance:      (*hexutil.Big)(acc.Balance.ToBig()),
@@ -384,6 +394,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		Root:         trRoot,
 		//StorageProof: storageProof,
 	}
+	log.Debug("MMDBG GetProof returning", "accRes", accRes)
 	return accRes, nil
 }
 
