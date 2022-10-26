@@ -81,3 +81,7 @@ coverage.out
 
 dist
 __debug_bin
+
+dev/
+dev2/
+vendor/
