@@ -18,6 +18,7 @@ package types
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/erigon/turbo/rlphacks"
 	"github.com/ledgerwatch/erigon/turbo/trie"
+	"github.com/protolambda/ztyp/codec"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -199,4 +201,15 @@ func prefixedRlpHash(prefix byte, x interface{}) (h common.Hash) {
 	//nolint:errcheck
 	sha.Read(h[:])
 	return h
+}
+
+// sszHash returns the hash ot the raw serialized ssz-container (i.e. without merkelization)
+func sszHash(c codec.Serializable) ([32]byte, error) {
+	sha := sha256.New()
+	if err := c.Serialize(codec.NewEncodingWriter(sha)); err != nil {
+		return [32]byte{}, err
+	}
+	var sum [32]byte
+	copy(sum[:], sha.Sum(nil))
+	return sum, nil
 }

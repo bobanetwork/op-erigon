@@ -31,6 +31,7 @@ import (
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
+	"github.com/protolambda/ztyp/codec"
 )
 
 var (
@@ -46,6 +47,7 @@ const (
 	AccessListTxType
 	DynamicFeeTxType
 	StarknetType
+	BlobTxType = 5
 )
 
 // Transaction is an Ethereum transaction.
@@ -504,4 +506,55 @@ func (m *Message) SetCheckNonce(checkNonce bool) {
 func (m Message) IsFree() bool { return m.isFree }
 func (m *Message) SetIsFree(isFree bool) {
 	m.isFree = isFree
+}
+
+type TxWrapData interface {
+	copy() TxWrapData
+	kzgs() BlobKzgs
+	blobs() Blobs
+	aggregatedProof() KZGProof
+	encodeTyped(w io.Writer, txdata TxData) error
+	sizeWrapData() common.StorageSize
+	verifyBlobs(inner TxData) error
+}
+
+// TxData is the underlying data of a transaction.
+//
+// This is implemented by DynamicFeeTx, LegacyTx, AccessListTx & SignedBlobTx.
+type TxData interface {
+	txType() byte // returns the type ID
+	copy() TxData // creates a deep copy and initializes all fields
+
+	chainID() *big.Int
+	accessList() AccessList
+	dataHashes() []common.Hash
+	data() []byte
+	gas() uint64
+	gasPrice() *big.Int
+	gasTipCap() *big.Int
+	gasFeeCap() *big.Int
+	maxFeePerDataGas() *big.Int
+	value() *big.Int
+	nonce() uint64
+	to() *common.Address
+
+	rawSignatureValues() (v, r, s *big.Int)
+	setSignatureValues(chainID, v, r, s *big.Int)
+}
+
+func DecodeSSZ(data []byte, dest codec.Deserializable) error {
+	return dest.Deserialize(codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
+}
+
+func EncodeSSZ(w io.Writer, obj codec.Serializable) error {
+	return obj.Serialize(codec.NewEncodingWriter(w))
+}
+
+// copyAddressPtr copies an address.
+func copyAddressPtr(a *common.Address) *common.Address {
+	if a == nil {
+		return nil
+	}
+	cpy := *a
+	return &cpy
 }
