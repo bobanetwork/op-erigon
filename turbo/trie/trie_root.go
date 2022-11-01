@@ -122,6 +122,9 @@ type RootHashAggregator struct {
 	a              accounts.Account
 	leafData       GenStructStepLeafData
 	accData        GenStructStepAccountData
+	proofMatch     RetainDecider
+//	proofMatch     func([]byte) bool
+	cutoff         bool
 }
 
 type StreamReceiver interface {
@@ -166,7 +169,15 @@ func (l *FlatDBTrieLoader) Reset(rd RetainDeciderWithMarker, hc HashCollector2, 
 		fmt.Printf("----------\n")
 		fmt.Printf("CalcTrieRoot\n")
 	}
+	if l.trace {
+		log.Debug("MMGP setting proofMatch")
+		l.defaultReceiver.proofMatch = rd
+	}
 	return nil
+}
+
+func (l *FlatDBTrieLoader) SetProof(mmProof *[]hexutil.Bytes) {
+	l.defaultReceiver.SetProof(mmProof)
 }
 
 func (l *FlatDBTrieLoader) SetStreamReceiver(receiver StreamReceiver) {
@@ -197,6 +208,9 @@ func (l *FlatDBTrieLoader) SetStreamReceiver(receiver StreamReceiver) {
 //		}
 func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan struct{}) (common.Hash, error) {
 
+	if l.trace {
+		log.Debug("MMGP tr CalcTrieRoot", "prefix", prefix)
+	}
 	accC, err := tx.Cursor(kv.HashedAccounts)
 	if err != nil {
 		return EmptyRoot, err
@@ -216,6 +230,9 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 
 	var canUse = func(prefix []byte) (bool, []byte) {
 		retain, nextCreated := l.rd.RetainWithMarker(prefix)
+		if l.trace{
+			log.Debug("MMGP tr_func canUse", "retain", retain, "nextCreated", nextCreated, "prefix", prefix)
+		}
 		return !retain, nextCreated
 	}
 	accTrie := AccTrie(canUse, l.hc, trieAccC, quit)
@@ -229,6 +246,10 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 	logEvery := time.NewTicker(30 * time.Second)
 	defer logEvery.Stop()
 	for ihK, ihV, hasTree, err := accTrie.AtPrefix(prefix); ; ihK, ihV, hasTree, err = accTrie.Next() { // no loop termination is at he end of loop
+		
+		if l.trace {
+			log.Debug("MMGP tr accTrie", "ihK", hexutil.Bytes(ihK), "ihV", hexutil.Bytes(ihV), "hasTree", hasTree, "err", err)
+		}
 		if err != nil {
 			return EmptyRoot, err
 		}
@@ -237,6 +258,10 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 		}
 
 		for k, kHex, v, err1 := accs.Seek(accTrie.FirstNotCoveredPrefix()); k != nil; k, kHex, v, err1 = accs.Next() {
+			if l.trace {
+				log.Debug("MMGP tr accTrie Seek", "k", hexutil.Bytes(k), "kHex", hexutil.Bytes(kHex), "v", hexutil.Bytes(v))
+			}
+			
 			if err1 != nil {
 				return EmptyRoot, err1
 			}
@@ -245,6 +270,12 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 			}
 			if err = l.accountValue.DecodeForStorage(v); err != nil {
 				return EmptyRoot, fmt.Errorf("fail DecodeForStorage: %w", err)
+			}
+			if l.trace {
+				log.Debug("MMGP tr accTrie Receive ASI", "kHex", hexutil.Bytes(kHex), "val", l.accountValue)
+			}
+			if l.trace {
+				log.Debug("MMGP tr Receive1", "ASI", AccountStreamItem, "kh", hexutil.Bytes(kHex))
 			}
 			if err = l.receiver.Receive(AccountStreamItem, kHex, nil, &l.accountValue, nil, nil, false, 0); err != nil {
 				return EmptyRoot, err
@@ -272,6 +303,9 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 					if keyIsBefore(ihKS, l.kHexS) { // read until next AccTrie
 						break
 					}
+					if l.trace {
+						log.Debug("MMGP tr Receive2", "aWI", accWithInc)
+					}
 					if err = l.receiver.Receive(StorageStreamItem, accWithInc, l.kHexS, nil, vS[32:], nil, false, 0); err != nil {
 						return EmptyRoot, err
 					}
@@ -280,6 +314,10 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 			SkipStorage:
 				if ihKS == nil { // Loop termination
 					break
+				}
+				
+				if l.trace {
+					log.Debug("MMGP tr Receive3", "aWI", accWithInc)
 				}
 
 				if err = l.receiver.Receive(SHashStreamItem, accWithInc, ihKS, nil, nil, ihVS, hasTreeS, 0); err != nil {
@@ -301,14 +339,31 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 		if ihK == nil { // Loop termination
 			break
 		}
-
+		if l.trace {
+			log.Debug("MMGP tr Receive4", "ihK", hexutil.Bytes(ihK))
+		}
 		if err = l.receiver.Receive(AHashStreamItem, ihK, nil, nil, nil, ihV, hasTree, 0); err != nil {
 			return EmptyRoot, err
 		}
+		if l.trace {
+			if len(l.defaultReceiver.hb.nodeStack) > 0 {
+				log.Debug("MMGP tr loopBottom", "ns0", l.defaultReceiver.hb.nodeStack[0], "nsLen", len(l.defaultReceiver.hb.nodeStack))
+			} else {
+				log.Debug("MMGP tr loopBottom, empty nodeStack")
+			}
+		}
 	}
 
+	if l.trace {
+		log.Debug("MMGP tr Receive5 Cutoff Stream", "prefix", hexutil.Bytes(prefix))
+	}
+	
 	if err := l.receiver.Receive(CutoffStreamItem, nil, nil, nil, nil, nil, false, len(prefix)); err != nil {
 		return EmptyRoot, err
+	}
+	if l.trace {
+		log.Debug("MMGP tr CalcTrieRoot", "root", l.receiver.Root(), "trace", l.trace)
+		log.Debug("MMGP tr proofStack", "stack", l.defaultReceiver.hb.proofStack)
 	}
 	return l.receiver.Root(), nil
 }
@@ -346,6 +401,11 @@ func (r *RootHashAggregator) Reset(hc HashCollector2, shc StorageHashCollector2,
 	r.root = common.Hash{}
 	r.trace = trace
 	r.hb.trace = trace
+	r.proofMatch = nil
+}
+
+func (r *RootHashAggregator) SetProof(mmProof *[]hexutil.Bytes) {
+	r.hb.SetProof(mmProof)
 }
 
 func (r *RootHashAggregator) Receive(itemType StreamItem,
@@ -368,6 +428,11 @@ func (r *RootHashAggregator) Receive(itemType StreamItem,
 	//	fmt.Printf("1: %d, %x, %x, %x\n", itemType, accountKey, storageKey, hash)
 	//	//}
 	//}
+
+	if r.trace {
+		log.Debug("MMGP tr RHA Receive entry", "type", itemType, "ak", hexutil.Bytes(accountKey), "sk", hexutil.Bytes(storageKey), "val", accountValue, "hash", hexutil.Bytes(hash), "hasTree", hasTree)
+		log.Debug("MMGP tr RHA", "hsLen", len(r.hb.hashStack), "nsLen", len(r.hb.nodeStack))
+	}
 
 	switch itemType {
 	case StorageStreamItem:
@@ -459,8 +524,13 @@ func (r *RootHashAggregator) Receive(itemType StreamItem,
 	case CutoffStreamItem:
 		if r.trace {
 			fmt.Printf("storage cuttoff %d\n", cutoff)
+			log.Debug("MMGP tr RHA CutoffStreamItem", "cutoff", cutoff)
 		}
+
 		r.cutoffKeysAccount(cutoff)
+		if r.trace {
+			log.Debug("MMGP tr RHA CutoffStream 2")
+		}
 		if r.curr.Len() > 0 && !r.wasIH {
 			r.cutoffKeysStorage(0)
 			if r.currStorage.Len() > 0 {
@@ -479,10 +549,18 @@ func (r *RootHashAggregator) Receive(itemType StreamItem,
 				r.accData.FieldSet |= AccountFieldStorageOnly
 			}
 		}
+		if r.trace {
+			log.Debug("MMGP tr RHA CutoffStream 3, setting flag")
+		}
+		r.cutoff = true
+		
 		if r.curr.Len() > 0 {
 			if err := r.genStructAccount(); err != nil {
 				return err
 			}
+		}
+		if r.trace {
+			log.Debug("MMGP tr RHA CutoffStream 4")
 		}
 		if r.curr.Len() > 0 {
 			if len(r.groups) > cutoff {
@@ -490,6 +568,9 @@ func (r *RootHashAggregator) Receive(itemType StreamItem,
 				r.hasTree = r.hasTree[:cutoff]
 				r.hasHash = r.hasHash[:cutoff]
 			}
+		}
+		if r.trace {
+			log.Debug("MMGP tr RHA CutoffStream 5")
 		}
 		if r.hb.hasRoot() {
 			r.root = r.hb.rootHash()
@@ -563,13 +644,21 @@ func (r *RootHashAggregator) genStructStorage() error {
 		r.leafData.Value = rlphacks.RlpSerializableBytes(r.valueStorage)
 		data = &r.leafData
 	}
-	r.groupsStorage, r.hasTreeStorage, r.hasHashStorage, err = GenStructStep(r.RetainNothing, r.currStorage.Bytes(), r.succStorage.Bytes(), r.hb, func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+	r2func := func(_ []byte) bool {
+		return false
+	}
+	if r.proofMatch != nil {
+		r2func = r.proofMatch.Retain
+	}
+	
+	r.groupsStorage, r.hasTreeStorage, r.hasHashStorage, err = GenStructStep(r2func, r.RetainNothing, r.currStorage.Bytes(), r.succStorage.Bytes(), r.hb, func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
 		if r.shc == nil {
 			return nil
 		}
 		return r.shc(r.currAccK, keyHex, hasState, hasTree, hasHash, hashes, rootHash)
 	}, data, r.groupsStorage, r.hasTreeStorage, r.hasHashStorage,
 		r.trace,
+		r.cutoff,
 	)
 	if err != nil {
 		return err
@@ -611,6 +700,9 @@ func (r *RootHashAggregator) cutoffKeysAccount(cutoff int) {
 
 func (r *RootHashAggregator) genStructAccount() error {
 	var data GenStructStepData
+	if r.trace {
+		log.Debug("MMGP tr RHA genStructAccount entry", "wasIH", r.wasIH)
+	}
 	if r.wasIH {
 		r.hashData.Hash = r.hashAccount
 		r.hashData.HasTree = r.hadTreeAcc
@@ -631,14 +723,27 @@ func (r *RootHashAggregator) genStructAccount() error {
 	r.currStorage.Reset()
 	r.succStorage.Reset()
 	var err error
-	if r.groups, r.hasTree, r.hasHash, err = GenStructStep(r.RetainNothing, r.curr.Bytes(), r.succ.Bytes(), r.hb, func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+	if r.trace {
+		log.Debug("MMGP tr RHA genStructAccount calling GenStructStep", "curr", hexutil.Bytes(r.curr.Bytes()), "succ", hexutil.Bytes(r.succ.Bytes()))
+	}
+	r2func := func(_ []byte) bool {
+		return false
+	}
+	if r.proofMatch != nil {
+		r2func = r.proofMatch.Retain
+	}
+	if r.groups, r.hasTree, r.hasHash, err = GenStructStep(r2func, r.RetainNothing, r.curr.Bytes(), r.succ.Bytes(), r.hb, func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
 		if r.hc == nil {
 			return nil
 		}
+		if r.trace {
+			log.Debug("MMGP tr RHA genStructAccount before HC", "kH", hexutil.Bytes(keyHex), "hashes", hexutil.Bytes(hashes), "RH", hexutil.Bytes(rootHash))
+		}
 		return r.hc(keyHex, hasState, hasTree, hasHash, hashes, rootHash)
 	}, data, r.groups, r.hasTree, r.hasHash,
-		false,
-		//r.trace,
+		//false,
+		r.trace,
+		r.cutoff,
 	); err != nil {
 		return err
 	}
@@ -647,6 +752,9 @@ func (r *RootHashAggregator) genStructAccount() error {
 }
 
 func (r *RootHashAggregator) saveValueAccount(isIH, hasTree bool, v *accounts.Account, h []byte) error {
+	if r.trace {
+		log.Debug("MMGP tr saveValueAccount", "isIH", isIH, "hasTree", hasTree, "v", v, "h", hexutil.Bytes(h))
+	}
 	r.wasIH = isIH
 	if isIH {
 		r.hashAccount.SetBytes(h)

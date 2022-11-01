@@ -281,7 +281,7 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi.CallArgs,
 
 func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResult, error) {
 
-	log.Debug("MMDBG GetProof", "addr", address, "stor", storageKeys, "BN", blockNr)
+	log.Debug("MMGP GetProof", "addr", address, "stor", storageKeys, "BN", blockNr)
 	
 	tx, err := api.db.BeginRo(ctx)
 	if err != nil {
@@ -316,7 +316,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
 	}
 
-	root, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx)
+	root, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx, false)
 	if err != nil {
 		return nil, err
 	}
@@ -327,9 +327,10 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	if err != nil {
 		return nil, err
 	}
-	log.Debug("MMDBG GetProof", "addr", address, "addrHash", addrHash)
+	log.Debug("MMGP GetProof", "addr", address, "addrHash", addrHash)
 	
 	rl.AddKey(addrHash[:])
+	/*
 	for _, key := range storageKeys {
 		keyAsHash := common.HexToHash(key)
 		if keyHash, err1 := common.HashData(keyAsHash[:]); err1 == nil {
@@ -339,6 +340,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			return nil, err1
 		}
 	}
+	*/
 
 	loader := trie.NewFlatDBTrieLoader("getProof")
 
@@ -357,7 +359,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
 		}
 		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
-		log.Debug("MMDBG GetProof hashCollector", "keyHex", hexutil.Bytes(keyHex), "newVHash", hexutil.Bytes(newVHash), "hasState", hasState, "hasTree", hasTree, "hasHash", hasHash, "hashes", hexutil.Bytes(hashes))
+		log.Debug("MMGP GetProof hashCollector", "keyHex", hexutil.Bytes(keyHex), "newVHash", hexutil.Bytes(newVHash), "hasState", hasState, "hasTree", hasTree, "hasHash", hasHash, "hashes", hexutil.Bytes(hashes))
 		proofHashes = append(proofHashes, hashes...)
 
 		if len(rootHash) != 0 {
@@ -387,37 +389,56 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		}
 		newVStorage = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, rootHash, newVStorage)
 		
-		log.Debug("MMDBG GetProof Deserialize2", "keyHex", hexutil.Bytes(keyHex), "accWithInc", hexutil.Bytes(accWithInc))
+		log.Debug("MMGP GetProof Deserialize2", "keyHex", hexutil.Bytes(keyHex), "accWithInc", hexutil.Bytes(accWithInc))
 
 		fmt.Printf("Called storageCollector")
 		return accounts.Deserialise2(&acc, accWithInc)
 	}
 
-	if err := loader.Reset(rl, hashCollector, storageCollector, false); err != nil {
+	var mmProof []hexutil.Bytes
+	if err := loader.Reset(rl, hashCollector, storageCollector, true); err != nil {
 		return nil, err
 	}
-	log.Debug("MMDBG GetProof loader.Reset", "err", err)
+	log.Debug("MMGP GetProof loader.Reset", "err", err)
+	
+	loader.SetProof(&mmProof)
 
 	trRoot, err := loader.CalcTrieRoot(tx, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	log.Debug("MMDBG GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "tx", tx)
-
+	log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "tx", tx)
+	log.Debug("MMGP GetProof", "proof", mmProof)
+	
+	// Reverse the order so that the proof starts from the root node
+	var aProof []hexutil.Bytes
+	for i := len(mmProof); i > 0; i-- {
+		aProof = append(aProof, mmProof[i-1])
+	}
+	log.Debug("MMGP GetProof", "AProof", aProof)
+	
+	/*
+	hash, err := rawdb.ReadCanonicalHash(api.db, blockNr - 1)
+	log.Debug("MMGP CanonicalHash", "BN", blockNr, "hash", hash, "err", err)
+	header := rawdb.ReadHeader(api.db, hash, blockNr - 1)
+	log.Debug("MMGP ReadHeader", "header", header)
+	*/
+	
 	// TODO: trRoot = root? According to Erigon team
 	fmt.Printf("/ TrRoot: %s", trRoot)
-
+	
 	accRes := &AccountResult{
 		Balance:      (*hexutil.Big)(acc.Balance.ToBig()),
 		CodeHash:     acc.CodeHash,
 		Nonce:        hexutil.Uint64(acc.Nonce),
 		Address:      address,
-		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(newVHash)},
+//		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(newVHash)},
+		AccountProof: aProof,
 		StorageHash:  storageHash,
 		Root:         trRoot,
 		//StorageProof: storageProof,
 	}
-	log.Debug("MMDBG GetProof returning", "accRes", accRes)
+	log.Debug("MMGP GetProof returning", "accRes", accRes)
 	// fmt.Printf("/ ACC: %s", accRes)
 
 	return accRes, nil

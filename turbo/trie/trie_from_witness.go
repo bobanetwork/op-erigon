@@ -32,7 +32,7 @@ func BuildTrieFromWitness(witness *Witness, trace bool) (*Trie, error) {
 			if trace {
 				fmt.Printf("BRANCH ")
 			}
-			if err := hb.branch(uint16(op.Mask)); err != nil {
+			if err := hb.branch(uint16(op.Mask), false); err != nil {
 				return nil, err
 			}
 		case *OperatorHash:

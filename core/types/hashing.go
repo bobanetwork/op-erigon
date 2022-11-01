@@ -28,6 +28,7 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/rlphacks"
 	"github.com/ledgerwatch/erigon/turbo/trie"
 	"golang.org/x/crypto/sha3"
+	"github.com/ledgerwatch/log/v3"
 )
 
 type DerivableList interface {
@@ -68,11 +69,11 @@ func DeriveSha(list DerivableList) common.Hash {
 		}
 
 		value.Reset()
-
+		log.Debug("MMDBG core hashing")
 		if curr.Len() > 0 {
 			list.EncodeIndex(i, &value)
 			leafData.Value = rlphacks.RlpEncodedBytes(value.Bytes())
-			groups, branches, hashes, _ = trie.GenStructStep(retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, &leafData, groups, branches, hashes, false)
+			groups, branches, hashes, _ = trie.GenStructStep(nil, retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, &leafData, groups, branches, hashes, false, false)
 		}
 	})
 

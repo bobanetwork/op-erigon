@@ -25,6 +25,7 @@ import (
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/turbo/rlphacks"
+	"github.com/ledgerwatch/log/v3"
 )
 
 // StreamItem is an enum type for values that help distinguish different
@@ -642,10 +643,11 @@ func StreamHash(it *StreamMergeIterator, storagePrefixLen int, hb *HashBuilder, 
 				currStorage.Reset()
 				currStorage.Write(succStorage.Bytes())
 				succStorage.Reset()
+				log.Debug("MMGP Stream1")
 				if currStorage.Len() > 0 {
 					isAccount = false
 					var err error
-					groups, hasTree, hasHash, err = GenStructStep(retain, currStorage.Bytes(), succStorage.Bytes(), hb, nil /* hashCollector */, makeData(0, hashRefStorage), groups, hasTree, hasHash, trace)
+					groups, hasTree, hasHash, err = GenStructStep(nil, retain, currStorage.Bytes(), succStorage.Bytes(), hb, nil /* hashCollector */, makeData(0, hashRefStorage), groups, hasTree, hasHash, trace, false)
 					if err != nil {
 						return common.Hash{}, err
 					}
@@ -665,10 +667,11 @@ func StreamHash(it *StreamMergeIterator, storagePrefixLen int, hb *HashBuilder, 
 			if newItemType == AccountStreamItem {
 				succ.WriteByte(16)
 			}
+			log.Debug("MMGP stream 2")
 			if curr.Len() > 0 {
 				isAccount = true
 				var err error
-				groups, hasTree, hasHash, err = GenStructStep(retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, makeData(fieldSet, hashRef), groups, hasTree, hasHash, trace)
+				groups, hasTree, hasHash, err = GenStructStep(nil, retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, makeData(fieldSet, hashRef), groups, hasTree, hasHash, trace, false)
 				if err != nil {
 					return common.Hash{}, err
 				}
@@ -713,10 +716,11 @@ func StreamHash(it *StreamMergeIterator, storagePrefixLen int, hb *HashBuilder, 
 			if newItemType == StorageStreamItem {
 				succStorage.WriteByte(16)
 			}
+			log.Debug("MMGP stream 3")
 			if currStorage.Len() > 0 {
 				isAccount = false
 				var err error
-				groups, hasTree, hasHash, err = GenStructStep(retain, currStorage.Bytes(), succStorage.Bytes(), hb, nil /* hashCollector */, makeData(0, hashRefStorage), groups, hasTree, hasHash, trace)
+				groups, hasTree, hasHash, err = GenStructStep(nil, retain, currStorage.Bytes(), succStorage.Bytes(), hb, nil /* hashCollector */, makeData(0, hashRefStorage), groups, hasTree, hasHash, trace, false)
 				if err != nil {
 					return common.Hash{}, err
 				}
@@ -738,10 +742,11 @@ func StreamHash(it *StreamMergeIterator, storagePrefixLen int, hb *HashBuilder, 
 		currStorage.Reset()
 		currStorage.Write(succStorage.Bytes())
 		succStorage.Reset()
+		log.Debug("MMGP stream 4")
 		if currStorage.Len() > 0 {
 			isAccount = false
 			var err error
-			_, _, _, err = GenStructStep(retain, currStorage.Bytes(), succStorage.Bytes(), hb, nil /* hashCollector */, makeData(0, hashRefStorage), groups, hasTree, hasHash, trace)
+			_, _, _, err = GenStructStep(nil, retain, currStorage.Bytes(), succStorage.Bytes(), hb, nil /* hashCollector */, makeData(0, hashRefStorage), groups, hasTree, hasHash, trace, false)
 			if err != nil {
 				return common.Hash{}, err
 			}
@@ -757,10 +762,11 @@ func StreamHash(it *StreamMergeIterator, storagePrefixLen int, hb *HashBuilder, 
 	curr.Reset()
 	curr.Write(succ.Bytes())
 	succ.Reset()
+	log.Debug("MMGP stream 5")
 	if curr.Len() > 0 {
 		isAccount = true
 		var err error
-		_, _, _, err = GenStructStep(retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, makeData(fieldSet, hashRef), groups, hasTree, hasHash, trace)
+		_, _, _, err = GenStructStep(nil, retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, makeData(fieldSet, hashRef), groups, hasTree, hasHash, trace, false)
 		if err != nil {
 			return common.Hash{}, err
 		}

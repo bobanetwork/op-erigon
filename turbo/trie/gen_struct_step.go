@@ -23,6 +23,9 @@ import (
 
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/turbo/rlphacks"
+	"github.com/ledgerwatch/log/v3"
+	"github.com/ledgerwatch/erigon/common/hexutil"
+	"reflect"
 )
 
 // Experimental code for separating data and structural information
@@ -35,8 +38,8 @@ type structInfoReceiver interface {
 	accountLeafHash(length int, keyHex []byte, balance *uint256.Int, nonce uint64, incarnation uint64, fieldset uint32) error
 	extension(key []byte) error
 	extensionHash(key []byte) error
-	branch(set uint16) error
-	branchHash(set uint16) error
+	branch(set uint16, mmFlag bool) error
+	branchHash(set uint16, mmFlag bool) error
 	hash(hash []byte) error
 	topHash() []byte
 	topHashes(prefix []byte, branches, children uint16) []byte
@@ -101,6 +104,7 @@ func (GenStructStepHashData) GenStructStepData() {}
 // then removed from the slice. This signifies the usage of the number of the stack items by the `BRANCH` or `BRANCHHASH` opcode.
 // DESCRIBED: docs/programmers_guide/guide.md#separation-of-keys-and-the-structure
 func GenStructStep(
+	r2 func(prefix []byte) bool,
 	retain func(prefix []byte) bool,
 	curr, succ []byte,
 	e structInfoReceiver,
@@ -110,8 +114,16 @@ func GenStructStep(
 	hasTree []uint16,
 	hasHash []uint16,
 	trace bool,
+	cutoff bool,
 ) ([]uint16, []uint16, []uint16, error) {
+	if trace {
+		log.Debug("MMGP GSS Entry")
+	}
+	
 	for precLen, buildExtensions := calcPrecLen(groups), false; precLen >= 0; precLen, buildExtensions = calcPrecLen(groups), true {
+		if trace {
+			log.Debug("MMGP GSS iterating", "precLen", precLen, "buildX", buildExtensions)
+		}
 		var precExists = len(groups) > 0
 		// Calculate the prefix of the smallest prefix group containing curr
 		var precLen int
@@ -125,12 +137,13 @@ func GenStructStep(
 		} else {
 			maxLen = succLen
 		}
-		if trace || maxLen >= len(curr) {
-			fmt.Printf("curr: %x, succ: %x, maxLen %d, groups: %b, precLen: %d, succLen: %d, buildExtensions: %t\n", curr, succ, maxLen, groups, precLen, succLen, buildExtensions)
-		}
 
 		// Add the digit immediately following the max common prefix and compute length of remainder length
 		extraDigit := curr[maxLen]
+		if trace || maxLen >= len(curr) {
+			fmt.Printf("curr: %x, succ: %x, maxLen %d, groups: %b, precLen: %d, succLen: %d, buildExtensions: %t\n", curr, succ, maxLen, groups, precLen, succLen, buildExtensions)
+			log.Debug("MMGP GSS XD", "extraDigit", extraDigit, "curr", hexutil.Bytes(curr), "succ", hexutil.Bytes(succ), "maxLen", maxLen, "groups", groups, "precLen", precLen, "succLen", succLen, "bx", buildExtensions)
+		}
 		for maxLen >= len(groups) {
 			groups = append(groups, 0)
 		}
@@ -145,11 +158,16 @@ func GenStructStep(
 			hasHash = append(hasHash, 0)
 		}
 		//fmt.Printf("groups is now %x,%d,%b\n", extraDigit, maxLen, groups)
+		if trace {
+			log.Debug("MMGP GSS groups now", "extradigit", extraDigit, "maxLen", maxLen, "groups", groups, "bx", buildExtensions)
+			log.Debug("MMGP GSS dataType", "type", reflect.TypeOf(data), "data", data)
+		}
 
 		if !buildExtensions {
 			switch v := data.(type) {
 			case *GenStructStepHashData:
 				if trace {
+					log.Debug("MMGP GSS HashData", "curr", hexutil.Bytes(curr), "v.hasTree", v.HasTree, "hasHash", hasHash, "hasTree", hasTree, "groups", groups)
 					fmt.Printf("HashData before: %x, %t,%b,%b,%b\n", curr, v.HasTree, hasHash, hasTree, groups)
 				}
 				if v.HasTree {
@@ -165,7 +183,22 @@ func GenStructStep(
 				}
 				buildExtensions = true
 			case *GenStructStepAccountData:
-				if retain(curr[:maxLen]) {
+				var mmFlag bool
+				if trace {
+					mmFlag = r2(curr[:64])
+					log.Debug("MMGP GSS AccountData",  "FieldSet", v.FieldSet, "curr", hexutil.Bytes(curr), "maxLen", maxLen, "cML", hexutil.Bytes(curr[:maxLen]), "retain", retain(curr[:maxLen]))
+					log.Debug("MMGP GSS retain2", "mmFlag", mmFlag)
+				/*
+					if len(succ) == 0 {
+						mmFlag = true
+						log.Debug("MMGP GSS len(succ)=0 override", "mmFlag", mmFlag)
+					}
+				*/
+				}
+				
+				
+
+				if retain(curr[:maxLen]) || mmFlag {
 					if err := e.accountLeaf(remainderLen, curr, &v.Balance, v.Nonce, v.Incarnation, v.FieldSet, codeSizeUncached); err != nil {
 						return nil, nil, nil, err
 					}
@@ -175,6 +208,9 @@ func GenStructStep(
 					}
 				}
 			case *GenStructStepLeafData:
+				if trace {
+					log.Debug("MMGP GSS LeafData", "curr", hexutil.Bytes(curr), "retain", retain(curr[:maxLen]))
+				}
 				/* building leafs */
 				if retain(curr[:maxLen]) {
 					if err := e.leaf(remainderLen, curr, v.Value); err != nil {
@@ -235,13 +271,20 @@ func GenStructStep(
 
 		// Check for the optional part
 		if precLen <= succLen && len(succ) > 0 {
+			if trace {
+				log.Debug("MMGP GSS return 1", "groups", groups, "hasTree", hasTree, "hasHash", hasHash)
+			}
 			return groups, hasTree, hasHash, nil
 		}
 
 		var usefulHashes []byte
-
+		if trace {
+			log.Debug("MMGP GSS check for usefulHashes")
+		}
+		
 		if h != nil && (hasHash[maxLen] != 0 || hasTree[maxLen] != 0) { // top level must be in db
 			if trace {
+				log.Debug("MMGP GSS whynow", "cml", curr[:maxLen], "hasHash", hasHash, "hasTree", hasTree, "groups", groups)
 				fmt.Printf("why now: %x,%b,%b,%b\n", curr[:maxLen], hasHash, hasTree, groups)
 			}
 			usefulHashes = e.topHashes(curr[:maxLen], hasHash[maxLen], groups[maxLen])
@@ -273,15 +316,32 @@ func GenStructStep(
 				}
 			}
 
+			var mmFlag bool
 			if trace {
+				if maxLen > 0 && r2(curr[:maxLen]) {
+					mmFlag = true
+				}
+				log.Debug("MMGP printTopHashes hook", "cML", curr[:maxLen], "retain", retain(curr[:maxLen]), "r2", mmFlag, "curr", hexutil.Bytes(curr), "maxLen", maxLen)
 				e.printTopHashes(curr[:maxLen], 0, groups[maxLen])
+				
+				if len(succ) == 0 && maxLen == 0 && cutoff {
+					log.Debug("MMGP GSS len(succ)=0 cutoff=true override", "mmFlag_old", mmFlag)
+					mmFlag = true
+				}
 			}
-			if retain(curr[:maxLen]) {
-				if err := e.branch(groups[maxLen]); err != nil {
+			
+			if retain(curr[:maxLen]) || mmFlag {
+				if trace {
+					log.Debug("MMGP before e.branch", "mmFlag", mmFlag, "retain", retain(curr[:maxLen]))
+				}
+				if err := e.branch(groups[maxLen], mmFlag); err != nil {
 					return nil, nil, nil, err
 				}
 			} else {
-				if err := e.branchHash(groups[maxLen]); err != nil {
+				if trace {
+					log.Debug("MMGP calling e.branchHash")
+				}
+					if err := e.branchHash(groups[maxLen], false); err != nil {
 					return nil, nil, nil, err
 				}
 			}
@@ -289,6 +349,9 @@ func GenStructStep(
 		if h != nil {
 			send := maxLen == 0 && (hasTree[maxLen] != 0 || hasHash[maxLen] != 0) // account.root - store only if have useful info
 			send = send || (maxLen == 1 && groups[maxLen] != 0)                   // first level of trie_account - store in any case
+			if trace {
+				log.Debug("MMGP GSS whynow2", "send", send, "maxLen", maxLen, "cml", curr[:maxLen], "uh", hexutil.Bytes(usefulHashes), "th", hexutil.Bytes(e.topHash()))
+			}
 			if send {
 				if err := h(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, e.topHash()); err != nil {
 					return nil, nil, nil, err
@@ -302,7 +365,14 @@ func GenStructStep(
 		hasHash = hasHash[:maxLen]
 		// Check the end of recursion
 		if precLen == 0 {
+			if trace {
+				log.Debug("MMGP GSS return 2", "groups", groups, "hasTree", hasTree, "hasHash", hasHash)
+			}
 			return groups, hasTree, hasHash, nil
+		} else {
+			if trace {
+				log.Debug("MMGP GSS continuing", "precLen", precLen, "curr", hexutil.Bytes(curr), "newCurr", curr[:precLen], "groups", groups)
+			}
 		}
 		// Identify preceding key for the buildExtensions invocation
 
@@ -310,6 +380,9 @@ func GenStructStep(
 		for len(groups) > 0 && groups[len(groups)-1] == 0 {
 			groups = groups[:len(groups)-1]
 		}
+	}
+	if trace {
+		log.Debug("MMGP GSS Exit")
 	}
 	return nil, nil, nil, nil
 }
@@ -323,6 +396,7 @@ func GenStructStepOld(
 	groups []uint16,
 	trace bool,
 ) ([]uint16, error) {
+	panic("GenStructStepOld")
 	for precLen, buildExtensions := calcPrecLen(groups), false; precLen >= 0; precLen, buildExtensions = calcPrecLen(groups), true {
 		var precExists = len(groups) > 0
 		// Calculate the prefix of the smallest prefix group containing curr
@@ -411,11 +485,11 @@ func GenStructStepOld(
 		// Close the immediately encompassing prefix group, if needed
 		if len(succ) > 0 || precExists {
 			if retain(curr[:maxLen]) {
-				if err := e.branch(groups[maxLen]); err != nil {
+				if err := e.branch(groups[maxLen], false); err != nil { // FIXME
 					return nil, err
 				}
 			} else {
-				if err := e.branchHash(groups[maxLen]); err != nil {
+				if err := e.branchHash(groups[maxLen], false); err != nil { // FIXME
 					return nil, err
 				}
 			}
@@ -439,3 +513,4 @@ func GenStructStepOld(
 	return nil, nil
 
 }
+
