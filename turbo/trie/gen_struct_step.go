@@ -115,14 +115,10 @@ func GenStructStep(
 	hasHash []uint16,
 	trace bool,
 	cutoff bool,
-) ([]uint16, []uint16, []uint16, error) {
-	if trace {
-		log.Debug("MMGP GSS Entry")
-	}
-	
+) ([]uint16, []uint16, []uint16, error) {	
 	for precLen, buildExtensions := calcPrecLen(groups), false; precLen >= 0; precLen, buildExtensions = calcPrecLen(groups), true {
 		if trace {
-			log.Debug("MMGP GSS iterating", "precLen", precLen, "buildX", buildExtensions)
+			log.Debug("MMGP GSS iterating", "dataType", reflect.TypeOf(data), "groups", groups, "precLen", precLen, "buildX", buildExtensions, "data", data)
 		}
 		var precExists = len(groups) > 0
 		// Calculate the prefix of the smallest prefix group containing curr
@@ -142,7 +138,6 @@ func GenStructStep(
 		extraDigit := curr[maxLen]
 		if trace || maxLen >= len(curr) {
 			fmt.Printf("curr: %x, succ: %x, maxLen %d, groups: %b, precLen: %d, succLen: %d, buildExtensions: %t\n", curr, succ, maxLen, groups, precLen, succLen, buildExtensions)
-			log.Debug("MMGP GSS XD", "extraDigit", extraDigit, "curr", hexutil.Bytes(curr), "succ", hexutil.Bytes(succ), "maxLen", maxLen, "groups", groups, "precLen", precLen, "succLen", succLen, "bx", buildExtensions)
 		}
 		for maxLen >= len(groups) {
 			groups = append(groups, 0)
@@ -158,11 +153,6 @@ func GenStructStep(
 			hasHash = append(hasHash, 0)
 		}
 		//fmt.Printf("groups is now %x,%d,%b\n", extraDigit, maxLen, groups)
-		if trace {
-			log.Debug("MMGP GSS groups now", "extradigit", extraDigit, "maxLen", maxLen, "groups", groups, "bx", buildExtensions)
-			log.Debug("MMGP GSS dataType", "type", reflect.TypeOf(data), "data", data)
-		}
-
 		if !buildExtensions {
 			switch v := data.(type) {
 			case *GenStructStepHashData:
@@ -184,19 +174,13 @@ func GenStructStep(
 				buildExtensions = true
 			case *GenStructStepAccountData:
 				var mmFlag bool
+				if r2 != nil {
+					mmFlag = r2(curr[:64])				
+				}
 				if trace {
-					mmFlag = r2(curr[:64])
 					log.Debug("MMGP GSS AccountData",  "FieldSet", v.FieldSet, "curr", hexutil.Bytes(curr), "maxLen", maxLen, "cML", hexutil.Bytes(curr[:maxLen]), "retain", retain(curr[:maxLen]))
 					log.Debug("MMGP GSS retain2", "mmFlag", mmFlag)
-				/*
-					if len(succ) == 0 {
-						mmFlag = true
-						log.Debug("MMGP GSS len(succ)=0 override", "mmFlag", mmFlag)
-					}
-				*/
 				}
-				
-				
 
 				if retain(curr[:maxLen]) || mmFlag {
 					if err := e.accountLeaf(remainderLen, curr, &v.Balance, v.Nonce, v.Incarnation, v.FieldSet, codeSizeUncached); err != nil {
@@ -284,7 +268,6 @@ func GenStructStep(
 		
 		if h != nil && (hasHash[maxLen] != 0 || hasTree[maxLen] != 0) { // top level must be in db
 			if trace {
-				log.Debug("MMGP GSS whynow", "cml", curr[:maxLen], "hasHash", hasHash, "hasTree", hasTree, "groups", groups)
 				fmt.Printf("why now: %x,%b,%b,%b\n", curr[:maxLen], hasHash, hasTree, groups)
 			}
 			usefulHashes = e.topHashes(curr[:maxLen], hasHash[maxLen], groups[maxLen])
@@ -317,17 +300,19 @@ func GenStructStep(
 			}
 
 			var mmFlag bool
-			if trace {
+			if r2 != nil {
 				if maxLen > 0 && r2(curr[:maxLen]) {
 					mmFlag = true
-				}
+				}			
+				if len(succ) == 0 && maxLen == 0 && cutoff {
+					if trace {
+						log.Debug("MMGP GSS len(succ)=0 cutoff=true override", "mmFlag_old", mmFlag)
+					}
+					mmFlag = true
+				}			}
+			if trace {
 				log.Debug("MMGP printTopHashes hook", "cML", curr[:maxLen], "retain", retain(curr[:maxLen]), "r2", mmFlag, "curr", hexutil.Bytes(curr), "maxLen", maxLen)
 				e.printTopHashes(curr[:maxLen], 0, groups[maxLen])
-				
-				if len(succ) == 0 && maxLen == 0 && cutoff {
-					log.Debug("MMGP GSS len(succ)=0 cutoff=true override", "mmFlag_old", mmFlag)
-					mmFlag = true
-				}
 			}
 			
 			if retain(curr[:maxLen]) || mmFlag {
@@ -349,9 +334,6 @@ func GenStructStep(
 		if h != nil {
 			send := maxLen == 0 && (hasTree[maxLen] != 0 || hasHash[maxLen] != 0) // account.root - store only if have useful info
 			send = send || (maxLen == 1 && groups[maxLen] != 0)                   // first level of trie_account - store in any case
-			if trace {
-				log.Debug("MMGP GSS whynow2", "send", send, "maxLen", maxLen, "cml", curr[:maxLen], "uh", hexutil.Bytes(usefulHashes), "th", hexutil.Bytes(e.topHash()))
-			}
 			if send {
 				if err := h(curr[:maxLen], groups[maxLen], hasTree[maxLen], hasHash[maxLen], usefulHashes, e.topHash()); err != nil {
 					return nil, nil, nil, err

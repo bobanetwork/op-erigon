@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/holiman/uint256"
-	"github.com/ledgerwatch/erigon-lib/common/length"
+	//"github.com/ledgerwatch/erigon-lib/common/length"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
 	txpool_proto "github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv"
-	"github.com/ledgerwatch/erigon-lib/kv/memdb"
+	//"github.com/ledgerwatch/erigon-lib/kv/memdb"
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/core"
@@ -18,8 +18,8 @@ import (
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/crypto"
-	"github.com/ledgerwatch/erigon/eth/stagedsync"
-	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
+	//"github.com/ledgerwatch/erigon/eth/stagedsync"
+	//"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/eth/tracers/logger"
 	"github.com/ledgerwatch/erigon/internal/ethapi"
 	"github.com/ledgerwatch/erigon/params"
@@ -30,7 +30,7 @@ import (
 	"github.com/ledgerwatch/log/v3"
 	"google.golang.org/grpc"
 	"math/big"
-	"math/bits"
+	//"math/bits"
 )
 
 // Call implements eth_call. Executes a new message call immediately without creating a transaction on the block chain.
@@ -287,7 +287,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	if err != nil {
 		return nil, err
 	}
-
+/*
 	memMutation := memdb.NewMemoryBatch(tx, "")
 	// TODO: Both needed?
 	defer tx.Rollback()
@@ -321,13 +321,13 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		return nil, err
 	}
 	fmt.Printf("Root by spawnIntermediateHashes: %s", root)
-
+*/
 	rl := trie.NewRetainList(0)
 	addrHash, err := common.HashData(address[:])
 	if err != nil {
 		return nil, err
 	}
-	log.Debug("MMGP GetProof", "addr", address, "addrHash", addrHash)
+	log.Debug("MMGP GetProof hashing account", "addr", address, "addrHash", addrHash)
 	
 	rl.AddKey(addrHash[:])
 	/*
@@ -343,7 +343,9 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	*/
 
 	loader := trie.NewFlatDBTrieLoader("getProof")
-
+	acc := accounts.Account{}
+	var storageHash common.Hash
+/*
 	// TODO: either newVHash or hashes from callback = proof!
 	newVHash := make([]byte, 0, 1024)
 
@@ -373,10 +375,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 	// var actualRootHash = *(*common.Hash)(actualRoot)
 
-	acc := accounts.Account{}
 	newKStorage := make([]byte, 0, 128)
 	newVStorage := make([]byte, 0, 1024)
-	storageHash := common.BytesToHash(newVStorage)
 
 	// TODO: StorageCollector doesn't seem to be called, since acc and storageHash are both 0 on client (see Slack)
 	storageCollector := func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
@@ -394,36 +394,29 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		fmt.Printf("Called storageCollector")
 		return accounts.Deserialise2(&acc, accWithInc)
 	}
-
+//	if err := loader.Reset(rl, hashCollector, storageCollector, true); err != nil {
+*/
 	var mmProof []hexutil.Bytes
-	if err := loader.Reset(rl, hashCollector, storageCollector, true); err != nil {
+	trace := true
+	if err := loader.Reset(rl, nil, nil, trace); err != nil {
 		return nil, err
 	}
 	log.Debug("MMGP GetProof loader.Reset", "err", err)
-	
-	loader.SetProof(&mmProof)
+	loader.SetProof(rl, &mmProof)
 
 	trRoot, err := loader.CalcTrieRoot(tx, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "tx", tx)
-	log.Debug("MMGP GetProof", "proof", mmProof)
+	log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "proof", mmProof)
 	
 	// Reverse the order so that the proof starts from the root node
 	var aProof []hexutil.Bytes
 	for i := len(mmProof); i > 0; i-- {
 		aProof = append(aProof, mmProof[i-1])
 	}
-	log.Debug("MMGP GetProof", "AProof", aProof)
-	
-	/*
-	hash, err := rawdb.ReadCanonicalHash(api.db, blockNr - 1)
-	log.Debug("MMGP CanonicalHash", "BN", blockNr, "hash", hash, "err", err)
-	header := rawdb.ReadHeader(api.db, hash, blockNr - 1)
-	log.Debug("MMGP ReadHeader", "header", header)
-	*/
-	
+	log.Debug("MMGP GetProof reversed", "AccountProof", aProof)
+
 	// TODO: trRoot = root? According to Erigon team
 	fmt.Printf("/ TrRoot: %s", trRoot)
 	
@@ -432,14 +425,12 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		CodeHash:     acc.CodeHash,
 		Nonce:        hexutil.Uint64(acc.Nonce),
 		Address:      address,
-//		AccountProof: []hexutil.Bytes{(hexutil.Bytes)(newVHash)},
 		AccountProof: aProof,
 		StorageHash:  storageHash,
 		Root:         trRoot,
 		//StorageProof: storageProof,
 	}
 	log.Debug("MMGP GetProof returning", "accRes", accRes)
-	// fmt.Printf("/ ACC: %s", accRes)
 
 	return accRes, nil
 }

@@ -169,14 +169,11 @@ func (l *FlatDBTrieLoader) Reset(rd RetainDeciderWithMarker, hc HashCollector2, 
 		fmt.Printf("----------\n")
 		fmt.Printf("CalcTrieRoot\n")
 	}
-	if l.trace {
-		log.Debug("MMGP setting proofMatch")
-		l.defaultReceiver.proofMatch = rd
-	}
 	return nil
 }
 
-func (l *FlatDBTrieLoader) SetProof(mmProof *[]hexutil.Bytes) {
+func (l *FlatDBTrieLoader) SetProof(rd RetainDeciderWithMarker, mmProof *[]hexutil.Bytes) {
+	l.defaultReceiver.proofMatch = rd
 	l.defaultReceiver.SetProof(mmProof)
 }
 
@@ -230,9 +227,6 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 
 	var canUse = func(prefix []byte) (bool, []byte) {
 		retain, nextCreated := l.rd.RetainWithMarker(prefix)
-		if l.trace{
-			log.Debug("MMGP tr_func canUse", "retain", retain, "nextCreated", nextCreated, "prefix", prefix)
-		}
 		return !retain, nextCreated
 	}
 	accTrie := AccTrie(canUse, l.hc, trieAccC, quit)
@@ -363,7 +357,6 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 	}
 	if l.trace {
 		log.Debug("MMGP tr CalcTrieRoot", "root", l.receiver.Root(), "trace", l.trace)
-		log.Debug("MMGP tr proofStack", "stack", l.defaultReceiver.hb.proofStack)
 	}
 	return l.receiver.Root(), nil
 }
@@ -431,7 +424,6 @@ func (r *RootHashAggregator) Receive(itemType StreamItem,
 
 	if r.trace {
 		log.Debug("MMGP tr RHA Receive entry", "type", itemType, "ak", hexutil.Bytes(accountKey), "sk", hexutil.Bytes(storageKey), "val", accountValue, "hash", hexutil.Bytes(hash), "hasTree", hasTree)
-		log.Debug("MMGP tr RHA", "hsLen", len(r.hb.hashStack), "nsLen", len(r.hb.nodeStack))
 	}
 
 	switch itemType {
@@ -700,9 +692,6 @@ func (r *RootHashAggregator) cutoffKeysAccount(cutoff int) {
 
 func (r *RootHashAggregator) genStructAccount() error {
 	var data GenStructStepData
-	if r.trace {
-		log.Debug("MMGP tr RHA genStructAccount entry", "wasIH", r.wasIH)
-	}
 	if r.wasIH {
 		r.hashData.Hash = r.hashAccount
 		r.hashData.HasTree = r.hadTreeAcc
