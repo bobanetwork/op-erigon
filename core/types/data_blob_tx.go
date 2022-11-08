@@ -4,10 +4,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"math/bits"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon/common"
+	"github.com/ledgerwatch/erigon/common/u256"
+	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/protolambda/ztyp/codec"
 	"github.com/protolambda/ztyp/conv"
 	"github.com/protolambda/ztyp/tree"
@@ -316,51 +321,49 @@ func (alv AccessListView) HashTreeRoot(hFn tree.HashFn) tree.Root {
 }
 
 type BlobTxMessage struct {
-	ChainID          Uint256View
-	Nonce            Uint64View
-	GasTipCap        Uint256View // a.k.a. maxPriorityFeePerGas
-	GasFeeCap        Uint256View // a.k.a. maxFeePerGas
-	Gas              Uint64View
-	To               AddressOptionalSSZ // nil means contract creation
-	Value            Uint256View
-	Data             TxDataView
-	AccessList       AccessListView
-	MaxFeePerDataGas Uint256View
+	CommonTx
+
+	Tip              *uint256.Int // a.k.a. maxPriorityFeePerGas
+	FeeCap           *uint256.Int // a.k.a. maxFeePerGas
+	AccessList       AccessList
+	MaxFeePerDataGas *uint256.Int
 
 	BlobVersionedHashes VersionedHashesView
 }
 
-func (tx *BlobTxMessage) Deserialize(dr *codec.DecodingReader) error {
-	return dr.Container(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
-}
+// func (tx *BlobTxMessage) Deserialize(dr *codec.DecodingReader) error {
+// 	return dr.Container(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
+// }
 
-func (tx *BlobTxMessage) Serialize(w *codec.EncodingWriter) error {
-	return w.Container(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
-}
+// func (tx *BlobTxMessage) Serialize(w *codec.EncodingWriter) error {
+// 	return w.Container(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
+// }
 
-func (tx *BlobTxMessage) ByteLength() uint64 {
-	return codec.ContainerLength(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
-}
+// func (tx *BlobTxMessage) ByteLength() uint64 {
+// 	return codec.ContainerLength(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
+// }
 
-func (tx *BlobTxMessage) FixedLength() uint64 {
-	return 0
-}
+// func (tx *BlobTxMessage) FixedLength() uint64 {
+// 	return 0
+// }
 
-func (tx *BlobTxMessage) HashTreeRoot(hFn tree.HashFn) tree.Root {
-	return hFn.HashTreeRoot(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
-}
+// func (tx *BlobTxMessage) HashTreeRoot(hFn tree.HashFn) tree.Root {
+// 	return hFn.HashTreeRoot(&tx.ChainID, &tx.Nonce, &tx.GasTipCap, &tx.GasFeeCap, &tx.Gas, &tx.To, &tx.Value, &tx.Data, &tx.AccessList, &tx.MaxFeePerDataGas, &tx.BlobVersionedHashes)
+// }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
 func (tx *BlobTxMessage) copy() *BlobTxMessage {
 	cpy := &BlobTxMessage{
-		ChainID:             tx.ChainID,
-		Nonce:               tx.Nonce,
-		GasTipCap:           tx.GasTipCap,
-		GasFeeCap:           tx.GasFeeCap,
-		Gas:                 tx.Gas,
-		To:                  AddressOptionalSSZ{Address: (*AddressSSZ)(copyAddressPtr((*common.Address)(tx.To.Address)))},
-		Value:               tx.Value,
-		Data:                common.CopyBytes(tx.Data),
+		CommonTx: CommonTx{
+			ChainID: tx.ChainID,
+			Nonce:   tx.Nonce,
+			Gas:     tx.Gas,
+			To:      tx.To, // TODO: copy pointed-to address
+			Value:   tx.Value,
+			Data:    common.CopyBytes(tx.Data),
+		},
+		Tip:                 tx.Tip,
+		FeeCap:              tx.FeeCap,
 		AccessList:          make([]AccessTuple, len(tx.AccessList)),
 		MaxFeePerDataGas:    tx.MaxFeePerDataGas,
 		BlobVersionedHashes: make([]common.Hash, len(tx.BlobVersionedHashes)),
@@ -372,9 +375,11 @@ func (tx *BlobTxMessage) copy() *BlobTxMessage {
 }
 
 type SignedBlobTx struct {
-	Message   BlobTxMessage
+	BlobTxMessage
 	Signature ECDSASignature
 }
+
+var _ Transaction = &SignedBlobTx{}
 
 const (
 	MAX_CALLDATA_SIZE              = 1 << 24
@@ -383,62 +388,339 @@ const (
 	MAX_VERSIONED_HASHES_LIST_SIZE = 1 << 24
 )
 
-func (stx *SignedBlobTx) Deserialize(dr *codec.DecodingReader) error {
-	return dr.Container(&stx.Message, &stx.Signature)
-}
-
-func (stx *SignedBlobTx) Serialize(w *codec.EncodingWriter) error {
-	return w.Container(&stx.Message, &stx.Signature)
-}
-
-func (stx *SignedBlobTx) ByteLength() uint64 {
-	return codec.ContainerLength(&stx.Message, &stx.Signature)
-}
-
-func (stx *SignedBlobTx) FixedLength() uint64 {
-	return 0
-}
-
-func (stx *SignedBlobTx) HashTreeRoot(hFn tree.HashFn) tree.Root {
-	return hFn.HashTreeRoot(&stx.Message, &stx.Signature)
-}
-
 // copy creates a deep copy of the transaction data and initializes all fields.
-func (stx *SignedBlobTx) copy() TxData {
+func (tx SignedBlobTx) copy() *SignedBlobTx {
 	cpy := &SignedBlobTx{
-		Message:   *stx.Message.copy(),
-		Signature: stx.Signature,
+		BlobTxMessage: *tx.BlobTxMessage.copy(),
+		Signature: ECDSASignature{
+			V: tx.Signature.V,
+			R: tx.Signature.R,
+			S: tx.Signature.S,
+		},
 	}
-
+	copy(cpy.AccessList, tx.AccessList)
+	if tx.Value != nil {
+		cpy.Value.Set(tx.Value)
+	}
+	if tx.ChainID != nil {
+		cpy.ChainID.Set(tx.ChainID)
+	}
+	if tx.Tip != nil {
+		cpy.Tip.Set(tx.Tip)
+	}
+	if tx.FeeCap != nil {
+		cpy.FeeCap.Set(tx.FeeCap)
+	}
+	cpy.V.Set(&tx.V)
+	cpy.R.Set(&tx.R)
+	cpy.S.Set(&tx.S)
 	return cpy
 }
 
-func u256ToBig(v *Uint256View) *big.Int {
-	return (*uint256.Int)(v).ToBig()
+func (tx *SignedBlobTx) Cost() *uint256.Int {
+	total := new(uint256.Int).SetUint64(tx.Gas)
+	total.Mul(total, tx.Tip)
+	total.Add(total, tx.Value)
+	return total
+}
+
+func (stx *SignedBlobTx) Sender(signer Signer) (common.Address, error) {
+	if sc := stx.from.Load(); sc != nil {
+		return sc.(common.Address), nil
+	}
+	addr, err := signer.Sender(stx)
+	if err != nil {
+		return common.Address{}, err
+	}
+	stx.from.Store(addr)
+	return addr, nil
+}
+
+func (tx *SignedBlobTx) WithSignature(signer Signer, sig []byte) (Transaction, error) {
+	cpy := tx.copy()
+	r, s, v, err := signer.SignatureValues(tx, sig)
+	if err != nil {
+		return nil, err
+	}
+	cpy.R.Set(r)
+	cpy.S.Set(s)
+	cpy.V.Set(v)
+	cpy.ChainID = signer.ChainID()
+	return cpy, nil
+}
+
+func (tx *SignedBlobTx) FakeSign(address common.Address) (Transaction, error) {
+	cpy := tx.copy()
+	cpy.R.Set(u256.Num1)
+	cpy.S.Set(u256.Num1)
+	cpy.V.Set(u256.Num4)
+	cpy.from.Store(address)
+	return cpy, nil
+}
+
+func (tx *SignedBlobTx) GetAccessList() AccessList {
+	return tx.AccessList
+}
+
+func (stx SignedBlobTx) AsMessage(s Signer, baseFee *big.Int, rules *params.Rules) (Message, error) {
+	msg := Message{
+		nonce:      stx.Nonce,
+		gasLimit:   stx.Gas,
+		tip:        *stx.Tip,
+		feeCap:     *stx.FeeCap,
+		to:         stx.To,
+		amount:     *stx.Value,
+		data:       stx.Data,
+		accessList: stx.AccessList,
+		checkNonce: true,
+	}
+
+	if baseFee != nil {
+		overflow := msg.gasPrice.SetFromBig(baseFee)
+		if overflow {
+			return msg, fmt.Errorf("gasPrice higher than 2^256-1")
+		}
+	}
+	msg.gasPrice.Add(&msg.gasPrice, stx.Tip)
+	if msg.gasPrice.Gt(stx.FeeCap) {
+		msg.gasPrice.Set(stx.FeeCap)
+	}
+
+	var err error
+	msg.from, err = stx.Sender(s)
+	return msg, err
+}
+
+func (tx SignedBlobTx) GetPrice() *uint256.Int   { return tx.Tip }
+func (tx *SignedBlobTx) GetFeeCap() *uint256.Int { return tx.FeeCap }
+func (tx *SignedBlobTx) GetTip() *uint256.Int    { return tx.Tip }
+func (tx *SignedBlobTx) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
+	if baseFee == nil {
+		return tx.GetTip()
+	}
+	gasFeeCap := tx.GetFeeCap()
+	// return 0 because effectiveFee cant be < 0
+	if gasFeeCap.Lt(baseFee) {
+		return uint256.NewInt(0)
+	}
+	effectiveFee := new(uint256.Int).Sub(gasFeeCap, baseFee)
+	if tx.GetTip().Lt(effectiveFee) {
+		return tx.GetTip()
+	} else {
+		return effectiveFee
+	}
+}
+
+// Hash computes the hash (but not for signatures!)
+func (tx *SignedBlobTx) Hash() common.Hash {
+	if hash := tx.hash.Load(); hash != nil {
+		return *hash.(*common.Hash)
+	}
+	hash := prefixedRlpHash(BlobTxType, []interface{}{
+		tx.ChainID,
+		tx.Nonce,
+		tx.Tip,
+		tx.FeeCap,
+		tx.Gas,
+		tx.To,
+		tx.Value,
+		tx.Data,
+		tx.AccessList,
+		tx.V, tx.R, tx.S,
+	})
+	tx.hash.Store(&hash)
+	return hash
+}
+
+// MarshalBinary returns the canonical encoding of the transaction.
+// For legacy transactions, it returns the RLP encoding. For EIP-2718 typed
+// transactions, it returns the type and payload.
+func (tx SignedBlobTx) MarshalBinary(w io.Writer) error {
+	payloadSize, nonceLen, gasLen, accessListLen := tx.payloadSize()
+	var b [33]byte
+	// encode TxType
+	b[0] = DynamicFeeTxType
+	if _, err := w.Write(b[:1]); err != nil {
+		return err
+	}
+	if err := tx.encodePayload(w, b[:], payloadSize, nonceLen, gasLen, accessListLen); err != nil {
+		return err
+	}
+	return nil
+}
+
+// TODO: review field order
+// by trangtran
+func (tx SignedBlobTx) payloadSize() (payloadSize int, nonceLen, gasLen, accessListLen int) {
+	// size of ChainID
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(tx.ChainID)
+	// size of Nonce
+	payloadSize++
+	nonceLen = rlp.IntLenExcludingHead(tx.Nonce)
+	payloadSize += nonceLen
+	// size of MaxPriorityFeePerGas
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(tx.Tip)
+	// size of MaxFeePerGas
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(tx.FeeCap)
+	// size of Gas
+	payloadSize++
+	gasLen = rlp.IntLenExcludingHead(tx.Gas)
+	payloadSize += gasLen
+	// size of To
+	payloadSize++
+	if tx.To != nil {
+		payloadSize += 20
+	}
+	// size of Value
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(tx.Value)
+	// size of Data
+	payloadSize++
+	switch len(tx.Data) {
+	case 0:
+	case 1:
+		if tx.Data[0] >= 128 {
+			payloadSize++
+		}
+	default:
+		if len(tx.Data) >= 56 {
+			payloadSize += (bits.Len(uint(len(tx.Data))) + 7) / 8
+		}
+		payloadSize += len(tx.Data)
+	}
+	// size of AccessList
+	payloadSize++
+	accessListLen = accessListSize(tx.AccessList)
+	if accessListLen >= 56 {
+		payloadSize += (bits.Len(uint(accessListLen)) + 7) / 8
+	}
+	payloadSize += accessListLen
+	// size of V
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(&tx.V)
+	// size of R
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(&tx.R)
+	// size of S
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(&tx.S)
+	return payloadSize, nonceLen, gasLen, accessListLen
+}
+
+// TODO: Review encoding order
+// by trangtran
+func (tx SignedBlobTx) encodePayload(w io.Writer, b []byte, payloadSize, nonceLen, gasLen, accessListLen int) error {
+	// prefix
+	if err := EncodeStructSizePrefix(payloadSize, w, b); err != nil {
+		return err
+	}
+	// encode ChainID
+	if err := tx.ChainID.EncodeRLP(w); err != nil {
+		return err
+	}
+	// encode Nonce
+	if err := rlp.EncodeInt(tx.Nonce, w, b); err != nil {
+		return err
+	}
+	// encode MaxPriorityFeePerGas
+	if err := tx.Tip.EncodeRLP(w); err != nil {
+		return err
+	}
+	// encode MaxFeePerGas
+	if err := tx.FeeCap.EncodeRLP(w); err != nil {
+		return err
+	}
+	// encode Gas
+	if err := rlp.EncodeInt(tx.Gas, w, b); err != nil {
+		return err
+	}
+	// encode To
+	if tx.To == nil {
+		b[0] = 128
+	} else {
+		b[0] = 128 + 20
+	}
+	if _, err := w.Write(b[:1]); err != nil {
+		return err
+	}
+	if tx.To != nil {
+		if _, err := w.Write(tx.To.Bytes()); err != nil {
+			return err
+		}
+	}
+	// encode Value
+	if err := tx.Value.EncodeRLP(w); err != nil {
+		return err
+	}
+	// encode Data
+	if err := rlp.EncodeString(tx.Data, w, b); err != nil {
+		return err
+	}
+	// prefix
+	if err := EncodeStructSizePrefix(accessListLen, w, b); err != nil {
+		return err
+	}
+	// encode AccessList
+	if err := encodeAccessList(tx.AccessList, w, b); err != nil {
+		return err
+	}
+	// encode V
+	if err := tx.V.EncodeRLP(w); err != nil {
+		return err
+	}
+	// encode R
+	if err := tx.R.EncodeRLP(w); err != nil {
+		return err
+	}
+	// encode S
+	if err := tx.S.EncodeRLP(w); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (tx SignedBlobTx) RawSignatureValues() (*uint256.Int, *uint256.Int, *uint256.Int) {
+	return &tx.V, &tx.R, &tx.S
+}
+
+func (tx SignedBlobTx) SigningHash(chainID *big.Int) common.Hash {
+	return prefixedRlpHash(
+		BlobTxType,
+		[]interface{}{
+			chainID,
+			tx.Nonce,
+			tx.Tip,
+			tx.FeeCap,
+			tx.Gas,
+			tx.To,
+			tx.Value,
+			tx.Data,
+			tx.AccessList,
+		})
 }
 
 // accessors for innerTx.
-func (stx *SignedBlobTx) txType() byte               { return BlobTxType }
-func (stx *SignedBlobTx) chainID() *big.Int          { return u256ToBig(&stx.Message.ChainID) }
-func (stx *SignedBlobTx) accessList() AccessList     { return AccessList(stx.Message.AccessList) }
-func (stx *SignedBlobTx) dataHashes() []common.Hash  { return stx.Message.BlobVersionedHashes }
-func (stx *SignedBlobTx) data() []byte               { return stx.Message.Data }
-func (stx *SignedBlobTx) gas() uint64                { return uint64(stx.Message.Gas) }
-func (stx *SignedBlobTx) gasFeeCap() *big.Int        { return u256ToBig(&stx.Message.GasFeeCap) }
-func (stx *SignedBlobTx) gasTipCap() *big.Int        { return u256ToBig(&stx.Message.GasTipCap) }
-func (stx *SignedBlobTx) maxFeePerDataGas() *big.Int { return u256ToBig(&stx.Message.MaxFeePerDataGas) }
-func (stx *SignedBlobTx) gasPrice() *big.Int         { return u256ToBig(&stx.Message.GasFeeCap) }
-func (stx *SignedBlobTx) value() *big.Int            { return u256ToBig(&stx.Message.Value) }
-func (stx *SignedBlobTx) nonce() uint64              { return uint64(stx.Message.Nonce) }
-func (stx *SignedBlobTx) to() *common.Address        { return (*common.Address)(stx.Message.To.Address) }
+func (tx SignedBlobTx) Type() byte { return DynamicFeeTxType }
 
-func (stx *SignedBlobTx) rawSignatureValues() (v, r, s *big.Int) {
-	return big.NewInt(int64(stx.Signature.V)), u256ToBig(&stx.Signature.R), u256ToBig(&stx.Signature.S)
+func (tx *SignedBlobTx) Size() common.StorageSize {
+	if size := tx.size.Load(); size != nil {
+		return size.(common.StorageSize)
+	}
+	c := tx.EncodingSize()
+	tx.size.Store(common.StorageSize(c))
+	return common.StorageSize(c)
 }
 
-func (stx *SignedBlobTx) setSignatureValues(chainID, v, r, s *big.Int) {
-	(*uint256.Int)(&stx.Message.ChainID).SetFromBig(chainID)
-	stx.Signature.V = Uint8View(v.Uint64())
-	(*uint256.Int)(&stx.Signature.R).SetFromBig(r)
-	(*uint256.Int)(&stx.Signature.S).SetFromBig(s)
+func (tx SignedBlobTx) EncodingSize() int {
+	payloadSize, _, _, _ := tx.payloadSize()
+	envelopeSize := payloadSize
+	// Add envelope size and type size
+	if payloadSize >= 56 {
+		envelopeSize += (bits.Len(uint(payloadSize)) + 7) / 8
+	}
+	envelopeSize += 2
+	return envelopeSize
 }
