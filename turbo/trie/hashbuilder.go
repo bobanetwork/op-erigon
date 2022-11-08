@@ -43,6 +43,7 @@ type HashBuilder struct {
 
 	topHashesCopy []byte
 	proofStack *[]hexutil.Bytes
+	proofAccount   *accounts.Account
 }
 
 // NewHashBuilder creates a new HashBuilder
@@ -64,10 +65,12 @@ func (hb *HashBuilder) Reset() {
 	}
 	hb.topHashesCopy = hb.topHashesCopy[:0]
 	hb.proofStack = nil
+	hb.proofAccount = nil
 }
 
-func (hb *HashBuilder) SetProof(mmProof *[]hexutil.Bytes) {
+func (hb *HashBuilder) SetProof(mmAccount *accounts.Account, mmProof *[]hexutil.Bytes) {
 	hb.proofStack = mmProof
+	hb.proofAccount = mmAccount
 }
 func (hb *HashBuilder) leaf(length int, keyHex []byte, val rlphacks.RlpSerializable) error {
 	if hb.trace {
@@ -275,10 +278,23 @@ func (hb *HashBuilder) accountLeaf(length int, keyHex []byte, balance *uint256.I
 	s.ref.len = 32
 	// Replace top of the stack
 	hb.nodeStack[len(hb.nodeStack)-1] = s
+	
 	if hb.trace {
 		
-		log.Debug("MMGP AccountLeaf result", "s.Key", hexutil.Bytes(s.Key), "a", a, "s", s)
+		log.Debug("MMGP AccountLeaf result", "s.Key", hexutil.Bytes(s.Key), "a", a, "s", s, "SR", a.storage, "ref", a.storage.reference())
 		fmt.Printf("Stack depth: %d\n", len(hb.nodeStack))
+	}
+
+	if hb.proofAccount != nil {
+		hb.proofAccount.Initialised = a.Initialised
+		hb.proofAccount.Nonce = a.Nonce
+		hb.proofAccount.Balance = a.Balance
+		hb.proofAccount.Root = common.BytesToHash(a.storage.reference())
+		hb.proofAccount.CodeHash = a.CodeHash
+		hb.proofAccount.Incarnation = a.Incarnation
+		if hb.trace {
+			log.Debug("MMGP populated proofAccount", "proofAccount", hb.proofAccount)
+		}
 	}
 	return nil
 }

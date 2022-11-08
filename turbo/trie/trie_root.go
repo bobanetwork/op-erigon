@@ -90,6 +90,9 @@ type FlatDBTrieLoader struct {
 	defaultReceiver *RootHashAggregator
 	hc              HashCollector2
 	shc             StorageHashCollector2
+	
+	tmpProof        []hexutil.Bytes
+	mmProof         *[]hexutil.Bytes
 }
 
 // RootHashAggregator - calculates Merkle trie root hash from incoming data stream
@@ -123,8 +126,8 @@ type RootHashAggregator struct {
 	leafData       GenStructStepLeafData
 	accData        GenStructStepAccountData
 	proofMatch     RetainDecider
-//	proofMatch     func([]byte) bool
 	cutoff         bool
+//	proofAccount   *accounts.Account
 }
 
 type StreamReceiver interface {
@@ -165,6 +168,8 @@ func (l *FlatDBTrieLoader) Reset(rd RetainDeciderWithMarker, hc HashCollector2, 
 	l.trace = trace
 	l.ihSeek, l.accSeek, l.storageSeek, l.kHex, l.kHexS = make([]byte, 0, 128), make([]byte, 0, 128), make([]byte, 0, 128), make([]byte, 0, 128), make([]byte, 0, 128)
 	l.rd = rd
+	l.mmProof = nil
+	l.tmpProof = l.tmpProof[:0]
 	if l.trace {
 		fmt.Printf("----------\n")
 		fmt.Printf("CalcTrieRoot\n")
@@ -172,9 +177,11 @@ func (l *FlatDBTrieLoader) Reset(rd RetainDeciderWithMarker, hc HashCollector2, 
 	return nil
 }
 
-func (l *FlatDBTrieLoader) SetProof(rd RetainDeciderWithMarker, mmProof *[]hexutil.Bytes) {
+func (l *FlatDBTrieLoader) SetProof(rd RetainDeciderWithMarker, mmAccount *accounts.Account, mmProof *[]hexutil.Bytes) {
+	l.tmpProof = l.tmpProof[:0]
+	l.mmProof = mmProof
 	l.defaultReceiver.proofMatch = rd
-	l.defaultReceiver.SetProof(mmProof)
+	l.defaultReceiver.SetProof(mmAccount, &l.tmpProof)
 }
 
 func (l *FlatDBTrieLoader) SetStreamReceiver(receiver StreamReceiver) {
@@ -355,9 +362,17 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 	if err := l.receiver.Receive(CutoffStreamItem, nil, nil, nil, nil, nil, false, len(prefix)); err != nil {
 		return EmptyRoot, err
 	}
-	if l.trace {
-		log.Debug("MMGP tr CalcTrieRoot", "root", l.receiver.Root(), "trace", l.trace)
+	if l.mmProof != nil {		
+		// Reverse the order so that the proof starts from the root node
+		for i := len(l.tmpProof); i > 0; i-- {
+			*l.mmProof = append(*l.mmProof, l.tmpProof[i-1])
+		}
 	}
+
+	if l.trace {
+		log.Debug("MMGP tr CalcTrieRoot", "root", l.receiver.Root(), "reversed", l.mmProof)
+	}
+	
 	return l.receiver.Root(), nil
 }
 
@@ -395,10 +410,12 @@ func (r *RootHashAggregator) Reset(hc HashCollector2, shc StorageHashCollector2,
 	r.trace = trace
 	r.hb.trace = trace
 	r.proofMatch = nil
+//	r.proofAccount = nil
 }
 
-func (r *RootHashAggregator) SetProof(mmProof *[]hexutil.Bytes) {
-	r.hb.SetProof(mmProof)
+func (r *RootHashAggregator) SetProof(mmAccount *accounts.Account, mmProof *[]hexutil.Bytes) {
+	r.hb.SetProof(mmAccount, mmProof)
+//	r.proofAccount = mmAccount
 }
 
 func (r *RootHashAggregator) Receive(itemType StreamItem,
@@ -484,6 +501,20 @@ func (r *RootHashAggregator) Receive(itemType StreamItem,
 		if err := r.saveValueAccount(false, hasTree, accountValue, hash); err != nil {
 			return err
 		}
+
+		/*
+		if r.proofMatch != nil && r.proofMatch.Retain(accountKey) {
+			if r.trace {
+				log.Debug("MMGP tr RHA ProofMatch", "accountKey", hexutil.Bytes(accountKey), "val", accountValue)
+			}
+			r.proofAccount.Initialised = accountValue.Initialised
+			r.proofAccount.Nonce = accountValue.Nonce
+			r.proofAccount.Balance = accountValue.Balance
+			r.proofAccount.Root = accountValue.Root
+			r.proofAccount.CodeHash = accountValue.CodeHash
+			r.proofAccount.Incarnation = accountValue.Incarnation
+		}
+		*/
 	case AHashStreamItem:
 		r.advanceKeysAccount(accountKey, false /* terminator */)
 		if r.curr.Len() > 0 && !r.wasIH {

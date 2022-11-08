@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
@@ -17,7 +18,16 @@ import (
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/log/v3"
+	"github.com/ledgerwatch/erigon/turbo/trie"
+	"github.com/ledgerwatch/erigon/core/types/accounts"
 )
+
+var gProofHack struct {
+	lock		sync.RWMutex
+	Proofs		map[uint64] []hexutil.Bytes
+	Accounts	map[uint64] accounts.Account
+	Stateroots	map[uint64] common.Hash
+}
 
 // ExecutionPayload represents an execution payload (aka slot/block)
 type ExecutionPayload struct {
@@ -158,6 +168,51 @@ func (e *EngineImpl) ForkchoiceUpdatedV1(ctx context.Context, forkChoiceState *F
 	return json, nil
 }
 
+func (e *EngineImpl) MMProof(ctx context.Context, BN uint64, BH common.Hash) error {
+	tx, err := e.db.BeginRo(ctx)
+	if err != nil {
+		return err
+	}
+
+	pAddr := common.HexToAddress("0x4200000000000000000000000000000000000016")
+	pRL := trie.NewRetainList(0)
+	addrHash, err := common.HashData(pAddr[:])
+	if err != nil {
+		return err
+	}
+	//log.Debug("MMGP hashing account", "addr", pAddr, "addrHash", addrHash)
+	
+	pRL.AddKey(addrHash[:])
+	loader := trie.NewFlatDBTrieLoader("mmProof")
+	if err := loader.Reset(pRL, nil, nil, /* trace */ false); err != nil {
+		return err
+	}
+	
+	acc2 := accounts.Account{}
+	var aProof []hexutil.Bytes
+	loader.SetProof(pRL, &acc2, &aProof)
+
+	var quit <-chan struct{}
+	hash, err := loader.CalcTrieRoot(tx, []byte{}, quit)
+	if err != nil {
+		return err
+	}
+	log.Debug("MMGP engine_api ProofResult", "blockNum", BN-1, "blockHash", BH, "stateroot", hash, "acc", acc2, "proof", aProof)
+	gProofHack.lock.Lock()
+	if gProofHack.Proofs == nil {
+		gProofHack.Proofs = make(map[uint64] []hexutil.Bytes)
+		gProofHack.Accounts = make(map[uint64] accounts.Account)
+		gProofHack.Stateroots = make(map[uint64] common.Hash)
+	}
+	gProofHack.Proofs[BN-1] = aProof
+	gProofHack.Accounts[BN-1] = acc2
+	gProofHack.Stateroots[BN-1] = hash
+	gProofHack.lock.Unlock()
+	log.Debug("MMGP engine_api Unlocked mutex")
+
+	return nil
+}
+
 // NewPayloadV1 processes new payloads (blocks) from the beacon chain.
 // See https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_newpayloadv1
 func (e *EngineImpl) NewPayloadV1(ctx context.Context, payload *ExecutionPayload) (map[string]interface{}, error) {
@@ -218,7 +273,11 @@ func (e *EngineImpl) NewPayloadV1(ctx context.Context, payload *ExecutionPayload
 		}
 	}
 
-	log.Debug("MMDBG <<< NewPayloadV1 Response", "payloadStatus", payloadStatus)
+	pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
+	if err != nil {
+		log.Warn("MMDBG Proof pre-calculation failed", "Block", uint64(payload.BlockNumber), "err", err)
+	}
+	log.Debug("MMDBG <<< NewPayloadV1 Response", "BN", uint64(payload.BlockNumber), "payloadStatus", payloadStatus, "ProofErr", pErr)
 
 	return payloadStatus, nil
 }

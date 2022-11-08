@@ -283,150 +283,162 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 	log.Debug("MMGP GetProof", "addr", address, "stor", storageKeys, "BN", blockNr)
 	
-	tx, err := api.db.BeginRo(ctx)
-	if err != nil {
-		return nil, err
-	}
-/*
-	memMutation := memdb.NewMemoryBatch(tx, "")
-	// TODO: Both needed?
-	defer tx.Rollback()
-	defer memMutation.Rollback()
-
-	//block := uint64(blockNr.Int64()) + 1
-
-	s := stagedsync.New(nil, stagedsync.DefaultUnwindOrder, stagedsync.DefaultPruneOrder)
-
-	// "Probably you need do the same - run all 3 stages (exec, hashState, interHashes) on in-memory-mutation."
-	_, err = s.StageState(stages.Execution, memMutation, api.db)
-	if err != nil {
-		return nil, err
-	}
-	_, err = s.StageState(stages.HashState, memMutation, api.db)
-	if err != nil {
-		return nil, err
-	}
-	stageStateInterHash, err := s.StageState(stages.IntermediateHashes, memMutation, api.db)
-
-	if err != nil {
-		return nil, err
-	}
-
-	trieConfig := stagedsync.TrieCfg{
-		//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
-	}
-
-	root, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("Root by spawnIntermediateHashes: %s", root)
-*/
-	rl := trie.NewRetainList(0)
-	addrHash, err := common.HashData(address[:])
-	if err != nil {
-		return nil, err
-	}
-	log.Debug("MMGP GetProof hashing account", "addr", address, "addrHash", addrHash)
-	
-	rl.AddKey(addrHash[:])
-	/*
-	for _, key := range storageKeys {
-		keyAsHash := common.HexToHash(key)
-		if keyHash, err1 := common.HashData(keyAsHash[:]); err1 == nil {
-			trieKey := append(addrHash[:], keyHash[:]...)
-			rl.AddKey(trieKey)
-		} else {
-			return nil, err1
-		}
-	}
-	*/
-
-	loader := trie.NewFlatDBTrieLoader("getProof")
-	acc := accounts.Account{}
-	var storageHash common.Hash
-/*
-	// TODO: either newVHash or hashes from callback = proof!
-	newVHash := make([]byte, 0, 1024)
-
-	var proofHashes []byte = nil
-	var actualRoot []byte = nil
-	// NOTE: This function shall return the proof
-	hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
-
-		if len(keyHex) == 0 {
-			return nil
-		}
-		if bits.OnesCount16(hasHash) != len(hashes)/length.Hash {
-			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
-		}
-		newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
-		log.Debug("MMGP GetProof hashCollector", "keyHex", hexutil.Bytes(keyHex), "newVHash", hexutil.Bytes(newVHash), "hasState", hasState, "hasTree", hasTree, "hasHash", hasHash, "hashes", hexutil.Bytes(hashes))
-		proofHashes = append(proofHashes, hashes...)
-
-		if len(rootHash) != 0 {
-			actualRoot = rootHash // always 0 length
-		}
-		//fmt.Printf("hashCollector: %s", proofHashes)
-		return nil
-	}
-	fmt.Printf("Proof hashes: %s", proofHashes)
-	fmt.Printf("Actual root: %s", actualRoot)
-
-	// var actualRootHash = *(*common.Hash)(actualRoot)
-
-	newKStorage := make([]byte, 0, 128)
-	newVStorage := make([]byte, 0, 1024)
-
-	// TODO: StorageCollector doesn't seem to be called, since acc and storageHash are both 0 on client (see Slack)
-	storageCollector := func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
-		newKStorage = append(append(newKStorage[:0], accWithInc...), keyHex...)
-		if len(keyHex) > 0 && hasHash == 0 && hasTree == 0 {
-			return nil
-		}
-		if bits.OnesCount16(hasHash) != len(hashes)/length.Hash {
-			panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
-		}
-		newVStorage = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, rootHash, newVStorage)
-		
-		log.Debug("MMGP GetProof Deserialize2", "keyHex", hexutil.Bytes(keyHex), "accWithInc", hexutil.Bytes(accWithInc))
-
-		fmt.Printf("Called storageCollector")
-		return accounts.Deserialise2(&acc, accWithInc)
-	}
-//	if err := loader.Reset(rl, hashCollector, storageCollector, true); err != nil {
-*/
-	var mmProof []hexutil.Bytes
-	trace := true
-	if err := loader.Reset(rl, nil, nil, trace); err != nil {
-		return nil, err
-	}
-	log.Debug("MMGP GetProof loader.Reset", "err", err)
-	loader.SetProof(rl, &mmProof)
-
-	trRoot, err := loader.CalcTrieRoot(tx, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "proof", mmProof)
-	
-	// Reverse the order so that the proof starts from the root node
+	var acc2 accounts.Account
 	var aProof []hexutil.Bytes
-	for i := len(mmProof); i > 0; i-- {
-		aProof = append(aProof, mmProof[i-1])
-	}
-	log.Debug("MMGP GetProof reversed", "AccountProof", aProof)
+	var trRoot common.Hash
+	
+	if blockNr.Int64() > 0 {
+		block := uint64(blockNr.Int64())
+		// Check for a cached result
+		log.Debug("MMGP GetProof checking cache for", "BN", block)
+		gProofHack.lock.RLock()
+		if p,found := gProofHack.Proofs[block]; found {
+			aProof = p
+			acc2 = gProofHack.Accounts[block]
+			trRoot = gProofHack.Stateroots[block]
+		}
+		gProofHack.lock.RUnlock()
+		log.Debug("MMGP GetProof found cached result", "block", block, "proof", aProof)
+	} else {
+		log.Debug("MMGP GetProof did not check the cache", "blockNr", blockNr)
 
-	// TODO: trRoot = root? According to Erigon team
-	fmt.Printf("/ TrRoot: %s", trRoot)
+		tx, err := api.db.BeginRo(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+	/*
+		memMutation := memdb.NewMemoryBatch(tx, "")
+		// TODO: Both needed?
+		defer memMutation.Rollback()
+
+		//block := uint64(blockNr.Int64()) + 1
+
+		s := stagedsync.New(nil, stagedsync.DefaultUnwindOrder, stagedsync.DefaultPruneOrder)
+
+		// "Probably you need do the same - run all 3 stages (exec, hashState, interHashes) on in-memory-mutation."
+		_, err = s.StageState(stages.Execution, memMutation, api.db)
+		if err != nil {
+			return nil, err
+		}
+		_, err = s.StageState(stages.HashState, memMutation, api.db)
+		if err != nil {
+			return nil, err
+		}
+		stageStateInterHash, err := s.StageState(stages.IntermediateHashes, memMutation, api.db)
+
+		if err != nil {
+			return nil, err
+		}
+
+		trieConfig := stagedsync.TrieCfg{
+			//historyV2: true, maybe? --> erigon 2.2 (not recommended for now, 14 Sep 22)
+		}
+
+		root, err := stagedsync.SpawnIntermediateHashesStage(stageStateInterHash, nil, memMutation, trieConfig, ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("Root by spawnIntermediateHashes: %s", root)
+	*/
+		rl := trie.NewRetainList(0)
+		addrHash, err := common.HashData(address[:])
+		if err != nil {
+			return nil, err
+		}
+		log.Debug("MMGP GetProof hashing account", "addr", address, "addrHash", addrHash)
+
+		rl.AddKey(addrHash[:])
+		/*
+		for _, key := range storageKeys {
+			keyAsHash := common.HexToHash(key)
+			if keyHash, err1 := common.HashData(keyAsHash[:]); err1 == nil {
+				trieKey := append(addrHash[:], keyHash[:]...)
+				rl.AddKey(trieKey)
+			} else {
+				return nil, err1
+			}
+		}
+		*/
+
+		loader := trie.NewFlatDBTrieLoader("getProof")
+	//	acc := accounts.Account{}
+	//	var storageHash common.Hash
+	/*
+		// TODO: either newVHash or hashes from callback = proof!
+		newVHash := make([]byte, 0, 1024)
+
+		var proofHashes []byte = nil
+		var actualRoot []byte = nil
+		// NOTE: This function shall return the proof
+		hashCollector := func(keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+
+			if len(keyHex) == 0 {
+				return nil
+			}
+			if bits.OnesCount16(hasHash) != len(hashes)/length.Hash {
+				panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
+			}
+			newVHash = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, nil, newVHash)
+			log.Debug("MMGP GetProof hashCollector", "keyHex", hexutil.Bytes(keyHex), "newVHash", hexutil.Bytes(newVHash), "hasState", hasState, "hasTree", hasTree, "hasHash", hasHash, "hashes", hexutil.Bytes(hashes))
+			proofHashes = append(proofHashes, hashes...)
+
+			if len(rootHash) != 0 {
+				actualRoot = rootHash // always 0 length
+			}
+			//fmt.Printf("hashCollector: %s", proofHashes)
+			return nil
+		}
+		fmt.Printf("Proof hashes: %s", proofHashes)
+		fmt.Printf("Actual root: %s", actualRoot)
+
+		// var actualRootHash = *(*common.Hash)(actualRoot)
+
+		newKStorage := make([]byte, 0, 128)
+		newVStorage := make([]byte, 0, 1024)
+
+		// TODO: StorageCollector doesn't seem to be called, since acc and storageHash are both 0 on client (see Slack)
+		storageCollector := func(accWithInc []byte, keyHex []byte, hasState, hasTree, hasHash uint16, hashes, rootHash []byte) error {
+			newKStorage = append(append(newKStorage[:0], accWithInc...), keyHex...)
+			if len(keyHex) > 0 && hasHash == 0 && hasTree == 0 {
+				return nil
+			}
+			if bits.OnesCount16(hasHash) != len(hashes)/length.Hash {
+				panic(fmt.Errorf("invariant bits.OnesCount16(hasHash) == len(hashes) failed: %d, %d", bits.OnesCount16(hasHash), len(hashes)/length.Hash))
+			}
+			newVStorage = trie.MarshalTrieNode(hasState, hasTree, hasHash, hashes, rootHash, newVStorage)
+
+			log.Debug("MMGP GetProof Deserialize2", "keyHex", hexutil.Bytes(keyHex), "accWithInc", hexutil.Bytes(accWithInc))
+
+			fmt.Printf("Called storageCollector")
+			return accounts.Deserialise2(&acc, accWithInc)
+		}
+
+	*/
+		trace := true
+	//	if err := loader.Reset(rl, hashCollector, storageCollector, trace); err != nil {
+		if err := loader.Reset(rl, nil, nil, trace); err != nil {
+			return nil, err
+		}
+		log.Debug("MMGP GetProof loader.Reset", "err", err)
+
+
+		loader.SetProof(rl, &acc2, &aProof)
+
+		trRoot, err = loader.CalcTrieRoot(tx, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "proof", aProof)
+	}
 	
 	accRes := &AccountResult{
-		Balance:      (*hexutil.Big)(acc.Balance.ToBig()),
-		CodeHash:     acc.CodeHash,
-		Nonce:        hexutil.Uint64(acc.Nonce),
+		Balance:      (*hexutil.Big)(acc2.Balance.ToBig()),
+		CodeHash:     acc2.CodeHash,
+		Nonce:        hexutil.Uint64(acc2.Nonce),
 		Address:      address,
 		AccountProof: aProof,
-		StorageHash:  storageHash,
+		StorageHash:  acc2.Root, //storageHash,
 		Root:         trRoot,
 		//StorageProof: storageProof,
 	}
