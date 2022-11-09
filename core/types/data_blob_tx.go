@@ -321,12 +321,16 @@ func (alv AccessListView) HashTreeRoot(hFn tree.HashFn) tree.Root {
 }
 
 type BlobTxMessage struct {
-	CommonTx
-
-	Tip              *uint256.Int // a.k.a. maxPriorityFeePerGas
-	FeeCap           *uint256.Int // a.k.a. maxFeePerGas
-	AccessList       AccessList
-	MaxFeePerDataGas *uint256.Int
+	ChainID          Uint256View
+	Nonce            Uint64View
+	GasTipCap        Uint256View // a.k.a. maxPriorityFeePerGas
+	GasFeeCap        Uint256View // a.k.a. maxFeePerGas
+	Gas              Uint64View
+	To               AddressOptionalSSZ // nil means contract creation
+	Value            Uint256View
+	Data             TxDataView
+	AccessList       AccessListView
+	MaxFeePerDataGas Uint256View
 
 	BlobVersionedHashes VersionedHashesView
 }
@@ -354,16 +358,14 @@ type BlobTxMessage struct {
 // copy creates a deep copy of the transaction data and initializes all fields.
 func (tx *BlobTxMessage) copy() *BlobTxMessage {
 	cpy := &BlobTxMessage{
-		CommonTx: CommonTx{
-			ChainID: tx.ChainID,
-			Nonce:   tx.Nonce,
-			Gas:     tx.Gas,
-			To:      tx.To, // TODO: copy pointed-to address
-			Value:   tx.Value,
-			Data:    common.CopyBytes(tx.Data),
-		},
-		Tip:                 tx.Tip,
-		FeeCap:              tx.FeeCap,
+		ChainID:             tx.ChainID,
+		Nonce:               tx.Nonce,
+		GasTipCap:           tx.GasTipCap,
+		GasFeeCap:           tx.GasFeeCap,
+		Gas:                 tx.Gas,
+		To:                  AddressOptionalSSZ{Address: (*AddressSSZ)(copyAddressPtr((*common.Address)(tx.To.Address)))},
+		Value:               tx.Value,
+		Data:                common.CopyBytes(tx.Data),
 		AccessList:          make([]AccessTuple, len(tx.AccessList)),
 		MaxFeePerDataGas:    tx.MaxFeePerDataGas,
 		BlobVersionedHashes: make([]common.Hash, len(tx.BlobVersionedHashes)),
@@ -375,7 +377,7 @@ func (tx *BlobTxMessage) copy() *BlobTxMessage {
 }
 
 type SignedBlobTx struct {
-	BlobTxMessage
+	Message   BlobTxMessage
 	Signature ECDSASignature
 }
 
@@ -389,43 +391,67 @@ const (
 )
 
 // copy creates a deep copy of the transaction data and initializes all fields.
-func (tx SignedBlobTx) copy() *SignedBlobTx {
+func (stx SignedBlobTx) copy() *SignedBlobTx {
 	cpy := &SignedBlobTx{
-		BlobTxMessage: *tx.BlobTxMessage.copy(),
-		Signature: ECDSASignature{
-			V: tx.Signature.V,
-			R: tx.Signature.R,
-			S: tx.Signature.S,
-		},
+		Message:   *stx.Message.copy(),
+		Signature: stx.Signature,
 	}
-	copy(cpy.AccessList, tx.AccessList)
-	if tx.Value != nil {
-		cpy.Value.Set(tx.Value)
-	}
-	if tx.ChainID != nil {
-		cpy.ChainID.Set(tx.ChainID)
-	}
-	if tx.Tip != nil {
-		cpy.Tip.Set(tx.Tip)
-	}
-	if tx.FeeCap != nil {
-		cpy.FeeCap.Set(tx.FeeCap)
-	}
-	cpy.V.Set(&tx.V)
-	cpy.R.Set(&tx.R)
-	cpy.S.Set(&tx.S)
+
 	return cpy
 }
 
-func (tx *SignedBlobTx) Cost() *uint256.Int {
-	total := new(uint256.Int).SetUint64(tx.Gas)
-	total.Mul(total, tx.Tip)
-	total.Add(total, tx.Value)
+func (stx SignedBlobTx) Type() byte { return BlobTxType }
+
+func (stx SignedBlobTx) GetChainID() *uint256.Int {
+	chainID := uint256.Int(stx.Message.ChainID)
+	return &chainID
+}
+
+func (stx SignedBlobTx) GetNonce() uint64 { return uint64(stx.Message.Nonce) }
+
+func (stx SignedBlobTx) GetPrice() *uint256.Int {
+	tip := (uint256.Int)(stx.Message.GasTipCap)
+	return &tip
+}
+func (stx SignedBlobTx) GetFeeCap() *uint256.Int {
+	feeCap := (uint256.Int)(stx.Message.GasFeeCap)
+	return &feeCap
+}
+
+func (stx *SignedBlobTx) GetTip() *uint256.Int {
+	tip := (uint256.Int)(stx.Message.GasTipCap)
+	return &tip
+}
+
+func (stx *SignedBlobTx) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
+	if baseFee == nil {
+		return tx.GetTip()
+	}
+	gasFeeCap := tx.GetFeeCap()
+	// return 0 because effectiveFee cant be < 0
+	if gasFeeCap.Lt(baseFee) {
+		return uint256.NewInt(0)
+	}
+	effectiveFee := new(uint256.Int).Sub(gasFeeCap, baseFee)
+	if tx.GetTip().Lt(effectiveFee) {
+		return tx.GetTip()
+	} else {
+		return effectiveFee
+	}
+}
+
+func (stx *SignedBlobTx) Cost() *uint256.Int {
+	total := new(uint256.Int).SetUint64(uint64(stx.Message.Gas))
+	tip := uint256.Int(stx.Message.GasTipCap)
+	total.Mul(total, &tip)
+
+	value := uint256.Int(stx.Message.Value)
+	total.Add(total, &value)
 	return total
 }
 
 func (stx *SignedBlobTx) Sender(signer Signer) (common.Address, error) {
-	if sc := stx.from.Load(); sc != nil {
+	if sc := stx.Message.from.Load(); sc != nil {
 		return sc.(common.Address), nil
 	}
 	addr, err := signer.Sender(stx)
@@ -489,26 +515,6 @@ func (stx SignedBlobTx) AsMessage(s Signer, baseFee *big.Int, rules *params.Rule
 	var err error
 	msg.from, err = stx.Sender(s)
 	return msg, err
-}
-
-func (tx SignedBlobTx) GetPrice() *uint256.Int   { return tx.Tip }
-func (tx *SignedBlobTx) GetFeeCap() *uint256.Int { return tx.FeeCap }
-func (tx *SignedBlobTx) GetTip() *uint256.Int    { return tx.Tip }
-func (tx *SignedBlobTx) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
-	if baseFee == nil {
-		return tx.GetTip()
-	}
-	gasFeeCap := tx.GetFeeCap()
-	// return 0 because effectiveFee cant be < 0
-	if gasFeeCap.Lt(baseFee) {
-		return uint256.NewInt(0)
-	}
-	effectiveFee := new(uint256.Int).Sub(gasFeeCap, baseFee)
-	if tx.GetTip().Lt(effectiveFee) {
-		return tx.GetTip()
-	} else {
-		return effectiveFee
-	}
 }
 
 // Hash computes the hash (but not for signatures!)
@@ -701,9 +707,6 @@ func (tx SignedBlobTx) SigningHash(chainID *big.Int) common.Hash {
 			tx.AccessList,
 		})
 }
-
-// accessors for innerTx.
-func (tx SignedBlobTx) Type() byte { return DynamicFeeTxType }
 
 func (tx *SignedBlobTx) Size() common.StorageSize {
 	if size := tx.size.Load(); size != nil {
