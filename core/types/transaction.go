@@ -513,33 +513,9 @@ type TxWrapData interface {
 	kzgs() BlobKzgs
 	blobs() Blobs
 	aggregatedProof() KZGProof
-	encodeTyped(w io.Writer, txdata TxData) error
+	encodeTyped(w io.Writer, txdata Transaction) error
 	sizeWrapData() common.StorageSize
-	verifyBlobs(inner TxData) error
-}
-
-// TxData is the underlying data of a transaction.
-//
-// This is implemented by DynamicFeeTx, LegacyTx, AccessListTx & SignedBlobTx.
-type TxData interface {
-	txType() byte // returns the type ID
-	copy() TxData // creates a deep copy and initializes all fields
-
-	chainID() *big.Int
-	accessList() AccessList
-	dataHashes() []common.Hash
-	data() []byte
-	gas() uint64
-	gasPrice() *big.Int
-	gasTipCap() *big.Int
-	gasFeeCap() *big.Int
-	maxFeePerDataGas() *big.Int
-	value() *big.Int
-	nonce() uint64
-	to() *common.Address
-
-	rawSignatureValues() (v, r, s *big.Int)
-	setSignatureValues(chainID, v, r, s *big.Int)
+	verifyBlobs(inner Transaction) error
 }
 
 func DecodeSSZ(data []byte, dest codec.Deserializable) error {

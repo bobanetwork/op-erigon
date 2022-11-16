@@ -476,7 +476,7 @@ func (b *BlobTxWrapData) sizeWrapData() common.StorageSize {
 	return common.StorageSize(4 + 4 + b.BlobKzgs.ByteLength() + b.Blobs.ByteLength() + b.KzgAggregatedProof.ByteLength())
 }
 
-func (b *BlobTxWrapData) verifyVersionedHash(inner TxData) error {
+func (b *BlobTxWrapData) verifyVersionedHash(inner Transaction) error {
 	blobTx, ok := inner.(*SignedBlobTx)
 	if !ok {
 		return fmt.Errorf("expected signed blob tx, got %T", inner)
@@ -499,7 +499,7 @@ func (b *BlobTxWrapData) verifyVersionedHash(inner TxData) error {
 }
 
 // Blob verification using KZG proofs
-func (b *BlobTxWrapData) verifyBlobs(inner TxData) error {
+func (b *BlobTxWrapData) verifyBlobs(inner Transaction) error {
 	if err := b.verifyVersionedHash(inner); err != nil {
 		return err
 	}
@@ -554,7 +554,7 @@ func (b *BlobTxWrapData) aggregatedProof() KZGProof {
 	return b.KzgAggregatedProof
 }
 
-func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata TxData) error {
+func (b *BlobTxWrapData) encodeTyped(w io.Writer, txdata Transaction) error {
 	if _, err := w.Write([]byte{BlobTxType}); err != nil {
 		return err
 	}
