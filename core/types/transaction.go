@@ -515,7 +515,7 @@ type TxWrapData interface {
 	aggregatedProof() KZGProof
 	encodeTyped(w io.Writer, txdata Transaction) error
 	sizeWrapData() common.StorageSize
-	verifyBlobs(inner Transaction) error
+	validateBlobTransactionWrapper(inner Transaction) error
 }
 
 func DecodeSSZ(data []byte, dest codec.Deserializable) error {

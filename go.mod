@@ -33,7 +33,7 @@ require (
 	github.com/ethereum/go-ethereum v1.10.25
 	github.com/ferranbt/fastssz v0.1.2
 	github.com/fjl/gencodec v0.0.0-20220412091415-8bb9e558978c
-	github.com/gballet/go-verkle v0.0.0-20220829125900-a702d458d33c
+	github.com/gballet/go-verkle v0.0.0-20220902153445-097bd83b7732
 	github.com/goccy/go-json v0.9.7
 	github.com/gofrs/flock v0.8.1
 	github.com/golang-jwt/jwt/v4 v4.4.2
@@ -58,7 +58,7 @@ require (
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pelletier/go-toml/v2 v2.0.5
 	github.com/pion/stun v0.3.5
-	github.com/protolambda/go-kzg v0.0.0-20221025081131-f3a74d3b1d0c
+	github.com/protolambda/go-kzg v0.0.0-20221108193918-c6d0faa55038
 	github.com/protolambda/ztyp v0.2.2
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20210809151128-385d8c5e3fb7
 	github.com/quasilyte/go-ruleguard/dsl v0.3.21
@@ -259,3 +259,5 @@ require (
 )
 
 replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.12
+
+replace github.com/ethereum/go-ethereum v1.10.25 => github.com/mdehoog/go-ethereum v1.10.19-0.20221117142754-381b51eccf71
