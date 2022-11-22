@@ -252,7 +252,7 @@ type AccountResult struct {
 	CodeHash     common.Hash     `json:"codeHash"`
 	Nonce        hexutil.Uint64  `json:"nonce"`
 	StorageHash  common.Hash     `json:"storageHash"`
-	StorageProof []StorageResult `json:"storageProof"`
+	StorageProof []StorageResult `json:"storageProof" gencodec:"required"`
 }
 type StorageResult struct {
 	Key   string       `json:"key"`

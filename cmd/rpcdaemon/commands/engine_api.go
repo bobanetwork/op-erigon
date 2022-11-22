@@ -190,7 +190,10 @@ func (e *EngineImpl) MMProof(ctx context.Context, BN uint64, BH common.Hash) err
 	
 	acc2 := accounts.Account{}
 	var aProof []hexutil.Bytes
-	loader.SetProof(pRL, &acc2, &aProof)
+	var sProof []hexutil.Bytes
+	sRL := trie.NewRetainList(0)
+	var sValue hexutil.Big
+	loader.SetProof(pRL, sRL, &acc2, &aProof, &sValue, &sProof)
 
 	var quit <-chan struct{}
 	hash, err := loader.CalcTrieRoot(tx, []byte{}, quit)
@@ -272,12 +275,14 @@ func (e *EngineImpl) NewPayloadV1(ctx context.Context, payload *ExecutionPayload
 			payloadStatus["latestValidHash"] = common.Hash{}
 		}
 	}
-
-	pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
-	if err != nil {
-		log.Warn("MMDBG Proof pre-calculation failed", "Block", uint64(payload.BlockNumber), "err", err)
+	
+	if (uint64(payload.BlockNumber)-1) % 20 == 0 {
+		pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
+		if pErr != nil {
+			log.Warn("MMDBG Proof pre-calculation failed", "Block", uint64(payload.BlockNumber), "err", pErr)
+		}
 	}
-	log.Debug("MMDBG <<< NewPayloadV1 Response", "BN", uint64(payload.BlockNumber), "payloadStatus", payloadStatus, "ProofErr", pErr)
+	log.Debug("MMDBG <<< NewPayloadV1 Response", "BN", uint64(payload.BlockNumber), "payloadStatus", payloadStatus)
 
 	return payloadStatus, nil
 }

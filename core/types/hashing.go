@@ -73,7 +73,7 @@ func DeriveSha(list DerivableList) common.Hash {
 		if curr.Len() > 0 {
 			list.EncodeIndex(i, &value)
 			leafData.Value = rlphacks.RlpEncodedBytes(value.Bytes())
-			groups, branches, hashes, _ = trie.GenStructStep(nil, retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, &leafData, groups, branches, hashes, false, false)
+			groups, branches, hashes, _ = trie.GenStructStep(nil, nil, retain, curr.Bytes(), succ.Bytes(), hb, nil /* hashCollector */, &leafData, groups, branches, hashes, false, false)
 		}
 	})
 

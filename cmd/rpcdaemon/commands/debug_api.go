@@ -265,6 +265,10 @@ type AccountResult struct {
 	Nonce       hexutil.Uint64 `json:"nonce"`
 	StorageHash common.Hash    `json:"storageHash"`
 	Root        common.Hash    `json:"root"` // possibly not needed
-	// storageProof field is ignored, we only need to proof the account contents,
-	// we do not access any individual storage values.
+	StorageProof []StorageResult `json:"storageProof"`
+}
+type StorageResult struct {
+	Key   string       `json:"key"`
+	Value *hexutil.Big `json:"value"`
+	Proof []string     `json:"proof"`
 }

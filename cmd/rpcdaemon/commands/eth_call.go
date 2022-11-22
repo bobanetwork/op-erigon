@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/holiman/uint256"
-	//"github.com/ledgerwatch/erigon-lib/common/length"
+	"github.com/ledgerwatch/erigon-lib/common/length"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
 	txpool_proto "github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -30,7 +30,8 @@ import (
 	"github.com/ledgerwatch/log/v3"
 	"google.golang.org/grpc"
 	"math/big"
-	//"math/bits"
+	"math/bits"
+	//"github.com/ledgerwatch/erigon/cmd/rpctest/rpctest"
 )
 
 // Call implements eth_call. Executes a new message call immediately without creating a transaction on the block chain.
@@ -285,7 +286,10 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	
 	var acc2 accounts.Account
 	var aProof []hexutil.Bytes
+	var sProof []hexutil.Bytes
 	var trRoot common.Hash
+	var sp []StorageResult
+	var sValue hexutil.Big
 	
 	if blockNr.Int64() > 0 {
 		block := uint64(blockNr.Int64())
@@ -354,17 +358,34 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			keyAsHash := common.HexToHash(key)
 			if keyHash, err1 := common.HashData(keyAsHash[:]); err1 == nil {
 				trieKey := append(addrHash[:], keyHash[:]...)
-				rl.AddKey(trieKey)
+				log.Debug("MMGP addKey", "key", key, "keyAsHash", keyAsHash, "trieKey", hexutil.Bytes(trieKey))
+				//rl.AddKey(trieKey)
+				rl.AddKey(keyAsHash[:])
 			} else {
 				return nil, err1
 			}
 		}
 		*/
+		
+		srl := trie.NewRetainList(0)
+			
+
+		if len(storageKeys) > 0 {
+			sAddr := common.HexToHash(storageKeys[0])
+			saHash, err := common.HashData(sAddr[:])
+			if err != nil {
+				return nil, err
+			}
+			srl.AddKey(saHash[:])
+			log.Debug("MMGP GetProof storageKey", "addr", sAddr, "hash", saHash)
+			sp = make([]StorageResult, len(storageKeys))
+			sp[0].Key = storageKeys[0]
+		}
 
 		loader := trie.NewFlatDBTrieLoader("getProof")
-	//	acc := accounts.Account{}
-	//	var storageHash common.Hash
-	/*
+		acc := accounts.Account{}
+		//var storageHash common.Hash
+	
 		// TODO: either newVHash or hashes from callback = proof!
 		newVHash := make([]byte, 0, 1024)
 
@@ -410,26 +431,42 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 			log.Debug("MMGP GetProof Deserialize2", "keyHex", hexutil.Bytes(keyHex), "accWithInc", hexutil.Bytes(accWithInc))
 
-			fmt.Printf("Called storageCollector")
 			return accounts.Deserialise2(&acc, accWithInc)
 		}
 
-	*/
+	
 		trace := true
-	//	if err := loader.Reset(rl, hashCollector, storageCollector, trace); err != nil {
-		if err := loader.Reset(rl, nil, nil, trace); err != nil {
+		if err := loader.Reset(rl, hashCollector, storageCollector, trace); err != nil {
+	//	if err := loader.Reset(rl, nil, nil, trace); err != nil {
 			return nil, err
 		}
 		log.Debug("MMGP GetProof loader.Reset", "err", err)
 
-
-		loader.SetProof(rl, &acc2, &aProof)
+		
+		loader.SetProof(rl, srl, &acc2, &aProof, &sValue, &sProof)
 
 		trRoot, err = loader.CalcTrieRoot(tx, nil, nil)
 		if err != nil {
 			return nil, err
 		}
 		log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "proof", aProof)
+	}
+	
+	if len(sp) > 0 {
+		for _,p := range (sProof) {
+			sp[0].Proof = append(sp[0].Proof, p.String())
+			sp[0].Value = &sValue
+		 	h,_ := common.HashData(p)
+			log.Debug("MMGP spHack", "h", h, "root", acc2.Root)
+			if h == acc2.Root {
+				break
+			}
+		}
+	} else {
+	  sp = make([]StorageResult,1)
+	  sp[0].Key = "0x0000000000000000000000000000000000000000000000000000000000000000"
+	  sp[0].Value = new(hexutil.Big)
+	  sp[0].Proof = make([]string,0)
 	}
 	
 	accRes := &AccountResult{
@@ -440,7 +477,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		AccountProof: aProof,
 		StorageHash:  acc2.Root, //storageHash,
 		Root:         trRoot,
-		//StorageProof: storageProof,
+		StorageProof: sp,
 	}
 	log.Debug("MMGP GetProof returning", "accRes", accRes)
 
