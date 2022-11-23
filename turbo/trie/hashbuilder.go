@@ -47,6 +47,8 @@ type HashBuilder struct {
 	spStack *[]hexutil.Bytes
 	proofAccount   *accounts.Account
 	storValue *hexutil.Big
+	
+	mmTag bool
 }
 
 // NewHashBuilder creates a new HashBuilder

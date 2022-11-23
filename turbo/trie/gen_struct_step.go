@@ -104,6 +104,7 @@ func (GenStructStepHashData) GenStructStepData() {}
 // then removed from the slice. This signifies the usage of the number of the stack items by the `BRANCH` or `BRANCHHASH` opcode.
 // DESCRIBED: docs/programmers_guide/guide.md#separation-of-keys-and-the-structure
 func GenStructStep(
+	mmBaz bool,
 	r2 func(prefix []byte) bool,
 	sr2 func(prefix []byte) bool,
 	retain func(prefix []byte) bool,
@@ -197,7 +198,7 @@ func GenStructStep(
 					sFlag = sr2(curr[:len(curr)-1])
 				}
 				if trace {
-					log.Debug("MMGP GSS LeafData", "curr", hexutil.Bytes(curr), "retain", retain(curr[:maxLen]), "sFlag", sFlag)
+					log.Debug("MMGP GSS LeafData", "baz", mmBaz, "remainderLen", remainderLen, "curr", hexutil.Bytes(curr), "retain", retain(curr[:maxLen]), "sFlag", sFlag)
 				}
 				/* building leafs */
 				if retain(curr[:maxLen]) || sFlag {
@@ -317,14 +318,19 @@ func GenStructStep(
 				}
 			}
 			if sr2 != nil {
+				xxFlag := 0
 				if maxLen > 0 && sr2(curr[:maxLen]) {
-					mmFlag = 2
+					xxFlag = 2
 				}
 				if len(curr) == 65 && sr2(curr[:64]) {
+					xxFlag = 2
+				}
+				
+				if mmBaz {
 					mmFlag = 2
 				}
 				if trace {
-					log.Debug("MMGP GSS storage test", "mmFlag", mmFlag, "len", len(curr), "curr", curr)
+					log.Debug("MMGP GSS storage test", "baz", mmBaz, "xxFlag", xxFlag, "mmFlag", mmFlag, "len", len(curr), "curr", curr)
 				}
 				//if len(succ) == 0 && maxLen == 0 && cutoff {
 				//	if trace {
@@ -335,7 +341,7 @@ func GenStructStep(
 			}
 			
 			if trace {
-				log.Debug("MMGP printTopHashes hook", "cML", curr[:maxLen], "retain", retain(curr[:maxLen]), "mmFlag", mmFlag, "curr", hexutil.Bytes(curr), "maxLen", maxLen)
+				log.Debug("MMGP printTopHashes hook", "baz", mmBaz, "cML", curr[:maxLen], "retain", retain(curr[:maxLen]), "mmFlag", mmFlag, "curr", hexutil.Bytes(curr), "maxLen", maxLen)
 				e.printTopHashes(curr[:maxLen], 0, groups[maxLen])
 			}
 			
