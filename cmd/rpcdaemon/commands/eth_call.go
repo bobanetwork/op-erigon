@@ -453,14 +453,12 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	}
 	
 	if len(sp) > 0 {
+		sp[0].Value = &sValue
 		for _,p := range (sProof) {
 			sp[0].Proof = append(sp[0].Proof, p.String())
-			sp[0].Value = &sValue
+
 		 	h,_ := common.HashData(p)
 			log.Debug("MMGP spHack", "h", h, "root", acc2.Root)
-			if h == acc2.Root {
-				break
-			}
 		}
 	} else {
 	  sp = make([]StorageResult,1)

@@ -391,13 +391,10 @@ func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan str
 			*l.mmProof = append(*l.mmProof, l.tmpProof[i-1])
 		}
 	}
-	if l.storProof != nil {		
+	if l.storProof != nil {
 		// Reverse the order so that the proof starts from the root node
-		// FIXME - currently reversing this at the top level to ignore extra nodes after the storage root is found.
-		//for i := len(l.tmpStorProof); i > 0; i-- {
-		for i := 0; i<len(l.tmpStorProof); i++ {
-			//*l.storProof = append(*l.storProof, l.tmpStorProof[i-1])
-			*l.storProof = append(*l.storProof, l.tmpStorProof[i])
+		for i := len(l.tmpStorProof); i > 0; i-- {
+			*l.storProof = append(*l.storProof, l.tmpStorProof[i-1])
 		}
 	}
 	
