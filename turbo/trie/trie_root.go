@@ -219,21 +219,14 @@ type StorageResult struct {
 	Proof []string     `json:"proof"`
 }
 
-func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, addrHash common.Hash, acc accounts.Account, sp *[]StorageResult) ([]byte, error) {
+func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, addrHash common.Hash, acc accounts.Account, sp *[]StorageResult) (error) {
 	var T *Trie = New(EmptyRoot)
 	var accWithInc [40]byte
 
-	sa4 := common.HexToHash((*sp)[0].Key)
-	sh4, err := common.HashData(sa4[:])
-	target_key := sh4[:]
-
-
 	log.Debug("MMGP-1 CalcStorageProof start", "sp", sp, "addrHash", addrHash, "acc", acc)
 	trieStorageC, err := tx.CursorDupSort(kv.TrieOfStorage)
-	if err != nil {
-		return EmptyRoot.Bytes(), err
-	}
 	defer trieStorageC.Close()
+
 	var canUse = func(prefix []byte) (bool, []byte) {
 		retain, nextCreated := l.rd.RetainWithMarker(prefix)
 		log.Debug("MMGP-1 canUse", "prefix", hexutil.Bytes(prefix), "retain", retain, "nC", nextCreated)
@@ -261,29 +254,41 @@ func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, addrHash common.Hash, acc 
 			break
 		}
 	}
-	log.Debug("MMGP-1 StorageTrie", "root", hexutil.Bytes(T.Root()), "expected", acc.Root)
+	log.Debug("MMGP-1 StorageTrie", "items", cnt, "root", hexutil.Bytes(T.Root()), "expected", acc.Root)
 	if common.BytesToHash(T.Root()) != acc.Root {
-		return EmptyRoot.Bytes(), errors.New("StorageTrie root mismatch")
+		return errors.New("StorageTrie root mismatch")
 	}
 
-	tmpVal,found := T.Get(target_key)
-	log.Debug("MMGP-1 Proving for", "target_key", hexutil.Bytes(target_key), "found", found, "value", tmpVal)
+	for idx,_ := range (*sp) {
+		sK := common.HexToHash((*sp)[idx].Key)
+		sHashed,err := common.HashData(sK[:])
+		if err != nil {
+			return err
+		}
 
-	pp,err4 := T.Prove(target_key, 0, true)
+		target_key := sHashed[:]
 
-	for i := 0; i<len(pp); i++ {
-	  item := hexutil.Bytes(pp[i])
-	  (*sp)[0].Proof = append((*sp)[0].Proof, item.String())
+		tmpVal,found := T.Get(target_key)
+		log.Debug("MMGP-1 Proving for", "target_key", hexutil.Bytes(target_key), "found", found, "value", tmpVal)
+
+		var iBig big.Int
+		iBig.SetBytes(tmpVal)
+		(*sp)[idx].Value = new(hexutil.Big)
+		*((*sp)[idx].Value) = hexutil.Big(iBig)
+
+		pp,err := T.Prove(target_key, 0, true)
+		if err != nil {
+			return err
+		}
+
+		for i := 0; i<len(pp); i++ {
+		  item := hexutil.Bytes(pp[i])
+		  (*sp)[idx].Proof = append((*sp)[idx].Proof, item.String())
+		}
 	}
+	log.Debug("MMGP-1 CalcStorageProof done", "root", hexutil.Bytes(T.Root()), "sp", sp)
 
-	var iBig big.Int
-	iBig.SetBytes(tmpVal)
-	(*sp)[0].Value = new(hexutil.Big)
-	*((*sp)[0].Value) = hexutil.Big(iBig)
-
-	log.Debug("MMGP-1 CalcStorageProof done", "err", err4, "root", hexutil.Bytes(T.Root()), "sp", sp)
-
-	return T.Root(), err
+	return err
 }
 func (l *FlatDBTrieLoader) CalcTrieRoot(tx kv.Tx, prefix []byte, quit <-chan struct{}) (common.Hash, error) {
 

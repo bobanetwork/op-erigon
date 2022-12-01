@@ -288,28 +288,23 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	var aProof []hexutil.Bytes
 	var trRoot common.Hash
 	var sp []trie.StorageResult
-	var newRoot []byte
 
-	if blockNr.Int64() > 0 {
-		block := uint64(blockNr.Int64())
-		// Check for a cached result
-		log.Debug("MMGP GetProof checking cache for", "BN", block)
-		gProofHack.lock.RLock()
-		if p,found := gProofHack.Proofs[block]; found {
-			aProof = p
-			acc2 = gProofHack.Accounts[block]
-			trRoot = gProofHack.Stateroots[block]
-		}
-		gProofHack.lock.RUnlock()
-		log.Debug("MMGP GetProof found cached result for", "block", block)
-	} else {
-		log.Debug("MMGP GetProof did not check the cache", "blockNr", blockNr)
+	sp = make([]trie.StorageResult, len(storageKeys))
 
-		tx, err := api.db.BeginRo(ctx)
-		if err != nil {
-			return nil, err
-		}
-		defer tx.Rollback()
+	tx, err := api.db.BeginRo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err != nil {
+		return nil, err
+	}
+
+	headBlock,err := rpchelper.GetLatestBlockNumber(tx)
+	
+	if blockNr == rpc.LatestBlockNumber || blockNr.Int64() == int64(headBlock) {
+		log.Debug("MMGP Will calculate GetProof for latest block number", "BN", blockNr, "head", headBlock)
+
 		rl := trie.NewRetainList(0)
 		addrHash, err := common.HashData(address[:])
 		if err != nil {
@@ -335,23 +330,41 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		}
 		log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "proof", aProof)
 
-		sp = make([]trie.StorageResult, len(storageKeys))
-
+		
 		if len(storageKeys) > 0 {
-			sp[0].Key = storageKeys[0]
-
-			newRoot,err = loader.CalcStorageProof(tx, addrHash, acc2, &sp)
-			log.Debug("MMGP StorageResult", "root", hexutil.Bytes(newRoot), "newSP", sp, "err", err)
+			for idx,_ := range(storageKeys) {
+				sp[idx].Key = storageKeys[idx]
+			}
+			
+			err = loader.CalcStorageProof(tx, addrHash, acc2, &sp)
+			log.Debug("MMGP StorageResult", "newSP", sp, "err", err)
 		}
+	} else if blockNr.Int64() > 0 && address == common.HexToAddress("0x4200000000000000000000000000000000000016") && len(storageKeys) == 0 {
+		// Will check for a cached account proof. Storage proofs aren't currently supported for cached results.
+		block := uint64(blockNr.Int64())
+		// Check for a cached result
+		log.Debug("MMGP GetProof checking cache for", "BN", block)
+		gProofHack.lock.RLock()
+		if p,found := gProofHack.Proofs[block]; found {
+			aProof = p
+			acc2 = gProofHack.Accounts[block]
+			trRoot = gProofHack.Stateroots[block]
+		}
+		gProofHack.lock.RUnlock()
+		log.Debug("MMGP GetProof found cached result for", "block", block)
+	} else {
+		// Not a supported request.
+		return nil, fmt.Errorf(NotImplemented, "eth_getProof")	
 	}
 
+/*
 	if len(sp) == 0 {
 	  sp = make([]trie.StorageResult,1)
 	  sp[0].Key = "0x0000000000000000000000000000000000000000000000000000000000000000"
 	  sp[0].Value = new(hexutil.Big)
 	  sp[0].Proof = make([]string,0)
 	}
-
+*/
 	accRes := &AccountResult{
 		Balance:      (*hexutil.Big)(acc2.Balance.ToBig()),
 		CodeHash:     acc2.CodeHash,
