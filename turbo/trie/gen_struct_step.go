@@ -115,7 +115,7 @@ func GenStructStep(
 	trace bool,
 	wantProof func(prefix []byte) bool,
 	cutoff bool,
-) ([]uint16, []uint16, []uint16, error) {	
+) ([]uint16, []uint16, []uint16, error) {
 	for precLen, buildExtensions := calcPrecLen(groups), false; precLen >= 0; precLen, buildExtensions = calcPrecLen(groups), true {
 		var mmFlag bool
 		if trace {
@@ -175,7 +175,7 @@ func GenStructStep(
 				buildExtensions = true
 			case *GenStructStepAccountData:
 				if wantProof != nil {
-					mmFlag = wantProof(curr[:len(curr)-1])				
+					mmFlag = wantProof(curr[:len(curr)-1])
 				}
 				if trace {
 					log.Debug("MMGP-4    GSS AccountData",  "FieldSet", v.FieldSet, "curr", hexutil.Bytes(curr), "maxLen", maxLen, "cML", hexutil.Bytes(curr[:maxLen]), "retain", retain(curr[:maxLen]),"mmFlag",mmFlag)
@@ -264,7 +264,7 @@ func GenStructStep(
 		if trace {
 			log.Debug("MMGP-4    GSS check for usefulHashes")
 		}
-		
+
 		if h != nil && (hasHash[maxLen] != 0 || hasTree[maxLen] != 0) { // top level must be in db
 			if trace {
 				fmt.Printf("why now: %x,%b,%b,%b\n", curr[:maxLen], hasHash, hasTree, groups)
@@ -299,11 +299,11 @@ func GenStructStep(
 			}
 
 			var doProof bool
-			
+
 			if wantProof != nil {
 				if maxLen > 0 && wantProof(curr[:maxLen]) {
 					doProof = true
-				}			
+				}
 				if len(succ) == 0 && maxLen == 0 && cutoff {
 					if trace {
 						log.Debug("MMGP-4    GSS len(succ)=0 cutoff=true override", "doProof_old", doProof)
@@ -311,12 +311,10 @@ func GenStructStep(
 					doProof = true
 				}
 			}
-			
 			if trace {
 				log.Debug("MMGP-4    printTopHashes hook", "cML", curr[:maxLen], "retain", retain(curr[:maxLen]), "mmFlag", mmFlag, "curr", hexutil.Bytes(curr), "maxLen", maxLen)
 				e.printTopHashes(curr[:maxLen], 0, groups[maxLen])
 			}
-			
 			if retain(curr[:maxLen]) || doProof {
 				if trace {
 					log.Debug("MMGP-4    before e.branch", "doProof", doProof, "retain", retain(curr[:maxLen]))
@@ -497,4 +495,3 @@ func GenStructStepOld(
 	return nil, nil
 
 }
-

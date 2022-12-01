@@ -259,4 +259,3 @@ replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
 replace github.com/ledgerwatch/interfaces => ./erigon-lib/interfaces
 
 replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.12
-

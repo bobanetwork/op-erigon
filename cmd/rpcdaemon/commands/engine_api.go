@@ -180,13 +180,13 @@ func (e *EngineImpl) MMProof(ctx context.Context, BN uint64, BH common.Hash) err
 	if err != nil {
 		return err
 	}
-	
+
 	pRL.AddKey(addrHash[:])
 	loader := trie.NewFlatDBTrieLoader("mmProof")
 	if err := loader.Reset(pRL, nil, nil, /* trace */ false); err != nil {
 		return err
 	}
-	
+
 	acc2 := accounts.Account{}
 	var aProof []hexutil.Bytes
 	loader.SetProof(pRL, &acc2, &aProof)
@@ -271,7 +271,7 @@ func (e *EngineImpl) NewPayloadV1(ctx context.Context, payload *ExecutionPayload
 			payloadStatus["latestValidHash"] = common.Hash{}
 		}
 	}
-	
+
 	if (uint64(payload.BlockNumber)-1) % 20 == 0 {
 		pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
 		if pErr != nil {

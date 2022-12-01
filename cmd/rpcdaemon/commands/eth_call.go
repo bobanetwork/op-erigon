@@ -283,13 +283,13 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi.CallArgs,
 func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNr rpc.BlockNumber) (*AccountResult, error) {
 
 	log.Debug("MMGP GetProof", "addr", address, "stor", storageKeys, "BN", blockNr)
-	
+
 	var acc2 accounts.Account
 	var aProof []hexutil.Bytes
 	var trRoot common.Hash
 	var sp []trie.StorageResult
 	var newRoot []byte
-	
+
 	if blockNr.Int64() > 0 {
 		block := uint64(blockNr.Int64())
 		// Check for a cached result
@@ -321,23 +321,22 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 		loader := trie.NewFlatDBTrieLoader("getProof")
 
-
 		trace := true
 		if err := loader.Reset(rl, nil, nil, trace); err != nil {
 			return nil, err
 		}
 		log.Debug("MMGP GetProof loader.Reset", "err", err)
-	
+
 		loader.SetProof(rl, &acc2, &aProof)
-		
+
 		trRoot, err = loader.CalcTrieRoot(tx, nil, nil)
 		if err != nil {
 			return nil, err
 		}
 		log.Debug("MMGP GetProof CalcTrieRoot", "err", err, "trRoot", trRoot, "proof", aProof)
-		
+
 		sp = make([]trie.StorageResult, len(storageKeys))
-		
+
 		if len(storageKeys) > 0 {
 			sp[0].Key = storageKeys[0]
 
@@ -345,14 +344,14 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			log.Debug("MMGP StorageResult", "root", hexutil.Bytes(newRoot), "newSP", sp, "err", err)
 		}
 	}
-	
+
 	if len(sp) == 0 {
 	  sp = make([]trie.StorageResult,1)
 	  sp[0].Key = "0x0000000000000000000000000000000000000000000000000000000000000000"
 	  sp[0].Value = new(hexutil.Big)
 	  sp[0].Proof = make([]string,0)
 	}
-	
+
 	accRes := &AccountResult{
 		Balance:      (*hexutil.Big)(acc2.Balance.ToBig()),
 		CodeHash:     acc2.CodeHash,
