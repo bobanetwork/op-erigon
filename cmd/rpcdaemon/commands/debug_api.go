@@ -19,6 +19,7 @@ import (
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/transactions"
 	"github.com/ledgerwatch/log/v3"
+	"github.com/ledgerwatch/erigon/turbo/trie"
 )
 
 // AccountRangeMaxResults is the maximum number of results to be returned per call
@@ -265,10 +266,10 @@ type AccountResult struct {
 	Nonce       hexutil.Uint64 `json:"nonce"`
 	StorageHash common.Hash    `json:"storageHash"`
 	Root        common.Hash    `json:"root"` // possibly not needed
-	StorageProof []StorageResult `json:"storageProof"`
+	StorageProof []trie.StorageResult `json:"storageProof"`
 }
-type StorageResult struct {
-	Key   string       `json:"key"`
-	Value *hexutil.Big `json:"value"`
-	Proof []string     `json:"proof"`
-}
+//type StorageResult struct {
+//	Key   string       `json:"key"`
+//	Value *hexutil.Big `json:"value"`
+//	Proof []string     `json:"proof"`
+//}

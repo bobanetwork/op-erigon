@@ -16,9 +16,10 @@ type AccountResult struct {
 	CodeHash     common.Hash     `json:"codeHash"`
 	Nonce        hexutil.Uint64  `json:"nonce"`
 	StorageHash  common.Hash     `json:"storageHash"`
-	StorageProof []StorageResult `json:"storageProof"`
+	StorageProof []trie.StorageResult `json:"storageProof"`
 }
-type StorageResult struct {
+
+type xStorageResult struct {
 	Key   string       `json:"key"`
 	Value *hexutil.Big `json:"value"`
 	Proof []string     `json:"proof"`

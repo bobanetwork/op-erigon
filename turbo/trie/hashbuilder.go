@@ -47,8 +47,6 @@ type HashBuilder struct {
 	spStack *[]hexutil.Bytes
 	proofAccount   *accounts.Account
 	storValue *hexutil.Big
-	
-	mmTag bool
 }
 
 // NewHashBuilder creates a new HashBuilder
@@ -83,7 +81,7 @@ func (hb *HashBuilder) SetProof(mmAccount *accounts.Account, mmProof *[]hexutil.
 }
 func (hb *HashBuilder) leaf(length int, keyHex []byte, val rlphacks.RlpSerializable) error {
 	if hb.trace {
-		log.Debug("MMGP hb leaf", "val", hexutil.Bytes(val.RawBytes()))
+		log.Debug("MMGP-5     HB leaf", "val", hexutil.Bytes(val.RawBytes()))
 		fmt.Printf("LEAF %d\n", length)
 	}
 	if hb.storValue != nil {
@@ -143,7 +141,7 @@ func (hb *HashBuilder) leafHashWithKeyVal(key []byte, val rlphacks.RlpSerializab
 		kl = 1
 	}
 	if hb.trace {
-		log.Debug("MMGP leafHashWithKeyVal", "val", val, "sFlag", sFlag)
+		log.Debug("MMGP-6      HB leafHashWithKeyVal", "val", val, "sFlag", sFlag)
 	}
 	err := hb.completeLeafHash(kp, kl, compactLen, key, compact0, ni, val, sFlag)
 	if err != nil {
@@ -166,7 +164,7 @@ func (hb *HashBuilder) completeLeafHash(kp, kl, compactLen int, key []byte, comp
 	var reader io.Reader
 	
 	if hb.trace {
-		log.Debug("MMGP HB completeLeafHash", "nodeLen", totalLen+pt, )
+		log.Debug("MMGP-6      HB completeLeafHash", "nodeLen", totalLen+pt, )
 	}
 	if totalLen+pt < common.HashLength {
 		// Embedded node
@@ -204,19 +202,19 @@ func (hb *HashBuilder) completeLeafHash(kp, kl, compactLen int, key []byte, comp
 	}
 	
 	if hb.trace {
-		log.Debug("MMGP HB completeLeafHash", "mmFlag", mmFlag, "key", hexutil.Bytes(key), "mmR", hexutil.Bytes(mmR.Bytes()))
+		log.Debug("MMGP-6      HB completeLeafHash", "mmFlag", mmFlag, "key", hexutil.Bytes(key), "mmR", hexutil.Bytes(mmR.Bytes()))
 	}
 
 	if (mmFlag == 1) && (hb.proofStack != nil) {
 		*hb.proofStack = append(*hb.proofStack, mmR.Bytes())
 		if hb.trace {
-			log.Debug("MMGP HB proofStack 1 (account)", "len", len(*hb.proofStack), "stack", hb.proofStack)
+			log.Debug("MMGP-6      HB proofStack 1 (account)", "len", len(*hb.proofStack), "stack", hb.proofStack)
 		}	
 	}
 	if (mmFlag == 2) && (hb.spStack != nil) {
 		*hb.spStack = append(*hb.spStack, mmR.Bytes())
 		if hb.trace {
-			log.Debug("MMGP HB proofStack 1 (storage)", "len", len(*hb.spStack), "stack", hb.spStack)
+			log.Debug("MMGP-6      HB proofStack 1 (storage)", "len", len(*hb.spStack), "stack", hb.spStack)
 		}	
 	}
 
@@ -233,7 +231,7 @@ func (hb *HashBuilder) completeLeafHash(kp, kl, compactLen int, key []byte, comp
 func (hb *HashBuilder) leafHash(length int, keyHex []byte, val rlphacks.RlpSerializable) error {
 	if hb.trace {
 		fmt.Printf("LEAFHASH %d\n", length)
-		log.Debug("MMGP hb leafHash")
+		log.Debug("MMGP-5    HB leafHash")
 	}
 	if length < 0 {
 		return fmt.Errorf("length %d", length)
@@ -244,7 +242,7 @@ func (hb *HashBuilder) leafHash(length int, keyHex []byte, val rlphacks.RlpSeria
 
 func (hb *HashBuilder) accountLeaf(length int, keyHex []byte, balance *uint256.Int, nonce uint64, incarnation uint64, fieldSet uint32, accountCodeSize int) (err error) {
 	if hb.trace {
-		log.Debug("MMGP ACCOUNTLEAF", "k", hexutil.Bytes(keyHex), "balance", balance, "fieldSet", fieldSet, "acc", hb.acc)
+		log.Debug("MMGP-5     HB ACCOUNTLEAF", "k", hexutil.Bytes(keyHex), "balance", balance, "fieldSet", fieldSet, "acc", hb.acc)
 		fmt.Printf("ACCOUNTLEAF %d (%b)\n", length, fieldSet)
 	}
 	key := keyHex[len(keyHex)-length:]
@@ -305,7 +303,7 @@ func (hb *HashBuilder) accountLeaf(length int, keyHex []byte, balance *uint256.I
 	
 	if hb.trace {
 		
-		log.Debug("MMGP AccountLeaf result", "s.Key", hexutil.Bytes(s.Key), "a", a, "s", s, "SR", a.storage, "ref", a.storage.reference())
+		log.Debug("MMGP-5     HB AccountLeaf result", "s.Key", hexutil.Bytes(s.Key), "a", a, "s", s, "SR", a.storage, "ref", a.storage.reference())
 		fmt.Printf("Stack depth: %d\n", len(hb.nodeStack))
 	}
 
@@ -317,7 +315,7 @@ func (hb *HashBuilder) accountLeaf(length int, keyHex []byte, balance *uint256.I
 		hb.proofAccount.CodeHash = a.CodeHash
 		hb.proofAccount.Incarnation = a.Incarnation
 		if hb.trace {
-			log.Debug("MMGP populated proofAccount", "proofAccount", hb.proofAccount)
+			log.Debug("MMGP-5     HB populated proofAccount", "proofAccount", hb.proofAccount)
 		}
 	}
 	return nil
@@ -325,7 +323,7 @@ func (hb *HashBuilder) accountLeaf(length int, keyHex []byte, balance *uint256.I
 
 func (hb *HashBuilder) accountLeafHash(length int, keyHex []byte, balance *uint256.Int, nonce uint64, incarnation uint64, fieldSet uint32) (err error) {
 	if hb.trace {
-		log.Debug("MMGP ACCOUNTLEAFHASH", "k", hexutil.Bytes(keyHex), "balance", balance, "fieldSet", fieldSet, "acc", hb.acc)
+		log.Debug("MMGP-5     HB accountLeafHash", "k", hexutil.Bytes(keyHex), "balance", balance, "fieldSet", fieldSet, "acc", hb.acc)
 		fmt.Printf("ACCOUNTLEAFHASH %d (%b)\n", length, fieldSet)
 	}
 	key := keyHex[len(keyHex)-length:]
@@ -355,7 +353,7 @@ func (hb *HashBuilder) accountLeafHash(length int, keyHex []byte, balance *uint2
 // To be called internally
 func (hb *HashBuilder) accountLeafHashWithKey(key []byte, popped int, mmFlag bool) error {
 	if hb.trace {
-		log.Debug("MMGP HB accountLeafHashWithKey", "key", hexutil.Bytes(key), "popped", popped)
+		log.Debug("MMGP-6      HB accountLeafHashWithKey", "key", hexutil.Bytes(key), "popped", popped)
 	}
 	// Compute the total length of binary representation
 	var kp, kl int
@@ -412,7 +410,7 @@ func (hb *HashBuilder) accountLeafHashWithKey(key []byte, popped int, mmFlag boo
 func (hb *HashBuilder) extension(key []byte) error {
 	if hb.trace {
 		fmt.Printf("EXTENSION %x\n", key)
-		log.Debug("MMGP HB extension", "key", hexutil.Bytes(key))
+		log.Debug("MMGP-5     HB extension", "key", hexutil.Bytes(key))
 	}
 	nd := hb.nodeStack[len(hb.nodeStack)-1]
 	var s *shortNode
@@ -443,7 +441,7 @@ func (hb *HashBuilder) extensionHash(key []byte) error {
 	
 	if hb.trace {
 		fmt.Printf("EXTENSIONHASH %x\n", key)
-		log.Debug("MMGP HB extensionHash", "key", hexutil.Bytes(key))
+		log.Debug("MMGP-5     HB extensionHash", "key", hexutil.Bytes(key))
 	}
 	branchHash := hb.hashStack[len(hb.hashStack)-hashStackStride:]
 	// Compute the total length of binary representation
@@ -507,8 +505,8 @@ func (hb *HashBuilder) extensionHash(key []byte) error {
 	if hb.proofStack != nil {
 		*hb.proofStack = append(*hb.proofStack, mmR.Bytes())
 		if hb.trace {
-			log.Debug("MMGP HB eH proofLine", "extensionHash", hexutil.Bytes(mmR.Bytes()))
-			log.Debug("MMGP HB eH proofStack 2", "len", len(*hb.proofStack), "stack", hb.proofStack)
+			log.Debug("MMGP-5     HB eH proofLine", "extensionHash", hexutil.Bytes(mmR.Bytes()))
+			log.Debug("MMGP-5     HB eH proofStack 2", "len", len(*hb.proofStack), "stack", hb.proofStack)
 		}
 	}
 
@@ -522,7 +520,7 @@ func (hb *HashBuilder) extensionHash(key []byte) error {
 
 func (hb *HashBuilder) branch(set uint16, mmFlag int) error {
 	if hb.trace {
-		log.Debug("MMGP hb Branch", "set", set, "depth", len(hb.nodeStack), "mmFlag", mmFlag)
+		log.Debug("MMGP-5     HB branch", "set", set, "depth", len(hb.nodeStack), "mmFlag", mmFlag)
 		fmt.Printf("BRANCH (%b)\n", set)
 	}
 	if hb.trace {
@@ -549,7 +547,7 @@ func (hb *HashBuilder) branch(set uint16, mmFlag int) error {
 	hb.nodeStack = hb.nodeStack[:len(hb.nodeStack)-digits+1]
 	hb.nodeStack[len(hb.nodeStack)-1] = f
 	if hb.trace {
-		log.Debug("MMGP HB branch calling branchHash")
+		log.Debug("MMGP-5     HB branch calling branchHash")
 	}
 	if err := hb.branchHash(set, mmFlag); err != nil {
 		return err
@@ -558,7 +556,7 @@ func (hb *HashBuilder) branch(set uint16, mmFlag int) error {
 	f.ref.len = 32
 	if hb.trace {
 		fmt.Printf("Stack depth: %d\n", len(hb.nodeStack))
-		log.Debug("MMGP HB branch returning OK", "depth", len(hb.nodeStack))
+		log.Debug("MMGP-5     HB branch returning OK", "depth", len(hb.nodeStack))
 	}
 
 	return nil
@@ -569,7 +567,7 @@ func (hb *HashBuilder) branchHash(set uint16, mmFlag int) error {
 	mmW := io.MultiWriter(hb.sha, &mmR)
 
 	if hb.trace {
-		log.Debug("MMGP hb BranchHash Start", "set", set, "depth", len(hb.nodeStack), "kp", hb.keyPrefix, "lp", hb.lenPrefix, "pb", hb.prefixBuf)
+		log.Debug("MMGP-5     HB BranchHash Start", "set", set, "depth", len(hb.nodeStack), "kp", hb.keyPrefix, "lp", hb.lenPrefix, "pb", hb.prefixBuf)
 		fmt.Printf("BRANCHHASH (%b)\n", set)
 	}
 	digits := bits.OnesCount16(set)
@@ -606,7 +604,7 @@ func (hb *HashBuilder) branchHash(set uint16, mmFlag int) error {
 		if ((1 << digit) & set) != 0 {
 			if hashes[hashStackStride*i] == byte(0x80+common.HashLength) {
 				if hb.trace {
-					log.Debug("MMGP BH writeHash", "hash", hexutil.Bytes(hashes[hashStackStride*i : hashStackStride*i+hashStackStride]))
+					log.Debug("MMGP-5     HB writeHash", "hash", hexutil.Bytes(hashes[hashStackStride*i : hashStackStride*i+hashStackStride]))
 				}
 				if _, err := mmW.Write(hashes[hashStackStride*i : hashStackStride*i+hashStackStride]); err != nil {
 					return err
@@ -616,7 +614,7 @@ func (hb *HashBuilder) branchHash(set uint16, mmFlag int) error {
 				// Embedded node
 				size := int(hashes[hashStackStride*i]) - rlp.EmptyListCode
 				if hb.trace {
-					log.Debug("MMGP BH writeEmbed", "node", hexutil.Bytes(hashes[hashStackStride*i : hashStackStride*i+size+1]))
+					log.Debug("MMGP-5     HB writeEmbed", "node", hexutil.Bytes(hashes[hashStackStride*i : hashStackStride*i+size+1]))
 				}
 				if _, err := mmW.Write(hashes[hashStackStride*i : hashStackStride*i+size+1]); err != nil {
 					return err
@@ -626,7 +624,7 @@ func (hb *HashBuilder) branchHash(set uint16, mmFlag int) error {
 			i++
 		} else {
 			if hb.trace {
-				log.Debug("MMGP BH writeBlank", "write", hexutil.Bytes(hb.b[:]))
+				log.Debug("MMGP-5     HB writeBlank", "write", hexutil.Bytes(hb.b[:]))
 			}
 			if _, err := mmW.Write(hb.b[:]); err != nil {
 				return err
@@ -640,20 +638,21 @@ func (hb *HashBuilder) branchHash(set uint16, mmFlag int) error {
 		return err
 	}
 	
+	log.Debug("MMGP-X     HB sha.Read", "hash", hexutil.Bytes(hb.hashStack[len(hb.hashStack)-common.HashLength:]))
 	if (mmFlag == 1) && (hb.proofStack != nil) {
 		*hb.proofStack = append(*hb.proofStack, mmR.Bytes())
 		if hb.trace {
-			log.Debug("MMGP HB bh readHash", "result", hexutil.Bytes(hb.hashStack[len(hb.hashStack)-common.HashLength:]))
-			log.Debug("MMGP HB bh proofLine", "branchNode", hexutil.Bytes(mmR.Bytes()))
-			log.Debug("MMGP HB bh proofStack 3", "len", len(*hb.proofStack), "stack", hb.proofStack)
+			log.Debug("MMGP-5     HB readHash", "result", hexutil.Bytes(hb.hashStack[len(hb.hashStack)-common.HashLength:]))
+			log.Debug("MMGP-5     HB proofLine", "branchNode", hexutil.Bytes(mmR.Bytes()))
+			log.Debug("MMGP-5     HB proofStack 3", "len", len(*hb.proofStack), "stack", hb.proofStack)
 		}
 	}
 	if (mmFlag == 2) && (hb.spStack != nil) {
 		*hb.spStack = append(*hb.spStack, mmR.Bytes())
 		if hb.trace {
-			log.Debug("MMGP HB bh sp readHash", "result", hexutil.Bytes(hb.hashStack[len(hb.hashStack)-common.HashLength:]))
-			log.Debug("MMGP HB bh sp proofLine", "branchNode", hexutil.Bytes(mmR.Bytes()))
-			log.Debug("MMGP HB bh spStack 3", "len", len(*hb.spStack), "stack", hb.spStack)
+			log.Debug("MMGP-5     HB sp readHash", "result", hexutil.Bytes(hb.hashStack[len(hb.hashStack)-common.HashLength:]))
+			log.Debug("MMGP-5     HB sp proofLine", "branchNode", hexutil.Bytes(mmR.Bytes()))
+			log.Debug("MMGP-5     HB spStack 3", "len", len(*hb.spStack), "stack", hb.spStack)
 		}
 	}
 
@@ -667,7 +666,7 @@ func (hb *HashBuilder) branchHash(set uint16, mmFlag int) error {
 		}
 	}
 	if hb.trace {
-		log.Debug("MMGP HB branchHash returning OK", "depth", len(hb.nodeStack))
+		log.Debug("MMGP-5     HB branchHash returning OK", "depth", len(hb.nodeStack))
 		fmt.Printf("Stack depth: %d\n", len(hb.nodeStack))
 	}
 	return nil
@@ -675,7 +674,7 @@ func (hb *HashBuilder) branchHash(set uint16, mmFlag int) error {
 
 func (hb *HashBuilder) hash(hash []byte) error {
 	if hb.trace {
-		log.Debug("MMGP HB Hash", "hash", hexutil.Bytes(hash))
+		log.Debug("MMGP-5     HB Hash", "hash", hexutil.Bytes(hash))
 		fmt.Printf("HASH\n")
 	}
 	hb.hashStack = append(hb.hashStack, 0x80+common.HashLength)
@@ -699,7 +698,7 @@ func (hb *HashBuilder) code(code []byte) error {
 	if _, err := hb.sha.Write(codeCopy); err != nil {
 		return err
 	}
-	log.Debug("MMGP HB code, skipping proofHash")
+	log.Debug("MMGP-5     HB code, skipping proofHash")
 	
 	var hash [hashStackStride]byte // RLP representation of hash (or un-hashes value)
 	hash[0] = 0x80 + common.HashLength
@@ -712,7 +711,7 @@ func (hb *HashBuilder) code(code []byte) error {
 
 func (hb *HashBuilder) emptyRoot() {
 	if hb.trace {
-		log.Debug("MMGP hb EmptyRoot")
+		log.Debug("MMGP-5     HB EmptyRoot")
 		fmt.Printf("EMPTYROOT\n")
 	}
 	hb.nodeStack = append(hb.nodeStack, nil)
@@ -776,7 +775,7 @@ func (hb *HashBuilder) topHashes(prefix []byte, hasHash, hasState uint16) []byte
 
 func (hb *HashBuilder) root() node {
 	if hb.trace {
-		log.Debug("MMGP HB root", "len", len(hb.nodeStack))
+		log.Debug("MMGP-5     HB root", "len", len(hb.nodeStack))
 	}
 	if hb.trace && len(hb.nodeStack) > 0 {
 		fmt.Printf("len(hb.nodeStack)=%d\n", len(hb.nodeStack))
