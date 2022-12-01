@@ -38,8 +38,8 @@ type structInfoReceiver interface {
 	accountLeafHash(length int, keyHex []byte, balance *uint256.Int, nonce uint64, incarnation uint64, fieldset uint32) error
 	extension(key []byte) error
 	extensionHash(key []byte) error
-	branch(set uint16, mmFlag int) error
-	branchHash(set uint16, mmFlag int) error
+	branch(set uint16, doProof bool) error
+	branchHash(set uint16, doProof bool) error
 	hash(hash []byte) error
 	topHash() []byte
 	topHashes(prefix []byte, branches, children uint16) []byte
@@ -298,17 +298,17 @@ func GenStructStep(
 				}
 			}
 
-			var mmFlag int
+			var doProof bool
 			
 			if wantProof != nil {
 				if maxLen > 0 && wantProof(curr[:maxLen]) {
-					mmFlag = 1
+					doProof = true
 				}			
 				if len(succ) == 0 && maxLen == 0 && cutoff {
 					if trace {
-						log.Debug("MMGP-4    GSS len(succ)=0 cutoff=true override", "mmFlag_old", mmFlag)
+						log.Debug("MMGP-4    GSS len(succ)=0 cutoff=true override", "doProof_old", doProof)
 					}
-					mmFlag = 1
+					doProof = true
 				}
 			}
 			
@@ -317,18 +317,18 @@ func GenStructStep(
 				e.printTopHashes(curr[:maxLen], 0, groups[maxLen])
 			}
 			
-			if retain(curr[:maxLen]) || (mmFlag != 0) {
+			if retain(curr[:maxLen]) || doProof {
 				if trace {
-					log.Debug("MMGP-4    before e.branch", "mmFlag", mmFlag, "retain", retain(curr[:maxLen]))
+					log.Debug("MMGP-4    before e.branch", "doProof", doProof, "retain", retain(curr[:maxLen]))
 				}
-				if err := e.branch(groups[maxLen], mmFlag); err != nil {
+				if err := e.branch(groups[maxLen], doProof); err != nil {
 					return nil, nil, nil, err
 				}
 			} else {
 				if trace {
 					log.Debug("MMGP-4    calling e.branchHash")
 				}
-					if err := e.branchHash(groups[maxLen], 0); err != nil {
+					if err := e.branchHash(groups[maxLen], false); err != nil {
 					return nil, nil, nil, err
 				}
 			}
@@ -469,11 +469,11 @@ func GenStructStepOld(
 		// Close the immediately encompassing prefix group, if needed
 		if len(succ) > 0 || precExists {
 			if retain(curr[:maxLen]) {
-				if err := e.branch(groups[maxLen], 0); err != nil { // FIXME
+				if err := e.branch(groups[maxLen], false); err != nil { // FIXME
 					return nil, err
 				}
 			} else {
-				if err := e.branchHash(groups[maxLen], 0); err != nil { // FIXME
+				if err := e.branchHash(groups[maxLen], false); err != nil { // FIXME
 					return nil, err
 				}
 			}

@@ -3,6 +3,7 @@ package trie
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/bits"
 	"math/big"
@@ -218,14 +219,16 @@ type StorageResult struct {
 	Proof []string     `json:"proof"`
 }
 
-func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, prefix []byte, quit <-chan struct{}, sp *[]StorageResult) ([]byte, error) {
+func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, addrHash common.Hash, acc accounts.Account, sp *[]StorageResult) ([]byte, error) {
+	var T *Trie = New(EmptyRoot)	
+	var accWithInc [40]byte
 
 	sa4 := common.HexToHash((*sp)[0].Key)
 	sh4, err := common.HashData(sa4[:])
 	target_key := sh4[:]
 
 
-	log.Debug("MMGP-1 CalcStorageProof start", "sp", sp)
+	log.Debug("MMGP-1 CalcStorageProof start", "sp", sp, "addrHash", addrHash, "acc", acc)
 	trieStorageC, err := tx.CursorDupSort(kv.TrieOfStorage)
 	if err != nil {
 		return EmptyRoot.Bytes(), err
@@ -236,36 +239,33 @@ func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, prefix []byte, quit <-chan
 		log.Debug("MMGP-1 canUse", "prefix", hexutil.Bytes(prefix), "retain", retain, "nC", nextCreated)
 		return !retain, nextCreated
 	}
-	storageTrie := StorageTrie(canUse, l.shc, trieStorageC, quit)
+	storageTrie := StorageTrie(canUse, l.shc, trieStorageC, /* quit */ nil)
 	ss, err := tx.CursorDupSort(kv.HashedStorage)
 	
-	log.Debug("MMGP-1 st", "storageTrie", storageTrie, "ss", ss)
-	
-	var T *Trie = New(EmptyRoot)
-	
-	log.Debug("MMGP-1 init trie", "T", T)
-	
-	accWithInc := common.FromHex("0x542220b0147f4cc0e0156d993334777d699c312c2fe454f8b3fa338ed309f4a00000000000000001")
-	log.Debug("MMGP-1 accWithInc", "aWI", hexutil.Bytes(accWithInc))
+	copy(accWithInc[:],addrHash.Bytes())
+	binary.BigEndian.PutUint64(accWithInc[32:], acc.Incarnation)
+	log.Debug("MMGP-1 accWithInc", "aWI", hexutil.Bytes(accWithInc[:]))
 	
 	cnt := 0
-	
-	for ihKS, ihVS, hasTreeS, err2 := storageTrie.SeekToAccount(accWithInc); cnt < 100; ihKS, ihVS, hasTreeS, err2 = storageTrie.Next() {
+	for ihKS, ihVS, hasTreeS, err2 := storageTrie.SeekToAccount(accWithInc[:]); ; ihKS, ihVS, hasTreeS, err2 = storageTrie.Next() {
 		log.Debug("MMGP-1 Next", "cnt", cnt, "ihKS", hexutil.Bytes(ihKS), "ihVS", hexutil.Bytes(ihVS), "hasTreeS", hasTreeS, "err2", err2)
 		
-		for vS, err3 := ss.SeekBothRange(accWithInc, storageTrie.FirstNotCoveredPrefix()); vS != nil && cnt < 100; _, vS, err3 = ss.NextDup() {	
+		for vS, err3 := ss.SeekBothRange(accWithInc[:], storageTrie.FirstNotCoveredPrefix()); vS != nil && cnt < 100; _, vS, err3 = ss.NextDup() {	
 			sk := vS[:32]
 			sv := vS[32:]
 			log.Debug("MMGP-1 SeekBothRange", "cnt", cnt, "err3", err3,  "sk", hexutil.Bytes(sk), "sv", hexutil.Bytes(sv))
 			
 			T.Update(sk, sv)
-			cnt++
+			cnt++	// Previously used to detect (and break from) an infinite loop, now only used in a log message. Can be removed.
 		}
 		if len(ihKS)==0 {
 			break
 		}
 	}
-	log.Debug("MMGP-1 T", "root", hexutil.Bytes(T.Root()))
+	log.Debug("MMGP-1 StorageTrie", "root", hexutil.Bytes(T.Root()), "expected", acc.Root)
+	if common.BytesToHash(T.Root()) != acc.Root {
+		return EmptyRoot.Bytes(), errors.New("StorageTrie root mismatch")
+	}
 
 	tmpVal,found := T.Get(target_key)
 	log.Debug("MMGP-1 Proving for", "target_key", hexutil.Bytes(target_key), "found", found, "value", tmpVal)

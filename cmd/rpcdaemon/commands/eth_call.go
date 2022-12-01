@@ -301,7 +301,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			trRoot = gProofHack.Stateroots[block]
 		}
 		gProofHack.lock.RUnlock()
-		log.Debug("MMGP GetProof found cached result", "block", block, "proof", aProof)
+		log.Debug("MMGP GetProof found cached result for", "block", block)
 	} else {
 		log.Debug("MMGP GetProof did not check the cache", "blockNr", blockNr)
 
@@ -341,7 +341,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		if len(storageKeys) > 0 {
 			sp[0].Key = storageKeys[0]
 
-			newRoot,err = loader.CalcStorageProof(tx, nil, nil, &sp)
+			newRoot,err = loader.CalcStorageProof(tx, addrHash, acc2, &sp)
 			log.Debug("MMGP StorageResult", "root", hexutil.Bytes(newRoot), "newSP", sp, "err", err)
 		}
 	}
