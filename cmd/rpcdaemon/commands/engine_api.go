@@ -180,7 +180,6 @@ func (e *EngineImpl) MMProof(ctx context.Context, BN uint64, BH common.Hash) err
 	if err != nil {
 		return err
 	}
-	//log.Debug("MMGP hashing account", "addr", pAddr, "addrHash", addrHash)
 	
 	pRL.AddKey(addrHash[:])
 	loader := trie.NewFlatDBTrieLoader("mmProof")
@@ -190,10 +189,7 @@ func (e *EngineImpl) MMProof(ctx context.Context, BN uint64, BH common.Hash) err
 	
 	acc2 := accounts.Account{}
 	var aProof []hexutil.Bytes
-	var sProof []hexutil.Bytes
-	sRL := trie.NewRetainList(0)
-	var sValue hexutil.Big
-	loader.SetProof(pRL, sRL, &acc2, &aProof, &sValue, &sProof)
+	loader.SetProof(pRL, &acc2, &aProof)
 
 	var quit <-chan struct{}
 	hash, err := loader.CalcTrieRoot(tx, []byte{}, quit)

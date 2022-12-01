@@ -286,10 +286,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 	
 	var acc2 accounts.Account
 	var aProof []hexutil.Bytes
-	var sProof []hexutil.Bytes
 	var trRoot common.Hash
 	var sp []trie.StorageResult
-	var sValue hexutil.Big
 	var newRoot []byte
 	
 	if blockNr.Int64() > 0 {
@@ -321,8 +319,6 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 
 		rl.AddKey(addrHash[:])
 
-		srl := trie.NewRetainList(0)
-
 		loader := trie.NewFlatDBTrieLoader("getProof")
 
 
@@ -332,7 +328,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 		}
 		log.Debug("MMGP GetProof loader.Reset", "err", err)
 	
-		loader.SetProof(rl, srl, &acc2, &aProof, &sValue, &sProof)
+		loader.SetProof(rl, &acc2, &aProof)
 		
 		trRoot, err = loader.CalcTrieRoot(tx, nil, nil)
 		if err != nil {
@@ -346,7 +342,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address common.Address, storag
 			sp[0].Key = storageKeys[0]
 
 			newRoot,err = loader.CalcStorageProof(tx, nil, nil, &sp)
-			log.Debug("MMGP-A Storage", "root", hexutil.Bytes(newRoot), "newSP", sp, "err", err)
+			log.Debug("MMGP StorageResult", "root", hexutil.Bytes(newRoot), "newSP", sp, "err", err)
 		}
 	}
 	
