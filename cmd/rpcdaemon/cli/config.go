@@ -72,9 +72,7 @@ var rootCmd = &cobra.Command{
 	Short: "rpcdaemon is JSON RPC server that connects to Erigon node for remote DB access",
 }
 
-var (
-	stateCacheStr string
-)
+var stateCacheStr string
 
 func RootCommand() (*cobra.Command, *httpcfg.HttpCfg) {
 	utils.CobraFlags(rootCmd, debug.Flags, utils.MetricFlags, logging.Flags)
@@ -277,7 +275,8 @@ func RemoteServices(ctx context.Context, cfg httpcfg.HttpCfg, logger log.Logger,
 	db kv.RoDB, borDb kv.RoDB,
 	eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
 	stateCache kvcache.Cache, blockReader services.FullBlockReader,
-	ff *rpchelper.Filters, agg *libstate.AggregatorV3, err error) {
+	ff *rpchelper.Filters, agg *libstate.AggregatorV3, err error,
+) {
 	if !cfg.WithDatadir && cfg.PrivateApiAddr == "" {
 		return nil, nil, nil, nil, nil, nil, nil, ff, nil, fmt.Errorf("either remote db or local db must be specified")
 	}
@@ -676,7 +675,7 @@ func obtainJWTSecret(cfg httpcfg.HttpCfg) ([]byte, error) {
 	jwtSecret := make([]byte, 32)
 	rand.Read(jwtSecret)
 
-	if err := os.WriteFile(cfg.JWTSecretPath, []byte(hexutility.Encode(jwtSecret)), 0600); err != nil {
+	if err := os.WriteFile(cfg.JWTSecretPath, []byte(hexutility.Encode(jwtSecret)), 0o600); err != nil {
 		return nil, err
 	}
 	log.Info("Generated JWT secret", "path", cfg.JWTSecretPath)
