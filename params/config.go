@@ -132,6 +132,8 @@ var (
 
 	CliqueSnapshot = NewSnapshotConfig(10, 1024, 16384, true, "")
 
+	OptimismChainConfig = readChainSpec("chainspecs/optimism.json")
+
 	TestChainConfig = &chain.Config{
 		ChainID:               big.NewInt(1337),
 		Consensus:             chain.EtHashConsensus,
