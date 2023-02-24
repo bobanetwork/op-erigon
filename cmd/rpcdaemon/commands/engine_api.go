@@ -365,12 +365,12 @@ func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *Ex
 		log.Warn("NewPayload", "err", err)
 		return nil, err
 	}
-	if (uint64(payload.BlockNumber)-1)%20 == 0 {
-		pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
-		if pErr != nil {
-			log.Warn("MMDBG Proof pre-calculation failed", "Block", uint64(payload.BlockNumber), "err", pErr)
-		}
+	// if (uint64(payload.BlockNumber)-1)%20 == 0 {
+	pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
+	if pErr != nil {
+		log.Warn("MMDBG Proof pre-calculation failed", "Block", uint64(payload.BlockNumber), "err", pErr)
 	}
+	// }
 	log.Debug("MMDBG <<< NewPayload Response", "BN", uint64(payload.BlockNumber), "res", res)
 	return convertPayloadStatus(ctx, e.db, res)
 }
