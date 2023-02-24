@@ -17,4 +17,5 @@ type BlockBuilderParameters struct {
 	PayloadId             uint64
 	Deposits              [][]byte
 	NoTxPool              bool
+	GasLimit              *uint64
 }

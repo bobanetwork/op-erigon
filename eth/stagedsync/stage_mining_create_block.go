@@ -94,7 +94,7 @@ var maxTransactions uint16 = 1000
 // - resubmitAdjustCh - variable is not implemented
 func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBlockCfg, quit <-chan struct{}) (err error) {
 	current := cfg.miner.MiningBlock
-	txPoolLocals := []libcommon.Address{} //txPoolV2 has no concept of local addresses (yet?)
+	txPoolLocals := []libcommon.Address{} // txPoolV2 has no concept of local addresses (yet?)
 	coinbase := cfg.miner.MiningConfig.Etherbase
 
 	const (
@@ -131,7 +131,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		return err
 	}
 	chain := ChainReader{Cfg: cfg.chainConfig, Db: tx}
-	var GetBlocksFromHash = func(hash libcommon.Hash, n int) (blocks []*types.Block) {
+	GetBlocksFromHash := func(hash libcommon.Hash, n int) (blocks []*types.Block) {
 		number := rawdb.ReadHeaderNumber(tx, hash)
 		if number == nil {
 			return nil
@@ -173,11 +173,14 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		timestamp = cfg.blockBuilderParameters.Timestamp
 	}
 
-	//header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
-	var newGas uint64
-	newGas = 15_000_000 // FIXME - extract from 1st Deposit tx
-	log.Debug("MMDBG Override gas limit", "old", cfg.miner.MiningConfig.GasLimit, "new", newGas)
-	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &newGas)
+	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
+	if cfg.blockBuilderParameters.GasLimit != nil {
+		log.Info("MMDBG Override gas limit from Engine API", "old", header.GasLimit, "new", *cfg.blockBuilderParameters.GasLimit)
+		header.GasLimit = *cfg.blockBuilderParameters.GasLimit
+	} else if cfg.chainConfig.Optimism != nil && cfg.miner.MiningConfig.GasLimit != 0 {
+		log.Info("MMDBG Override gas limit as is optimism, but not set by engine", "old", header.GasLimit, "new", cfg.miner.MiningConfig.GasLimit)
+		header.GasLimit = cfg.miner.MiningConfig.GasLimit
+	}
 
 	header.Coinbase = coinbase
 	header.Extra = cfg.miner.MiningConfig.ExtraData
@@ -221,7 +224,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	}
 
 	// analog of miner.Worker.updateSnapshot
-	var makeUncles = func(proposedUncles mapset.Set) []*types.Header {
+	makeUncles := func(proposedUncles mapset.Set) []*types.Header {
 		var uncles []*types.Header
 		proposedUncles.Each(func(item interface{}) bool {
 			hash, ok := item.(libcommon.Hash)
@@ -309,7 +312,6 @@ func readNonCanonicalHeaders(tx kv.Tx, blockNum uint64, engine consensus.Engine,
 		} else {
 			remoteUncles[u.Hash()] = u
 		}
-
 	}
 	return
 }

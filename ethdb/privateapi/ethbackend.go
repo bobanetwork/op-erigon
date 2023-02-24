@@ -22,6 +22,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 
 	"github.com/ledgerwatch/erigon/common"
+	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/consensus/serenity"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
@@ -34,8 +35,6 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/turbo/shards"
 	"github.com/ledgerwatch/erigon/turbo/stages/headerdownload"
-	//	"google.golang.org/protobuf/types/known/emptypb"
-	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 // EthBackendAPIVersion
@@ -49,10 +48,12 @@ var EthBackendAPIVersion = &types2.VersionReply{Major: 3, Minor: 2, Patch: 0}
 
 const MaxBuilders = 128
 
-var UnknownPayloadErr = rpc.CustomError{Code: -38001, Message: "Unknown payload"}
-var InvalidForkchoiceStateErr = rpc.CustomError{Code: -38002, Message: "Invalid forkchoice state"}
-var InvalidPayloadAttributesErr = rpc.CustomError{Code: -38003, Message: "Invalid payload attributes"}
-var TooLargeRequestErr = rpc.CustomError{Code: -38004, Message: "Too large request"}
+var (
+	UnknownPayloadErr           = rpc.CustomError{Code: -38001, Message: "Unknown payload"}
+	InvalidForkchoiceStateErr   = rpc.CustomError{Code: -38002, Message: "Invalid forkchoice state"}
+	InvalidPayloadAttributesErr = rpc.CustomError{Code: -38003, Message: "Invalid payload attributes"}
+	TooLargeRequestErr          = rpc.CustomError{Code: -38004, Message: "Too large request"}
+)
 
 type EthBackendServer struct {
 	remote.UnimplementedETHBACKENDServer // must be embedded to have forward compatible implementations.
@@ -87,7 +88,8 @@ type EthBackend interface {
 func NewEthBackendServer(ctx context.Context, eth EthBackend, db kv.RwDB, events *shards.Events, blockReader services.BlockAndTxnReader,
 	config *chain.Config, builderFunc builder.BlockBuilderFunc, hd *headerdownload.HeaderDownload, proposing bool,
 ) *EthBackendServer {
-	s := &EthBackendServer{ctx: ctx, eth: eth, events: events, db: db, blockReader: blockReader, config: config,
+	s := &EthBackendServer{
+		ctx: ctx, eth: eth, events: events, db: db, blockReader: blockReader, config: config,
 		builders:    make(map[uint64]*builder.BlockBuilder),
 		builderFunc: builderFunc, proposing: proposing, logsFilter: NewLogsFilterAggregator(events), hd: hd,
 	}
@@ -647,7 +649,7 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 			return nil, status.CriticalError
 		}
 	}
-	log.Debug("MMDBG EngineForkChoiceUpdated Payload", "status", status.Status, "attrs", req.PayloadAttributes)
+	log.Info("MMDBG EngineForkChoiceUpdated Payload", "status", status.Status, "attrs", req.PayloadAttributes)
 
 	// No need for payload building
 	payloadAttributes := req.PayloadAttributes
@@ -694,6 +696,7 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 		PrevRandao:            gointerfaces.ConvertH256ToHash(payloadAttributes.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertH160toAddress(payloadAttributes.SuggestedFeeRecipient),
 		PayloadId:             s.payloadId,
+		GasLimit:              payloadAttributes.GasLimit,
 	}
 	if payloadAttributes.Version >= 2 {
 		param.Withdrawals = ConvertWithdrawalsFromRpc(payloadAttributes.Withdrawals)

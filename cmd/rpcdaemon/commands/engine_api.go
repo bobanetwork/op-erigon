@@ -61,9 +61,10 @@ type PayloadAttributes struct {
 	Timestamp             hexutil.Uint64      `json:"timestamp"             gencodec:"required"`
 	PrevRandao            common.Hash         `json:"prevRandao"            gencodec:"required"`
 	SuggestedFeeRecipient common.Address      `json:"suggestedFeeRecipient" gencodec:"required"`
-	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
-	Transactions          []hexutil.Bytes     `json:"transactions"          gencodec:"required"`
-	NoTxPool              bool                `json:"noTxPool"              gencodec:"required"`
+	Withdrawals           []*types.Withdrawal `json:"withdrawals"           gencodec:"optional"`
+	Transactions          []hexutil.Bytes     `json:"transactions"          gencodec:"optional"`
+	NoTxPool              bool                `json:"noTxPool"              gencodec:"optional"`
+	GasLimit              *hexutil.Uint64     `json:"gasLimit"              gencodec:"optional"`
 }
 
 // TransitionConfiguration represents the correct configurations of the CL and the EL
@@ -190,7 +191,7 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 		transactions := make([][]byte, len(payloadAttributes.Transactions))
 		for i, transaction := range payloadAttributes.Transactions {
 			transactions[i] = ([]byte)(transaction)
-			//log.Debug("MMDBG  -> ", "idx", i, "in", transaction, "out", transactions[i])
+			// log.Debug("MMDBG  -> ", "idx", i, "in", transaction, "out", transactions[i])
 		}
 		attributes = &remote.EnginePayloadAttributes{
 			Version:               1,
@@ -199,6 +200,7 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 			SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
 			Transactions:          transactions,
 			NoTxPool:              payloadAttributes.NoTxPool,
+			GasLimit:              (*uint64)(payloadAttributes.GasLimit),
 		}
 		if version >= 2 && payloadAttributes.Withdrawals != nil {
 			attributes.Version = 2
