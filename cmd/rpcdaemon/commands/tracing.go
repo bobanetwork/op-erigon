@@ -306,7 +306,8 @@ func (api *PrivateDebugAPIImpl) TraceCall(ctx context.Context, args ethapi.CallA
 		return fmt.Errorf("convert args to msg: %v", err)
 	}
 
-	blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, dbtx, api._blockReader)
+	l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
+	blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, dbtx, api._blockReader, l1CostFunc)
 	txCtx := core.NewEVMTxContext(msg)
 	// Trace the transaction and return
 	return transactions.TraceTx(ctx, msg, blockCtx, txCtx, ibs, config, chainConfig, stream, api.evmCallTimeout)
@@ -424,6 +425,7 @@ func (api *PrivateDebugAPIImpl) TraceCallMany(ctx context.Context, bundles []Bun
 		Difficulty:  new(big.Int).Set(parent.Difficulty),
 		GasLimit:    parent.GasLimit,
 		BaseFee:     &baseFee,
+		L1CostFunc:  types.NewL1CostFunc(chainConfig, st),
 	}
 
 	// Get a new instance of the EVM

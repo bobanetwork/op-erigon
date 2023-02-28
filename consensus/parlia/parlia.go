@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/golang-lru/v2"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/length"
@@ -1259,10 +1259,12 @@ func (p *Parlia) systemCall(from, contract libcommon.Address, data []byte, ibs *
 		nil, nil,
 		data, nil, false,
 		true, // isFree
+		0,    // rollupDataGas,
 	)
 	vmConfig := vm.Config{NoReceipts: true}
+	l1CostFunc := types.NewL1CostFunc(p.chainConfig, ibs)
 	// Create a new context to be used in the EVM environment
-	blockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, nil), p, &from, nil /*excessDataGas*/)
+	blockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, nil), p, &from, nil /*excessDataGas*/, l1CostFunc)
 	evm := vm.NewEVM(blockContext, core.NewEVMTxContext(msg), ibs, chainConfig, vmConfig)
 	ret, leftOverGas, err := evm.Call(
 		vm.AccountRef(msg.From()),

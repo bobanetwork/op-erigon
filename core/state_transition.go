@@ -66,6 +66,7 @@ type StateTransition struct {
 	tip        *uint256.Int
 	initialGas uint64
 	value      *uint256.Int
+	mint       *uint256.Int
 	data       []byte
 	state      evmtypes.IntraBlockState
 	evm        vm.VMInterface
@@ -96,6 +97,8 @@ type Message interface {
 
 	IsFree() bool
 	IsSystemTx() bool
+	IsDepositTx() bool
+	RollupDataGas() uint64
 	Mint() *uint256.Int
 }
 
@@ -204,6 +207,15 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 	if overflow {
 		return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 	}
+	var l1Cost *uint256.Int
+	if optimismConfig := st.evm.ChainConfig().Optimism; optimismConfig != nil && st.evm.ChainRules().IsBedrock {
+		l1Cost = st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
+		if l1Cost != nil {
+			if _, overflow = mgval.AddOverflow(mgval, l1Cost); overflow {
+				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
+			}
+		}
+	}
 	balanceCheck := mgval
 	if st.gasFeeCap != nil {
 		balanceCheck = st.sharedBuyGasBalance.SetUint64(st.msg.Gas())
@@ -214,6 +226,12 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 		balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, st.value)
 		if overflow {
 			return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
+		}
+		if l1Cost != nil {
+			balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, l1Cost)
+			if overflow {
+				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
+			}
 		}
 	}
 	var subBalance = false
@@ -252,7 +270,7 @@ func CheckEip1559TxGasFeeCap(from libcommon.Address, gasFeeCap, tip, baseFee *ui
 
 // DESCRIBED: docs/programmers_guide/guide.md#nonce
 func (st *StateTransition) preCheck(gasBailout bool) error {
-	if st.msg.Nonce() == 0xffff_ffff_ffff_fffd { //types.DepositsNonce
+	if st.msg.Nonce() == types.DepositsNonce {
 		log.Debug("MMDBG preCheck for Deposit txn")
 
 		// Following section copied from Optimism patchset
@@ -262,7 +280,7 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 		st.initialGas = st.msg.Gas()
 		st.gas += st.msg.Gas() // Add gas here in order to be able to execute calls.
 		// Don't touch the gas pool for system transactions
-		if true { // FIXME st.msg.IsSystemTx() {
+		if st.msg.IsSystemTx() {
 			return nil
 		}
 		return st.gp.SubGas(st.msg.Gas()) // gas used by deposits may not be used by other txs
@@ -447,6 +465,22 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value, bailout)
 	}
 	if refunds {
+
+		// if deposit: skip refunds, skip tipping coinbase
+		if st.msg.Nonce() == types.DepositsNonce {
+			// Record deposits as using all their gas (matches the gas pool)
+			// System Transactions are special & are not recorded as using any gas (anywhere)
+			gasUsed := st.msg.Gas()
+			if st.msg.IsSystemTx() {
+				gasUsed = 0
+			}
+			return &ExecutionResult{
+				UsedGas:    gasUsed,
+				Err:        vmerr,
+				ReturnData: ret,
+			}, nil
+		}
+
 		if rules.IsLondon {
 			// After EIP-3529: refunds are capped to gasUsed / 5
 			st.refundGas(params.RefundQuotientEIP3529)
@@ -492,6 +526,27 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 			output1.Sub(output1, amount),
 			output2.Add(output2, amount),
 		)
+	}
+
+	log.Info(
+		"MMDBG Accounting for base fee and l1 fee",
+		"isOptimism", st.evm.ChainConfig().Optimism != nil,
+		"isBedrock", rules.IsBedrock,
+		"gasUsed", st.gasUsed,
+		"baseFee", st.evm.Context().BaseFee,
+	)
+	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
+	// Note optimismConfig will not be nil if rules.IsOptimismBedrock is true
+	if optimismConfig := st.evm.ChainConfig().Optimism; optimismConfig != nil && rules.IsBedrock {
+		st.state.AddBalance(params.OptimismBaseFeeRecipient, new(uint256.Int).Mul(uint256.NewInt(st.gasUsed()), st.evm.Context().BaseFee))
+		if st.evm.Context().L1CostFunc == nil {
+			log.Error("Expected L1CostFunc to be set, but it is not")
+		}
+		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
+		log.Info("MMDBG Cost for l1 is", "cost", cost)
+		if cost != nil {
+			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
+		}
 	}
 
 	return &ExecutionResult{

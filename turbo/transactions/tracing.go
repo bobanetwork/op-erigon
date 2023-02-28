@@ -53,7 +53,8 @@ func ComputeTxEnv(ctx context.Context, engine consensus.EngineReader, block *typ
 		return h
 	}
 	header := block.HeaderNoCopy()
-	BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, nil /*excessDataGas*/)
+	l1CostFunc := types.NewL1CostFunc(cfg, statedb)
+	BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, nil /*excessDataGas*/, l1CostFunc)
 
 	// Recompute transactions up to the target index.
 	signer := types.MakeSigner(cfg, block.NumberU64())

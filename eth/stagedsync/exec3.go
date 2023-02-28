@@ -537,7 +537,7 @@ Loop:
 			defer getHashFnMute.Unlock()
 			return f(n)
 		}
-		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil /*excessDataGas*/)
+		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil /*excessDataGas*/, nil /*FIXME (this is definitely wrong)*/)
 
 		if parallel {
 			select {
@@ -1049,7 +1049,7 @@ func reconstituteStep(last bool,
 				defer getHashFnMute.Unlock()
 				return f(n)
 			}
-			blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil /*excessDataGas*/)
+			blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil /*excessDataGas*/, nil /* TODO(jky) this is definitely wrong */)
 			rules := chainConfig.Rules(bn, b.Time())
 
 			for txIndex := -1; txIndex <= len(txs); txIndex++ {

@@ -690,7 +690,8 @@ func (b *SimulatedBackend) callContract(_ context.Context, call ethereum.CallMsg
 
 	txContext := core.NewEVMTxContext(msg)
 	header := block.Header()
-	evmContext := core.NewEVMBlockContext(header, core.GetHashFn(header, b.getHeader), b.m.Engine, nil, nil /*excessDataGas*/)
+	l1CostFunc := types.NewL1CostFunc(b.m.ChainConfig, statedb)
+	evmContext := core.NewEVMBlockContext(header, core.GetHashFn(header, b.getHeader), b.m.Engine, nil, nil /*excessDataGas*/, l1CostFunc)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmEnv := vm.NewEVM(evmContext, txContext, statedb, b.m.ChainConfig, vm.Config{})
@@ -806,6 +807,11 @@ func (m callMsg) AccessList() types2.AccessList { return m.CallMsg.AccessList }
 func (m callMsg) IsFree() bool                  { return false }
 func (m callMsg) IsSystemTx() bool              { return false }
 func (m callMsg) Mint() *uint256.Int            { return new(uint256.Int) }
+func (m callMsg) IsDepositTx() bool             { return false }
+func (m callMsg) RollupDataGas() uint64 {
+	log.Warn("MMDBG call_data rollup data gas returning 0")
+	return 0 /* FIXME */
+}
 
 /*
 // filterBackend implements filters.Backend to support filtering for logs without

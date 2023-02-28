@@ -221,7 +221,8 @@ func (t *StateTest) RunNoVerify(tx kv.RwTx, subtest StateSubtest, vmconfig vm.Co
 	// Prepare the EVM.
 	txContext := core.NewEVMTxContext(msg)
 	header := block.Header()
-	context := core.NewEVMBlockContext(header, core.GetHashFn(header, nil), nil, &t.json.Env.Coinbase, nil /*excessDataGas*/)
+	l1CostFunc := types.NewL1CostFunc(config, statedb)
+	context := core.NewEVMBlockContext(header, core.GetHashFn(header, nil), nil, &t.json.Env.Coinbase, nil /*excessDataGas*/, l1CostFunc)
 	context.GetHash = vmTestBlockHash
 	if baseFee != nil {
 		context.BaseFee = new(uint256.Int)
@@ -453,8 +454,10 @@ func toMessage(tx stTransactionMarshaling, ps stPostState, baseFee *big.Int) (co
 		uint256.NewInt(tipCap.Uint64()),
 		data,
 		accessList,
-		false, /* checkNonce */
-		false /* isFree */)
+		false, // checkNonce
+		false, // isFree
+		0,     // rollupDataGas
+	)
 
 	return msg, nil
 }
