@@ -240,7 +240,7 @@ func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Me
 
 	var err error
 	//msg.from, err = tx.Sender(s)
-	log.Debug("MMDBG dtX AsMessage", "msg", msg)
+	log.Debug("MMDBG dtX AsMessage", "txhash", tx.Hash(), "msg", msg)
 	return msg, err
 }
 
@@ -276,16 +276,19 @@ func (tx *DepositTransaction) Hash() libcommon.Hash {
 	if hash := tx.hash.Load(); hash != nil {
 		return *hash.(*libcommon.Hash)
 	}
-	hash := rlpHash([]interface{}{
-		tx.SourceHash,
-		tx.From,
-		tx.To,
-		tx.Mint,
-		tx.Value,
-		tx.GasLimit,
-		tx.IsSystemTx,
-		tx.Data,
-	})
+	hash := prefixedRlpHash(
+		DepositTxType,
+		[]interface{}{
+			tx.SourceHash,
+			tx.From,
+			tx.To,
+			tx.Mint,
+			tx.Value,
+			tx.GasLimit,
+			tx.IsSystemTx,
+			tx.Data,
+		},
+	)
 	tx.hash.Store(&hash)
 	return hash
 

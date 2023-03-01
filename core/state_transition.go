@@ -66,7 +66,6 @@ type StateTransition struct {
 	tip        *uint256.Int
 	initialGas uint64
 	value      *uint256.Int
-	mint       *uint256.Int
 	data       []byte
 	state      evmtypes.IntraBlockState
 	evm        vm.VMInterface
@@ -271,7 +270,7 @@ func CheckEip1559TxGasFeeCap(from libcommon.Address, gasFeeCap, tip, baseFee *ui
 // DESCRIBED: docs/programmers_guide/guide.md#nonce
 func (st *StateTransition) preCheck(gasBailout bool) error {
 	if st.msg.Nonce() == types.DepositsNonce {
-		log.Debug("MMDBG preCheck for Deposit txn")
+		log.Debug("MMDBG preCheck for Deposit txn", "mint", st.msg.Mint(), "systemTx", st.msg.IsSystemTx())
 
 		// Following section copied from Optimism patchset
 
