@@ -365,6 +365,7 @@ func TestBlockReceiptStorage(t *testing.T) {
 		TxHash:          tx1.Hash(),
 		ContractAddress: libcommon.BytesToAddress([]byte{0x01, 0x11, 0x11}),
 		GasUsed:         111111,
+		L1Fee:           big.NewInt(7),
 	}
 	//receipt1.Bloom = types.CreateBloom(types.Receipts{receipt1})
 
@@ -408,6 +409,9 @@ func TestBlockReceiptStorage(t *testing.T) {
 	} else {
 		if err := checkReceiptsRLP(rs, receipts); err != nil {
 			t.Fatalf(err.Error())
+		}
+		for _, r := range rs {
+			fmt.Printf("JKY!!! %+v\n", r)
 		}
 	}
 	// Delete the body and ensure that the receipts are no longer returned (metadata can't be recomputed)

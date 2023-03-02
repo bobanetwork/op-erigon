@@ -37,8 +37,14 @@ import (
 )
 
 func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chain.Config, block *types.Block, senders []common.Address) (types.Receipts, error) {
-	if cached := rawdb.ReadReceipts(tx, block, senders); cached != nil {
+	// FIXME disabling the cached receipt path to avoid wiring L1 Fee stuff for
+	// the moment
+	cached := rawdb.ReadReceipts(tx, block, senders)
+	if cached != nil && len(cached) == 0 {
+		log.Info("MMDBG returning cached receipts")
 		return cached, nil
+	} else {
+		log.Info("MMDBG skipped cached receipts", "cached", cached)
 	}
 	engine := api.engine()
 
@@ -65,6 +71,7 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 		ibs.Prepare(txn.Hash(), block.Hash(), i)
 		header := block.Header()
 		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, vm.Config{}, nil /*excessDataGas*/)
+		log.Info("MMDBG computed receipt for tx", "txhash", txn.Hash(), "l1Fee", receipt.L1Fee)
 		if err != nil {
 			return nil, err
 		}
@@ -745,6 +752,10 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"contractAddress":   nil,
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
+	}
+	if receipt.L1Fee != nil {
+		// simulate 'omitEmpty'
+		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
 	}
 
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
