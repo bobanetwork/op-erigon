@@ -24,6 +24,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/log/v3"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/exp/slices"
 
@@ -588,6 +589,9 @@ func FinalizeBlockExecution(
 
 	if err := stateWriter.WriteChangeSets(); err != nil {
 		return nil, nil, nil, fmt.Errorf("writing changesets for block %d failed: %w", header.Number.Uint64(), err)
+	}
+	for _, tx := range txs {
+		log.Debug("MMDBG Finalizing tx", "txhash", tx.Hash(), "to", tx.GetTo(), "nonce", tx.GetNonce())
 	}
 	return newBlock, newTxs, newReceipt, nil
 }

@@ -268,6 +268,7 @@ func writeForkChoiceHashes(
 	if forkChoice.FinalizedBlockHash != (libcommon.Hash{}) {
 		rawdb.WriteForkchoiceFinalized(tx, forkChoice.FinalizedBlockHash)
 	}
+	log.Info("MMDBG wrote forkchoices", "safe", forkChoice.SafeBlockHash, "finalized", forkChoice.FinalizedBlockHash)
 
 	return true, nil
 }
@@ -304,7 +305,7 @@ func startHandlingForkChoice(
 			cfg.hd.BeaconRequestList.Remove(requestId)
 			return nil, err
 		}
-		if ihProgress >= *headerNumber {
+		if ihProgress >= *headerNumber && cfg.chainConfig.Optimism == nil {
 			// FCU points to a canonical and fully validated block in the past.
 			// Treat it as a no-op to avoid unnecessary unwind of block execution and other stages
 			// with subsequent rewind on a newer FCU.
@@ -374,6 +375,7 @@ func startHandlingForkChoice(
 	if err != nil {
 		return nil, err
 	}
+	log.Info("MMDBG Forking point is", "blockNumber", forkingPoint)
 	if forkingPoint < preProgress {
 
 		log.Info(fmt.Sprintf("[%s] Fork choice: re-org", s.LogPrefix()), "goal", headerNumber, "from", preProgress, "unwind to", forkingPoint)

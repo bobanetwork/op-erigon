@@ -119,8 +119,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	if noempty {
 		log.Debug("MMDBG SpawnMiningExecStage", "txs", txs, "Deposits", current.Deposits, "NoTxPool", current.NoTxPool)
 
-		if current.Deposits != nil && len(current.Deposits) != 0 {
-
+		if len(current.Deposits) > 0 {
 			var txs []types.Transaction
 			for i := range current.Deposits {
 				s := rlp.NewStream(bytes.NewReader(current.Deposits[i]), uint64(len(current.Deposits[i])))
