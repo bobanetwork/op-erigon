@@ -50,6 +50,7 @@ const (
 	LegacyTxType = iota
 	AccessListTxType
 	DynamicFeeTxType
+	OffchainTxType = 0x7d
 	DepositTxType = 0x7e
 )
 
@@ -166,6 +167,13 @@ func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 	case DepositTxType:
 		log.Debug("MMDBG transaction.go Decoding as DepositTxType")
 		t := &DepositTransaction{}
+		if err = t.DecodeRLP(s); err != nil {
+			return nil, err
+		}
+		tx = t
+	case OffchainTxType:
+		log.Debug("MMDBG transaction.go Decoding as OffchainTxType")
+		t := &OffchainTransaction{}
 		if err = t.DecodeRLP(s); err != nil {
 			return nil, err
 		}

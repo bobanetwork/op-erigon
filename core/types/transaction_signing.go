@@ -246,6 +246,11 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 		log.Debug("MMDBG transaction_signing DepositTransaction handler")
 		sender, _ := tx.GetSender()
 		return sender, nil
+	case *OffchainTransaction:
+		// This type contains an explicit From: field
+		log.Debug("MMDBG transaction_signing OffchainTransaction handler")
+		sender, _ := tx.GetSender()
+		return sender, nil
 	default:
 		return libcommon.Address{}, ErrTxTypeNotSupported
 	}

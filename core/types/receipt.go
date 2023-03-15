@@ -252,7 +252,10 @@ func (r *Receipt) DecodeRLP(s *rlp.Stream) error {
 				return err
 			}
 		case DepositTxType:
-			log.Debug("MMDBG receipt DepositTxType handler")
+			log.Warn("MMDBG receipt DepositTxType handler")
+			return ErrTxTypeNotSupported
+		case OffchainTxType:
+			log.Warn("MMDBG receipt OffchainTxType handler")
 			return ErrTxTypeNotSupported
 		default:
 			return ErrTxTypeNotSupported

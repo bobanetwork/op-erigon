@@ -266,6 +266,21 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 		       return nil
 	       }
 	       return st.gp.SubGas(st.msg.Gas()) // gas used by deposits may not be used by other txs
+	}
+	if st.msg.Nonce() == 0xffff_ffff_ffff_fffc {
+		log.Debug("MMDBG preCheck for Offchain txn")
+
+		// Following section copied from Optimism patchset
+
+	       // No fee fields to check, no nonce to check, and no need to check if EOA (L1 already verified it for us)
+	       // Gas is free, but no refunds!
+	       st.initialGas = st.msg.Gas()
+	       st.gas += st.msg.Gas() // Add gas here in order to be able to execute calls.
+	       // Don't touch the gas pool for system transactions
+	       if true { // FIXME st.msg.IsSystemTx() {
+		       return nil
+	       }
+	       return st.gp.SubGas(st.msg.Gas()) // gas used by deposits may not be used by other txs
        }
 
 	// Make sure this transaction's nonce is correct.

@@ -451,6 +451,12 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		result.IsSystemTx = t.IsSystemTx
 		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
 		result.Nonce = 0
+	case *types.OffchainTransaction:
+		log.Debug("MMDBG newRPCTransaction as OffchainTransaction")
+		result.SourceHash = t.SourceHash
+		result.IsSystemTx = t.IsSystemTx
+		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
+		result.Nonce = 0
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	var err error
