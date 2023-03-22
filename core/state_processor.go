@@ -26,6 +26,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/log/v3"
 )
 
 // applyTransaction attempts to apply a transaction to the given state database
@@ -57,6 +58,14 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	evm.Reset(txContext, ibs)
 
 	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
+
+	log.Debug("MMDBG-HC ApplyMessage", "err", err, "result", result, "msg", msg)
+
+	if err == nil && result.Err == vm.ErrHCReverted {
+		log.Debug("MMDBG-HC ApplyMessage propagating ErrHCReverted")
+		err = vm.ErrHCReverted
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -97,7 +106,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, []byte, error) {
+func ApplyTransactionMM(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config, hc *vm.HCContext) (*types.Receipt, []byte, error) {
 	// Create a new context to be used in the EVM environment
 
 	// Add addresses to access list if applicable
@@ -106,6 +115,10 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
+	vmenv.SetHC(hc)
 
 	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg)
+}
+func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, []byte, error) {
+	return ApplyTransactionMM(config, blockHashFunc, engine, author, gp, ibs, stateWriter, header, tx, usedGas, cfg, nil)
 }

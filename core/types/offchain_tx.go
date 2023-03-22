@@ -371,7 +371,7 @@ func (tx *OffchainTransaction) SetSender(addr libcommon.Address) {
 
 func NewOffchainTx(data []byte) *OffchainTransaction {
 	hcFrom := libcommon.HexToAddress("0xdeaddeaddeaddeaddeaddeaddeaddeaddead9901")
-	hcHelper := libcommon.HexToAddress("0x4200000000000000000000000000000000000080")
+	hcHelper := libcommon.HexToAddress("0x42000000000000000000000000000000000000Fd")
 	var hcHash libcommon.Hash
 	
 	var TMP []byte = []byte{ 1 } // FIXME - decide how to construct a SourceHash

@@ -733,7 +733,10 @@ func opCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byt
 	}
 
 	ret, returnGas, err := interpreter.evm.Call(scope.Contract, toAddr, args, gas, &value, false /* bailout */)
-
+	
+	if toAddr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
+		log.Debug("MMDBG-HC opCall", "err", err, "ret", ret, "returnGas", returnGas, "to", toAddr, "args", args)
+	}
 	if err != nil {
 		temp.Clear()
 	} else {
@@ -855,6 +858,7 @@ func opRevert(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 	offset, size := scope.Stack.Pop(), scope.Stack.Pop()
 	ret := scope.Memory.GetPtr(int64(offset.Uint64()), int64(size.Uint64()))
 	interpreter.returnData = ret
+	log.Debug("MMDBG-HC opRevert", "ret", ret, "int", interpreter, "scope", scope)
 	return ret, ErrExecutionReverted
 }
 

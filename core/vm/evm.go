@@ -28,6 +28,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/log/v3"
 )
 
 // emptyCodeHash is used by create to ensure deployment is disallowed to already
@@ -63,6 +64,13 @@ func run(evm *EVM, contract *Contract, input []byte, readOnly bool) ([]byte, err
 	return evm.interpreter.Run(contract, input, readOnly)
 }
 
+// Hybrid Compute extension
+type HCContext struct {
+	HcFlag int
+	Txhash	*libcommon.Hash
+	Request []byte
+}
+
 // EVM is the Ethereum Virtual Machine base object and provides
 // the necessary tools to run a contract on the given state with
 // the provided context. It should be noted that any error
@@ -96,6 +104,11 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+	hc *HCContext
+}
+
+func (evm *EVM) SetHC(hc *HCContext) {
+	evm.hc = hc
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -267,7 +280,19 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 		if typ == STATICCALL {
 			readOnly = true
 		}
+		if evm.hc != nil {
+			log.Debug("MMDBG-HC before evm.run", "hcFlag", evm.hc.HcFlag, "addr", addr, "input", input)
+		}
 		ret, err = run(evm, contract, input, readOnly)
+		if evm.hc != nil {
+			log.Debug("MMDBG-HC after evm.run", "hcFlag", evm.hc.HcFlag, "err", err, "ret", ret, "addr", addr, "input", input)
+			if evm.hc.HcFlag == 0 && err == ErrExecutionReverted && addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
+				log.Debug("MMDBG-HC HybridCompute triggered")
+				evm.hc.HcFlag = 1
+				evm.hc.Request = make([]byte,len(input))
+				copy(evm.hc.Request, input)
+			}
+		}
 		gas = contract.Gas
 	}
 	// When an error was returned by the EVM or when setting the creation code
@@ -290,7 +315,12 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr libcommon.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
-	return evm.call(CALL, caller, addr, input, gas, value, bailout)
+	ret, leftOverGas, err = evm.call(CALL, caller, addr, input, gas, value, bailout)
+	if err == ErrExecutionReverted && evm.hc.HcFlag == 1 {
+		log.Debug("MMDBG-HC evm.Call setting ErrHCReverted")
+		err = ErrHCReverted
+	}
+	return ret, leftOverGas, err
 }
 
 // CallCode executes the contract associated with the addr with the given input

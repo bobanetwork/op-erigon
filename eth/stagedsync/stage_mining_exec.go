@@ -2,6 +2,7 @@ package stagedsync
 
 import (
 	"bytes"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -136,6 +137,13 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 				}
 				txs = append(txs, transaction)
 			}
+/* FIXME - can now remove
+			if !current.NoTxPool && current.Header.Number.Cmp(big.NewInt(5)) == 0 {
+				var hcData []byte = []byte{1, 2, 3, 4, 5, 6, 7, 8}
+				hcTmp := types.NewOffchainTx(hcData)
+				txs = append(txs, hcTmp)
+			}
+*/
 			depTS := types.NewTransactionsFixedOrder(txs)
 
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId)
@@ -322,7 +330,13 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 			transactions = transactions[1:]
 			continue
 		}
-		// Check transaction nonce
+		if int(transaction.Type()) == types.OffchainTxType {
+			// FIXME - may need to include some of the later checks
+			log.Debug("MMDBG bypassing filterBadTransactions for Offchain tx")
+			filtered = append(filtered, transaction)
+			transactions = transactions[1:]
+			continue
+		}		// Check transaction nonce
 		if account.Nonce > transaction.GetNonce() {
 			transactions = transactions[1:]
 			nonceTooLowCnt++
@@ -419,12 +433,18 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	var coalescedLogs types.Logs
 	noop := state.NewNoopWriter()
 
-	var miningCommitTx = func(txn types.Transaction, coinbase libcommon.Address, vmConfig *vm.Config, chainConfig chain.Config, ibs *state.IntraBlockState, current *MiningBlock) ([]*types.Log, error) {
+	var miningCommitTx = func(txn types.Transaction, coinbase libcommon.Address, vmConfig *vm.Config, chainConfig chain.Config, ibs *state.IntraBlockState, current *MiningBlock, hcFlag int) ([]*types.Log, error) {
 		ibs.Prepare(txn.Hash(), libcommon.Hash{}, tcount)
 		gasSnap := gasPool.Gas()
 		snap := ibs.Snapshot()
-		log.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
-		receipt, _, err := core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig)
+		log.Debug("miningCommitTx calling addTransactionsToMiningBlock", "tcount", tcount, "txn hash", txn.Hash())
+		
+		var hc vm.HCContext
+		hc.HcFlag = hcFlag
+		
+		receipt, _, err := core.ApplyTransactionMM(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, &hc)
+		log.Debug("MMDBG-HC miningCommitTx", "err", err, "receipt", receipt, "hc", hc)
+		
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap) // restore gasPool as well as ibs
@@ -433,6 +453,7 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 
 		current.Txs = append(current.Txs, txn)
 		current.Receipts = append(current.Receipts, receipt)
+		log.Debug("MMDBG-HC mCT final", "txn", txn, "current", current)
 		return receipt.Logs, nil
 	}
 
@@ -444,9 +465,12 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	}()
 
 	done := false
-
+	var hcFlag int
+	log.Debug("MMDBG-HC before addTransactionsToMiningBlock loop")
+	hcFlag = 0
 LOOP:
 	for {
+		log.Debug("MMDBG-HC top of addTransactionsToMiningBlock loop", "hcFlag", hcFlag, "tcount", tcount, "cL", coalescedLogs)
 		// see if we need to stop now
 		if stopped != nil {
 			select {
@@ -472,31 +496,85 @@ LOOP:
 			done = true
 			break
 		}
-		// Retrieve the next transaction and abort if all done
-		txn := txs.Peek()
-		if txn == nil {
-			break
+		
+		var txn types.Transaction
+		var from libcommon.Address
+		var err error
+		if hcFlag == 1 {
+			var hcData []byte = []byte{151, 80, 9, 113}
+			
+			// Pasted from legacy l2geth
+			// Generate cryptographically strong pseudo-random int between 0 - 2^256 - 1
+			one := big.NewInt(1)
+			two := big.NewInt(2)
+			max := new(big.Int)
+			// Max random value 2^256 - 1
+			max = max.Exp(two, big.NewInt(int64(256)), nil).Sub(max, one)
+			randomBigInt, err := rand.Int(rand.Reader, max)
+
+			if err != nil {
+				log.Error("MMDBG-HC TURING bobaTuringRandom:Random Number Generation Failed", "err", err)
+				hcFlag = 3
+				continue
+			}
+
+			log.Debug("MMDBG-HC TURING bobaTuringRandom:Random number",
+				"randomBigInt", randomBigInt)
+			rNum, _ := uint256.FromBig(randomBigInt)
+			
+			rNum32 := rNum.Bytes32()
+			hcData = append(hcData, rNum32[:]...) 
+			
+			txn = types.NewOffchainTx(hcData)
+			log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
+			hcFlag = 2
+		} else {
+			// Retrieve the next transaction and abort if all done
+			txn = txs.Peek()
+			if txn == nil {
+				log.Debug("MMDBG-HC No more transactions", "cL", coalescedLogs)
+				break
+			}
+
+			// We use the eip155 signer regardless of the env hf.
+			from, err = txn.Sender(*signer)
+			if err != nil {
+				log.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
+				txs.Pop()
+				continue
+			}
+
+			// Check whether the txn is replay protected. If we're not in the EIP155 (Spurious Dragon) hf
+			// phase, start ignoring the sender until we do.
+			if txn.Protected() && !chainConfig.IsSpuriousDragon(header.Number.Uint64()) {
+				log.Debug(fmt.Sprintf("[%s] Ignoring replay protected transaction", logPrefix), "hash", txn.Hash(), "eip155", chainConfig.SpuriousDragonBlock)
+
+				txs.Pop()
+				continue
+			}
 		}
 
-		// We use the eip155 signer regardless of the env hf.
-		from, err := txn.Sender(*signer)
-		if err != nil {
-			log.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
-			txs.Pop()
-			continue
+		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
+		// an OffchainTx into the queue ahead of it to populate the on-chain helper
+		if hcFlag != 0 {
+			log.Debug("MMDBG-HC Transaction Peek", "hcFlag", hcFlag, "txn", txn)
 		}
-
-		// Check whether the txn is replay protected. If we're not in the EIP155 (Spurious Dragon) hf
-		// phase, start ignoring the sender until we do.
-		if txn.Protected() && !chainConfig.IsSpuriousDragon(header.Number.Uint64()) {
-			log.Debug(fmt.Sprintf("[%s] Ignoring replay protected transaction", logPrefix), "hash", txn.Hash(), "eip155", chainConfig.SpuriousDragonBlock)
-
-			txs.Pop()
-			continue
-		}
-
+		
 		// Start executing the transaction
-		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current)
+		// FIXME - pass a flag to refund gas on the first ErrHCReverted trigger
+		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, hcFlag)
+		
+		if err == vm.ErrHCReverted {
+			if hcFlag == 0 {
+				log.Debug("MMDBG-HC HybridCompute triggered", "txn", txn)
+				hcFlag = 1
+				continue
+			} else if hcFlag == 2 {
+				log.Warn("MMDBG-HC OffchainTx failed", "hcFlag", hcFlag, "txn", txn)
+				hcFlag = 3 // Will not try to intercept the original txn next time
+				continue
+			}
+		}
 
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
@@ -515,7 +593,11 @@ LOOP:
 			log.Debug(fmt.Sprintf("[%s] addTransactionsToMiningBlock Successful", logPrefix), "sender", from, "nonce", txn.GetNonce(), "payload", payloadId)
 			coalescedLogs = append(coalescedLogs, logs...)
 			tcount++
-			txs.Shift()
+			log.Debug("MMDBG-HC transaction OK", "tcount", tcount, "hcFlag", hcFlag)
+			if hcFlag != 2 {
+				txs.Shift()
+			}
+			hcFlag = 0
 		} else {
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
@@ -523,6 +605,7 @@ LOOP:
 			txs.Shift()
 		}
 	}
+	log.Debug("MMDBG-HC after addTransactionsToMiningBlock loop", "tcount", tcount, "current", current)
 
 	/*
 		// Notify resubmit loop to decrease resubmitting interval if env interval is larger

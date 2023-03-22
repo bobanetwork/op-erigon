@@ -462,6 +462,15 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value, bailout)
+			
+		
+/*		if st.to() == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
+			log.Debug("MMDBG-HC st.evm.Call", "ret", ret, "gas", st.gas, "vmerr", vmerr)
+			if vmerr == vm.ErrExecutionReverted {
+				vmerr = vm.ErrHCReverted
+			}
+		}
+*/
 	}
 	if refunds {
 		if rules.IsLondon {
