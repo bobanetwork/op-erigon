@@ -235,7 +235,7 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 }
 
 // AsMessage returns the transaction as a core.Message.
-func (tx OffchainTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
+func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
 	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
 		sourceHash: tx.SourceHash,

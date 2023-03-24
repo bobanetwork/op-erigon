@@ -61,11 +61,6 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 
 	log.Debug("MMDBG-HC ApplyMessage", "err", err, "result", result, "msg", msg)
 
-	if err == nil && result.Err == vm.ErrHCReverted {
-		log.Debug("MMDBG-HC ApplyMessage propagating ErrHCReverted")
-		err = vm.ErrHCReverted
-	}
-
 	if err != nil {
 		return nil, nil, err
 	}

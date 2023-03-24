@@ -433,16 +433,13 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	var coalescedLogs types.Logs
 	noop := state.NewNoopWriter()
 
-	var miningCommitTx = func(txn types.Transaction, coinbase libcommon.Address, vmConfig *vm.Config, chainConfig chain.Config, ibs *state.IntraBlockState, current *MiningBlock, hcFlag int) ([]*types.Log, error) {
+	var miningCommitTx = func(txn types.Transaction, coinbase libcommon.Address, vmConfig *vm.Config, chainConfig chain.Config, ibs *state.IntraBlockState, current *MiningBlock, hc *vm.HCContext) ([]*types.Log, error) {
 		ibs.Prepare(txn.Hash(), libcommon.Hash{}, tcount)
 		gasSnap := gasPool.Gas()
 		snap := ibs.Snapshot()
 		log.Debug("miningCommitTx calling addTransactionsToMiningBlock", "tcount", tcount, "txn hash", txn.Hash())
 		
-		var hc vm.HCContext
-		hc.HcFlag = hcFlag
-		
-		receipt, _, err := core.ApplyTransactionMM(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, &hc)
+		receipt, _, err := core.ApplyTransactionMM(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, hc)
 		log.Debug("MMDBG-HC miningCommitTx", "err", err, "receipt", receipt, "hc", hc)
 		
 		if err != nil {
@@ -466,11 +463,11 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 
 	done := false
 	var hcFlag int
-	log.Debug("MMDBG-HC before addTransactionsToMiningBlock loop")
+//	log.Debug("MMDBG-HC before addTransactionsToMiningBlock loop")
 	hcFlag = 0
 LOOP:
 	for {
-		log.Debug("MMDBG-HC top of addTransactionsToMiningBlock loop", "hcFlag", hcFlag, "tcount", tcount, "cL", coalescedLogs)
+//		log.Debug("MMDBG-HC top of addTransactionsToMiningBlock loop", "hcFlag", hcFlag, "tcount", tcount, "cL", coalescedLogs)
 		// see if we need to stop now
 		if stopped != nil {
 			select {
@@ -532,7 +529,7 @@ LOOP:
 			// Retrieve the next transaction and abort if all done
 			txn = txs.Peek()
 			if txn == nil {
-				log.Debug("MMDBG-HC No more transactions", "cL", coalescedLogs)
+//				log.Debug("MMDBG-HC No more transactions", "cL", coalescedLogs)
 				break
 			}
 
@@ -561,12 +558,15 @@ LOOP:
 		}
 		
 		// Start executing the transaction
-		// FIXME - pass a flag to refund gas on the first ErrHCReverted trigger
-		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, hcFlag)
+
+		var hc vm.HCContext
+		hc.HcFlag = hcFlag
+
+		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, &hc)
 		
 		if err == vm.ErrHCReverted {
 			if hcFlag == 0 {
-				log.Debug("MMDBG-HC HybridCompute triggered", "txn", txn)
+				log.Debug("MMDBG-HC HybridCompute triggered", "txn", txn, "request", hc.Request)
 				hcFlag = 1
 				continue
 			} else if hcFlag == 2 {
@@ -605,7 +605,7 @@ LOOP:
 			txs.Shift()
 		}
 	}
-	log.Debug("MMDBG-HC after addTransactionsToMiningBlock loop", "tcount", tcount, "current", current)
+//	log.Debug("MMDBG-HC after addTransactionsToMiningBlock loop", "tcount", tcount, "current", current)
 
 	/*
 		// Notify resubmit loop to decrease resubmitting interval if env interval is larger

@@ -64,12 +64,7 @@ func run(evm *EVM, contract *Contract, input []byte, readOnly bool) ([]byte, err
 	return evm.interpreter.Run(contract, input, readOnly)
 }
 
-// Hybrid Compute extension
-type HCContext struct {
-	HcFlag int
-	Txhash	*libcommon.Hash
-	Request []byte
-}
+
 
 // EVM is the Ethereum Virtual Machine base object and provides
 // the necessary tools to run a contract on the given state with
@@ -109,6 +104,7 @@ type EVM struct {
 
 func (evm *EVM) SetHC(hc *HCContext) {
 	evm.hc = hc
+	
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -286,7 +282,9 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 		ret, err = run(evm, contract, input, readOnly)
 		if evm.hc != nil {
 			log.Debug("MMDBG-HC after evm.run", "hcFlag", evm.hc.HcFlag, "err", err, "ret", ret, "addr", addr, "input", input)
-			if evm.hc.HcFlag == 0 && err == ErrExecutionReverted && addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
+			if !evm.hc.Failed && evm.hc.HcFlag == 0 && err == ErrExecutionReverted && addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
+				// FIXME - check 'ret' for specific trigger msg
+
 				log.Debug("MMDBG-HC HybridCompute triggered")
 				evm.hc.HcFlag = 1
 				evm.hc.Request = make([]byte,len(input))
@@ -316,7 +314,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr libcommon.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
 	ret, leftOverGas, err = evm.call(CALL, caller, addr, input, gas, value, bailout)
-	if err == ErrExecutionReverted && evm.hc.HcFlag == 1 {
+	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.HcFlag == 1 {
 		log.Debug("MMDBG-HC evm.Call setting ErrHCReverted")
 		err = ErrHCReverted
 	}

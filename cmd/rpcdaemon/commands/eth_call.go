@@ -259,6 +259,11 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 	// Create a helper to check if a gas allowance results in an executable transaction
 	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
 		result, err := caller.DoCallWithNewGas(ctx, gas)
+		log.Debug("MMDBG-HC estimateGas", "gas", gas, "err", err, "result", result)
+		if err == vm.ErrHCReverted {
+			log.Debug("MMDBG-HC estimateGas retrying once with HC")
+			result, err = caller.DoCallWithNewGas(ctx, gas)
+		}
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
 				// Special case, raise gas limit

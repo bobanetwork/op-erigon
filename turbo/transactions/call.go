@@ -164,8 +164,75 @@ func (r *ReusableCaller) DoCallWithNewGas(
 	}()
 
 	gp := new(core.GasPool).AddGas(r.message.Gas())
+	log.Debug("MMDBG-HC call.go before ApplyMessage", "timeout", r.callTimeout, "msg", r.message)
 
-	result, err := core.ApplyMessage(r.evm, r.message, gp, true /* refunds */, false /* gasBailout */)
+	if vm.HCResponseCache == nil {
+		vm.HCResponseCache = make(map[libcommon.Hash] *vm.HCContext)
+	}
+
+	mh := vm.HCKey(r.message.From(), r.message.Nonce(), r.message.Data())
+	hc := vm.HCResponseCache[mh]
+	if hc == nil {
+		hc = new(vm.HCContext)
+		hc.HcFlag = 0
+		hc.MayBlock = true
+	}
+	r.evm.SetHC(hc)
+	
+	var err error
+	var result *core.ExecutionResult
+
+	if len(hc.Response) > 0 && !hc.Failed{
+		// A cached response is available from a prior run
+
+		txn := types.NewOffchainTx(hc.Response)
+		log.Debug("MMDBG-HC Inserting HC Response", "txn", txn)
+
+		var msg types.Message
+		msg, err =  txn.AsMessage(types.Signer{}, nil, nil)
+		log.Debug("MMDBG-HC call.go AsMessage", "err", err, "msg", msg)
+
+		result, err = core.ApplyMessage(r.evm, msg, gp, true /* refunds */, false /* gasBailout */)
+		log.Debug("MMDBG-HC call.go after HC_ApplyMessage", "err", err, "result", result)
+		if err != nil {
+			if err != vm.ErrOutOfGas {
+				hc.Failed = true
+			}
+			return nil, err
+		}
+	}
+
+
+	result, err = core.ApplyMessage(r.evm, r.message, gp, true /* refunds */, false /* gasBailout */)
+	log.Debug("MMDBG-HC call.go after ApplyMessage", "err", err, "result", result)
+
+	if err == vm.ErrHCReverted {	
+		if vm.HCResponseCache[mh] == nil {
+			log.Debug("MMDBG-HC call.go Offchain triggered", "hc", hc, "cache", vm.HCResponseCache[mh])
+			time.Sleep(5 * time.Second)
+			log.Debug("MMDBG-HC call.go Sleep done")
+			
+			var hcData []byte = []byte{151, 80, 9, 113, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 ,15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32 }
+			hc.Response = make([]byte, len(hcData))
+			copy(hc.Response, hcData)
+
+			//result, err = core.ApplyMessage(r.evm, r.message, gp, true /* refunds */, false /* gasBailout */)
+			//log.Debug("MMDBG-HC call.go after ApplyMessage2", "err", err, "result", result)
+			
+			hc.HcFlag = 2
+			vm.HCResponseCache[mh] = hc
+			// the caller will get ErrHCReverted as a signal to retry. The cached response
+			// will be used on that call. 
+		} else {
+			if err != vm.ErrOutOfGas {
+				hc.Failed = true
+				log.Warn("MMDBG-HC got ErrHCReverted on cached entry")
+				return nil, vm.ErrHCFailed
+			}
+		}
+	}
+	log.Debug("MMDBG-HC call.go after ApplyMessage3", "err", err, "result", result)
+
 	if err != nil {
 		return nil, err
 	}

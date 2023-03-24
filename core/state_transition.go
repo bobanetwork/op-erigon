@@ -186,7 +186,15 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
 // for trace_call to replicate OE/Pariry behaviour
 func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
-	return NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
+	result, err := NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
+
+	if err == nil && result != nil && result.Err == vm.ErrHCReverted {
+		log.Debug("MMDBG-HC ApplyMessage propagating ErrHCReverted")
+		err = vm.ErrHCReverted
+	}
+
+	return result, err
+
 }
 
 // to returns the recipient of the message.
