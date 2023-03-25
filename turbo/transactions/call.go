@@ -186,7 +186,7 @@ func (r *ReusableCaller) DoCallWithNewGas(
 		// A cached response is available from a prior run
 
 		txn := types.NewOffchainTx(hc.Response)
-		log.Debug("MMDBG-HC Inserting HC Response", "txn", txn)
+		log.Debug("MMDBG-HC Inserting HC Response", "mh", mh, "txn", txn)
 
 		var msg types.Message
 		msg, err =  txn.AsMessage(types.Signer{}, nil, nil)
@@ -208,8 +208,8 @@ func (r *ReusableCaller) DoCallWithNewGas(
 
 	if err == vm.ErrHCReverted {	
 		if vm.HCResponseCache[mh] == nil {
-			log.Debug("MMDBG-HC call.go Offchain triggered", "hc", hc, "cache", vm.HCResponseCache[mh])
-			time.Sleep(5 * time.Second)
+			log.Debug("MMDBG-HC call.go Offchain triggered", "mh", mh, "hc", hc, "cache", vm.HCResponseCache[mh])
+			time.Sleep(2 * time.Second)
 			log.Debug("MMDBG-HC call.go Sleep done")
 			
 			var hcData []byte = []byte{151, 80, 9, 113, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 ,15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32 }

@@ -462,9 +462,14 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	}()
 
 	done := false
-	var hcFlag int
+	var hcOffchain bool
+	var hc *vm.HCContext
+
 //	log.Debug("MMDBG-HC before addTransactionsToMiningBlock loop")
-	hcFlag = 0
+	if vm.HCResponseCache == nil {
+		vm.HCResponseCache = make(map[libcommon.Hash] *vm.HCContext)
+	}
+
 LOOP:
 	for {
 //		log.Debug("MMDBG-HC top of addTransactionsToMiningBlock loop", "hcFlag", hcFlag, "tcount", tcount, "cL", coalescedLogs)
@@ -497,7 +502,7 @@ LOOP:
 		var txn types.Transaction
 		var from libcommon.Address
 		var err error
-		if hcFlag == 1 {
+		if false /* hcFlag == 1 */ {
 			var hcData []byte = []byte{151, 80, 9, 113}
 			
 			// Pasted from legacy l2geth
@@ -511,7 +516,7 @@ LOOP:
 
 			if err != nil {
 				log.Error("MMDBG-HC TURING bobaTuringRandom:Random Number Generation Failed", "err", err)
-				hcFlag = 3
+				//hcFlag = 3
 				continue
 			}
 
@@ -524,8 +529,10 @@ LOOP:
 			
 			txn = types.NewOffchainTx(hcData)
 			log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
-			hcFlag = 2
+			//hcFlag = 2
 		} else {
+			hcOffchain = false
+
 			// Retrieve the next transaction and abort if all done
 			txn = txs.Peek()
 			if txn == nil {
@@ -549,23 +556,49 @@ LOOP:
 				txs.Pop()
 				continue
 			}
+
+			// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
+			// an OffchainTx into the queue ahead of it to populate the on-chain helper
+			
+			txnFrom,_ := txn.GetSender()
+			mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
+			hc = vm.HCResponseCache[mh]
+			log.Debug("MMDBG-HC Transaction Peek",  "txn", txn, "mh", mh, "hc", hc)
+			if hc != nil && !hc.Failed && hc.HcFlag == 2 && len(hc.Response) > 0 {
+				log.Debug("MMDBG-HC Found a prepared", "hc.Response", hc.Response)
+				txn = types.NewOffchainTx(hc.Response)
+				log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
+				hc.HcFlag = 3 // Ensure that OffchainTx is only inserted once
+				hcOffchain = true
+			}
+			
+			if hc == nil {
+				hc = new(vm.HCContext)
+			}
 		}
 
-		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
-		// an OffchainTx into the queue ahead of it to populate the on-chain helper
-		if hcFlag != 0 {
-			log.Debug("MMDBG-HC Transaction Peek", "hcFlag", hcFlag, "txn", txn)
-		}
-		
 		// Start executing the transaction
 
-		var hc vm.HCContext
-		hc.HcFlag = hcFlag
 
-		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, &hc)
+		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, hc)
 		
 		if err == vm.ErrHCReverted {
+			log.Warn("MMDBG-HC stage_mining_exec got ErrHCReverted", "hc", hc, "txn", txn)
+			hc.HcFlag = 4
+			hc.Failed = true
+
+			txnFrom,_ := txn.GetSender()			
+			mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
+			vm.HCResponseCache[mh] = hc
+
+			continue
+		}
+			
+/*		
 			if hcFlag == 0 {
+				// FIXME - This would now mean no EstimateGas(). Need to queue a background process
+				// to do the offchain lookup then defer the Txn until it's completed. For now we
+				// insist on a cached result from estimateGas. 
 				log.Debug("MMDBG-HC HybridCompute triggered", "txn", txn, "request", hc.Request)
 				hcFlag = 1
 				continue
@@ -575,7 +608,7 @@ LOOP:
 				continue
 			}
 		}
-
+*/
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
 			log.Debug(fmt.Sprintf("[%s] Gas limit exceeded for env block", logPrefix), "hash", txn.Hash(), "sender", from)
@@ -593,11 +626,15 @@ LOOP:
 			log.Debug(fmt.Sprintf("[%s] addTransactionsToMiningBlock Successful", logPrefix), "sender", from, "nonce", txn.GetNonce(), "payload", payloadId)
 			coalescedLogs = append(coalescedLogs, logs...)
 			tcount++
-			log.Debug("MMDBG-HC transaction OK", "tcount", tcount, "hcFlag", hcFlag)
-			if hcFlag != 2 {
+			log.Debug("MMDBG-HC transaction OK", "tcount", tcount, "hcOffchain", hcOffchain)
+			if !hcOffchain {
+				txnFrom,_ := txn.GetSender()			
+				mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
+				log.Debug("MMDBG-HC Remove from cache", "mh", mh)
+				delete(vm.HCResponseCache, mh)
 				txs.Shift()
 			}
-			hcFlag = 0
+			// FIXME - remove HC cache entry
 		} else {
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).

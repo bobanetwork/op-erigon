@@ -37,10 +37,10 @@ func HCKey (addr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
 
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(addr.Bytes())
-	hasher.Write(bNonce.Bytes())
+	// hasher.Write(bNonce.Bytes()) // FIXME
 	hasher.Write(data)
 	key := libcommon.BytesToHash(hasher.Sum(nil))
-	log.Debug("MMDBG-HC HCKey", "key", key)
+	log.Debug("MMDBG-HC HCKey", "key", key, "addr", addr, "nonce", nonce, "data", data)
 	
 	return key
 }
