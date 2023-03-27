@@ -157,4 +157,10 @@ var DefaultFlags = []cli.Flag{
 	&utils.LightClientDiscoveryTCPPortFlag,
 	&utils.SentinelAddrFlag,
 	&utils.SentinelPortFlag,
+
+	// Rollup
+	&utils.RollupSequencerHTTPFlag,
+	&utils.RollupHistoricalRPCFlag,
+	&utils.RollupHistoricalRPCTimeoutFlag,
+	&utils.RollupDisableTxPoolGossipFlag,
 }

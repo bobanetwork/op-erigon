@@ -119,9 +119,12 @@ type BaseAPI struct {
 	_engine      consensus.EngineReader
 
 	evmCallTimeout time.Duration
-	_proofDB     kv.RwDB
+	_proofDB       kv.RwDB
+
+	_rollupRPCService *RollupRPCService
 }
-func NewBaseApiMM(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, proofDB kv.RwDB) *BaseAPI {
+
+func NewBaseApiMM(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, proofDB kv.RwDB, rollupRPCService *RollupRPCService) *BaseAPI {
 	blocksLRUSize := 128 // ~32Mb
 	if !singleNodeMode {
 		blocksLRUSize = 512
@@ -131,10 +134,10 @@ func NewBaseApiMM(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader se
 		panic(err)
 	}
 
-	return &BaseAPI{filters: f, stateCache: stateCache, blocksLRU: blocksLRU, _blockReader: blockReader, _txnReader: blockReader, _agg: agg, evmCallTimeout: evmCallTimeout, _engine: engine, _proofDB: proofDB}
+	return &BaseAPI{filters: f, stateCache: stateCache, blocksLRU: blocksLRU, _blockReader: blockReader, _txnReader: blockReader, _agg: agg, evmCallTimeout: evmCallTimeout, _engine: engine, _proofDB: proofDB, _rollupRPCService: rollupRPCService}
 }
 func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader) *BaseAPI {
-	return NewBaseApiMM(f, stateCache, blockReader, agg, singleNodeMode, evmCallTimeout, engine, nil)
+	return NewBaseApiMM(f, stateCache, blockReader, agg, singleNodeMode, evmCallTimeout, engine, nil, nil)
 }
 
 func (api *BaseAPI) chainConfig(tx kv.Tx) (*chain.Config, error) {

@@ -177,6 +177,10 @@ type Ethereum struct {
 	blockSnapshots *snapshotsync.RoSnapshots
 	blockReader    services.FullBlockReader
 	kvRPC          *remotedbserver.KvServer
+
+	// Rollup
+	seqRPCService        *rpc.Client
+	historicalRPCService *rpc.Client
 }
 
 func splitAddrIntoHostAndPort(addr string) (host string, port int, err error) {
@@ -522,7 +526,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 
 	// proof-of-stake mining
 	assembleBlockPOS := func(param *core.BlockBuilderParameters, interrupt *int32) (*types.BlockWithReceipts, error) {
-        	//log.Debug("MMDBG assembleBlockPOS", "param", param)
+		//log.Debug("MMDBG assembleBlockPOS", "param", param)
 		miningStatePos := stagedsync.NewProposingState(&config.Miner)
 		miningStatePos.MiningConfig.Etherbase = param.SuggestedFeeRecipient
 		proposingSync := stagedsync.New(
@@ -534,11 +538,11 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 				stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miningStatePos, backend.miningSealingQuit),
 			), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder)
 		// We start the mining step
-                log.Debug("MMDBG backend.go Start mining step", "param", param, "proposingSync", proposingSync)
+		log.Debug("MMDBG backend.go Start mining step", "param", param, "proposingSync", proposingSync)
 		if err := stages2.MiningStep(ctx, backend.chainDB, proposingSync, tmpdir); err != nil {
 			return nil, err
 		}
-                log.Debug("MMDBG backend.go Done mining step")
+		log.Debug("MMDBG backend.go Done mining step")
 		block := <-miningStatePos.MiningResultPOSCh
 		return block, nil
 	}
@@ -684,6 +688,28 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		return nil, err
 	}
 
+	// Rollup Sequencer Client
+	if config.RollupSequencerHTTP != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.seqRPCService = client
+	}
+
+	// Rollup History Client
+	if config.RollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.historicalRPCService = client
+	}
+
 	backend.ethBackendRPC, backend.miningRPC, backend.stateChangesClient = ethBackendRPC, miningRPC, stateDiffClient
 
 	backend.syncStages = stages2.NewDefaultStages(backend.sentryCtx, backend.chainDB, stack.Config().P2P, config, backend.sentriesClient, backend.notifications, backend.downloaderClient, allSnapshots, backend.agg, backend.forkValidator, backend.engine)
@@ -744,8 +770,12 @@ func (backend *Ethereum) Init(stack *node.Node, config *ethconfig.Config) error 
 	if casted, ok := backend.engine.(*bor.Bor); ok {
 		borDb = casted.DB
 	}
-	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine, backend.proofDB)
-	authApiList := commands.AuthAPIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine, backend.proofDB)
+	rollupRPCService := &commands.RollupRPCService{
+		SeqRPCService:        backend.seqRPCService,
+		HistoricalRPCService: backend.historicalRPCService,
+	}
+	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine, backend.proofDB, rollupRPCService)
+	authApiList := commands.AuthAPIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine, backend.proofDB, rollupRPCService)
 	go func() {
 		if err := cli.StartRpcServer(ctx, httpRpcCfg, apiList, authApiList); err != nil {
 			log.Error(err.Error())
@@ -1107,6 +1137,12 @@ func (s *Ethereum) Stop() error {
 	}
 	if s.agg != nil {
 		s.agg.Close()
+	}
+	if s.seqRPCService != nil {
+		s.seqRPCService.Close()
+	}
+	if s.historicalRPCService != nil {
+		s.historicalRPCService.Close()
 	}
 	s.chainDB.Close()
 	return nil
