@@ -212,7 +212,12 @@ func (r *ReusableCaller) DoCallWithNewGas(
 			time.Sleep(2 * time.Second)
 			log.Debug("MMDBG-HC call.go Sleep done")
 			
-			var hcData []byte = []byte{151, 80, 9, 113, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 ,15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32 }
+			hcData, err := vm.HCRequest(hc.Request)
+			if err != nil {
+				log.Warn("MMDBG-HC Request failed", "err", err)
+				return nil, vm.ErrHCFailed
+			}
+
 			hc.Response = make([]byte, len(hcData))
 			copy(hc.Response, hcData)
 

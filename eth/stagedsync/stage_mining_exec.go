@@ -2,7 +2,6 @@ package stagedsync
 
 import (
 	"bytes"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -502,84 +501,53 @@ LOOP:
 		var txn types.Transaction
 		var from libcommon.Address
 		var err error
-		if false /* hcFlag == 1 */ {
-			var hcData []byte = []byte{151, 80, 9, 113}
-			
-			// Pasted from legacy l2geth
-			// Generate cryptographically strong pseudo-random int between 0 - 2^256 - 1
-			one := big.NewInt(1)
-			two := big.NewInt(2)
-			max := new(big.Int)
-			// Max random value 2^256 - 1
-			max = max.Exp(two, big.NewInt(int64(256)), nil).Sub(max, one)
-			randomBigInt, err := rand.Int(rand.Reader, max)
 
-			if err != nil {
-				log.Error("MMDBG-HC TURING bobaTuringRandom:Random Number Generation Failed", "err", err)
-				//hcFlag = 3
-				continue
-			}
+		hcOffchain = false
 
-			log.Debug("MMDBG-HC TURING bobaTuringRandom:Random number",
-				"randomBigInt", randomBigInt)
-			rNum, _ := uint256.FromBig(randomBigInt)
-			
-			rNum32 := rNum.Bytes32()
-			hcData = append(hcData, rNum32[:]...) 
-			
-			txn = types.NewOffchainTx(hcData)
+		// Retrieve the next transaction and abort if all done
+		txn = txs.Peek()
+		if txn == nil {
+//			log.Debug("MMDBG-HC No more transactions", "cL", coalescedLogs)
+			break
+		}
+
+		// We use the eip155 signer regardless of the env hf.
+		from, err = txn.Sender(*signer)
+		if err != nil {
+			log.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
+			txs.Pop()
+			continue
+		}
+
+		// Check whether the txn is replay protected. If we're not in the EIP155 (Spurious Dragon) hf
+		// phase, start ignoring the sender until we do.
+		if txn.Protected() && !chainConfig.IsSpuriousDragon(header.Number.Uint64()) {
+			log.Debug(fmt.Sprintf("[%s] Ignoring replay protected transaction", logPrefix), "hash", txn.Hash(), "eip155", chainConfig.SpuriousDragonBlock)
+
+			txs.Pop()
+			continue
+		}
+
+		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
+		// an OffchainTx into the queue ahead of it to populate the on-chain helper
+		
+		txnFrom,_ := txn.GetSender()
+		mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
+		hc = vm.HCResponseCache[mh]
+		log.Debug("MMDBG-HC Transaction Peek",  "txn", txn, "mh", mh, "hc", hc)
+		if hc != nil && !hc.Failed && hc.HcFlag == 2 && len(hc.Response) > 0 {
+			log.Debug("MMDBG-HC Found a prepared", "hc.Response", hc.Response)
+			txn = types.NewOffchainTx(hc.Response)
 			log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
-			//hcFlag = 2
-		} else {
-			hcOffchain = false
-
-			// Retrieve the next transaction and abort if all done
-			txn = txs.Peek()
-			if txn == nil {
-//				log.Debug("MMDBG-HC No more transactions", "cL", coalescedLogs)
-				break
-			}
-
-			// We use the eip155 signer regardless of the env hf.
-			from, err = txn.Sender(*signer)
-			if err != nil {
-				log.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
-				txs.Pop()
-				continue
-			}
-
-			// Check whether the txn is replay protected. If we're not in the EIP155 (Spurious Dragon) hf
-			// phase, start ignoring the sender until we do.
-			if txn.Protected() && !chainConfig.IsSpuriousDragon(header.Number.Uint64()) {
-				log.Debug(fmt.Sprintf("[%s] Ignoring replay protected transaction", logPrefix), "hash", txn.Hash(), "eip155", chainConfig.SpuriousDragonBlock)
-
-				txs.Pop()
-				continue
-			}
-
-			// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
-			// an OffchainTx into the queue ahead of it to populate the on-chain helper
-			
-			txnFrom,_ := txn.GetSender()
-			mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
-			hc = vm.HCResponseCache[mh]
-			log.Debug("MMDBG-HC Transaction Peek",  "txn", txn, "mh", mh, "hc", hc)
-			if hc != nil && !hc.Failed && hc.HcFlag == 2 && len(hc.Response) > 0 {
-				log.Debug("MMDBG-HC Found a prepared", "hc.Response", hc.Response)
-				txn = types.NewOffchainTx(hc.Response)
-				log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
-				hc.HcFlag = 3 // Ensure that OffchainTx is only inserted once
-				hcOffchain = true
-			}
-			
-			if hc == nil {
-				hc = new(vm.HCContext)
-			}
+			hc.HcFlag = 3 // Ensure that OffchainTx is only inserted once
+			hcOffchain = true
+		}
+		
+		if hc == nil {
+			hc = new(vm.HCContext)
 		}
 
 		// Start executing the transaction
-
-
 		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, hc)
 		
 		if err == vm.ErrHCReverted {
