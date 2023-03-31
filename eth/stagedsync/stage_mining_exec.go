@@ -164,6 +164,12 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			}
 
 			for {
+				if current.NoTxPool {
+					// Only allow the Deposit transactions from op-node
+					log.Debug("Not adding transactions because NoTxPool is set")
+					break
+				}
+
 				txs, y, err := getNextTransactions(cfg, chainID, current.Header, 50, executionAt, simulationTx, yielded)
 				log.Debug("MMDBG addTransactionsToMiningBlock getNextTransactions", "txs", txs, "y", y, "err", err)
 				if err != nil {
