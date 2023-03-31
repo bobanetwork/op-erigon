@@ -136,13 +136,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 				}
 				txs = append(txs, transaction)
 			}
-/* FIXME - can now remove
-			if !current.NoTxPool && current.Header.Number.Cmp(big.NewInt(5)) == 0 {
-				var hcData []byte = []byte{1, 2, 3, 4, 5, 6, 7, 8}
-				hcTmp := types.NewOffchainTx(hcData)
-				txs = append(txs, hcTmp)
-			}
-*/
+
 			depTS := types.NewTransactionsFixedOrder(txs)
 
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId)
