@@ -105,7 +105,7 @@ func HCRequest(req []byte) ([]byte, error) {
 	t2,_ := abi.NewType("string","",nil)
 	t3,_ := abi.NewType("bytes","",nil)
 	
-	dec,err := (abi.Arguments{{Type: t1}, {Type: t2}, {Type: t3}}).Unpack(req[4:])
+	dec,err := (abi.Arguments{{Type: t1}, {Type: t2}, {Type: t2}, {Type: t3}}).Unpack(req[4:])
 	log.Debug("MMDBG-HC ABI decode", "dec", dec, "err", err)
 
 	if err != nil {
@@ -114,15 +114,17 @@ func HCRequest(req []byte) ([]byte, error) {
 	}
 	
 	reqUrl := dec[1].(string)
-	reqPayload := dec[2].([]byte)
+	reqMethod := dec[2].(string)
+	reqPayload := dec[3].([]byte)
 
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write([]byte(reqUrl))
+	hasher.Write([]byte(reqMethod))
 	hasher.Write(reqPayload)
 	reqKey := libcommon.BytesToHash(hasher.Sum(nil))
 	
 	encPayload := hexutil.Bytes(reqPayload)
-	log.Debug("MMDBG-HC Request", "reqKey", reqKey, "reqUrl", reqUrl, "encPayload", encPayload)
+	log.Debug("MMDBG-HC Request", "reqKey", reqKey, "reqUrl", reqUrl, "reqMethod", reqMethod, "encPayload", encPayload)
 
 	client, err := rpc.Dial(reqUrl)
 
@@ -133,7 +135,7 @@ func HCRequest(req []byte) ([]byte, error) {
 	
 	var responseBytes []byte
 	var responseStringEnc string
-	err = client.Call(&responseStringEnc, "hybridcompute", /* time.Duration(1200)*time.Millisecond, */ encPayload)
+	err = client.Call(&responseStringEnc, reqMethod, /* time.Duration(1200)*time.Millisecond, */ encPayload)
 	if err != nil {
 		log.Debug("MMDBG-HC ClientCall failed", "err", err, "resp", responseStringEnc)
 		return nil, ErrHCFailed
