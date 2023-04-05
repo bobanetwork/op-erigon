@@ -9,7 +9,7 @@ import (
 	"crypto/rand"
 	"github.com/holiman/uint256"
 	"bytes"
-	//"time"
+	"time"
 
 //	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -35,6 +35,7 @@ type HCContext struct {
 }
 
 var HCResponseCache map[libcommon.Hash] *HCContext
+var HCActive map[libcommon.Hash] *HCContext
 
 func HCKey (addr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
 	var bNonce big.Int
@@ -163,6 +164,23 @@ func HCRequest(req []byte) ([]byte, error) {
 	log.Debug("MMDBG-HC Response", "hcData", hcData)
 
 	return hcData,nil
+}
 
+func DoOffchain(hc *HCContext) error {
+	time.Sleep(2 * time.Second)
+	log.Debug("MMDBG-HC call.go Sleep done")
 
+	hcData, err := HCRequest(hc.Request)
+	hc.Response = make([]byte, len(hcData))
+	copy(hc.Response, hcData)
+
+//result, err = core.ApplyMessage(r.evm, r.message, gp, true /* refunds */, false /* gasBailout */)
+//log.Debug("MMDBG-HC call.go after ApplyMessage2", "err", err, "result", result)
+	if err == nil {
+		hc.HcFlag = 2
+	} else {
+		hc.HcFlag = 4
+		hc.Failed = true
+	}
+	return err
 }

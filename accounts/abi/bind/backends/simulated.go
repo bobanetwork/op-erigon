@@ -786,6 +786,7 @@ type callMsg struct {
 	ethereum.CallMsg
 }
 
+func (m callMsg) SourceHash() *libcommon.Hash   { return nil }
 func (m callMsg) From() libcommon.Address       { return m.CallMsg.From }
 func (m callMsg) Nonce() uint64                 { return 0 }
 func (m callMsg) CheckNonce() bool              { return false }

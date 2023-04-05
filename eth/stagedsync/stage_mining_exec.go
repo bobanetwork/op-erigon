@@ -149,7 +149,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 
 		if txs != nil && !txs.Empty() {
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId)
-			log.Debug("MMDBG addTransactionsToMiningBlock (txs)", "err", err, "logs", logs)
+			log.Debug("MMDBG addTransactionsToMiningBlock (Prepared)", "err", err, "logs", logs)
 			if err != nil {
 				return err
 			}
@@ -462,10 +462,14 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	if vm.HCResponseCache == nil {
 		vm.HCResponseCache = make(map[libcommon.Hash] *vm.HCContext)
 	}
+	if vm.HCActive == nil {
+		vm.HCActive = make(map[libcommon.Hash] *vm.HCContext)
+	}
 
 LOOP:
 	for {
 //		log.Debug("MMDBG-HC top of addTransactionsToMiningBlock loop", "hcFlag", hcFlag, "tcount", tcount, "cL", coalescedLogs)
+
 		// see if we need to stop now
 		if stopped != nil {
 			select {
@@ -521,12 +525,21 @@ LOOP:
 			txs.Pop()
 			continue
 		}
+		
+		// Check for pending Hybrid Compute
+		txnFrom,_ := txn.GetSender()			
+		mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
+		log.Debug("MMDBG-HC Checking HCActive", "mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
+
+		if vm.HCActive[mh] != nil {
+			log.Debug("MMDBG-HC Skipping HCActive", "txn", txn)
+			txs.Pop()
+			continue
+		}
 
 		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
 		// an OffchainTx into the queue ahead of it to populate the on-chain helper
-		
-		txnFrom,_ := txn.GetSender()
-		mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
+
 		hc = vm.HCResponseCache[mh]
 		log.Debug("MMDBG-HC Transaction Peek",  "txn", txn, "mh", mh, "hc", hc)
 		if hc != nil && !hc.Failed && hc.HcFlag == 2 && len(hc.Response) > 0 {
@@ -546,31 +559,38 @@ LOOP:
 		
 		if err == vm.ErrHCReverted {
 			log.Warn("MMDBG-HC stage_mining_exec got ErrHCReverted", "hc", hc, "txn", txn)
-			hc.HcFlag = 4
-			hc.Failed = true
-
-			txnFrom,_ := txn.GetSender()			
-			mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
+			
+			//txnFrom,_ := txn.GetSender()			
+			//mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
 			vm.HCResponseCache[mh] = hc
+
+			if hc.HcFlag == 1 {
+				// This is a first-time failure for a Txn which didn't go through EstimateGas
+				log.Debug("MMDBG-HC Inserting HCActive in stage_mining_exec", "hc", hc, "mh", mh, "txn", txn)
+				// Need to skip this Tx for now, start a background task to do the offchain stuff,
+				// then re-insert it into the txpool.
+				vm.HCActive[mh] = hc
+				go func(mh libcommon.Hash, hc *vm.HCContext) {
+					log.Debug("MMDBG-HC2 Calling Offchain", "mh", mh)
+					ocErr := vm.DoOffchain(hc)
+					log.Debug("MMDBG-HC2 Offchain result", "err", ocErr, "mh", mh)
+					delete(vm.HCActive, mh)
+				} (mh, hc)
+				txs.Pop()
+
+				continue;
+			} else {
+				log.Debug("MMDBG-HC Marking as failed", "hc", hc, "mh", mh)
+				// We inserted an OffchainResponse ahead of this Tx but it still failed.
+				// FIXME - This may leave a cache entry in the helper contract. Should have a way to clean up.
+				hc.HcFlag = 4
+				hc.Failed = true
+			}
+
 
 			continue
 		}
-			
-/*		
-			if hcFlag == 0 {
-				// FIXME - This would now mean no EstimateGas(). Need to queue a background process
-				// to do the offchain lookup then defer the Txn until it's completed. For now we
-				// insist on a cached result from estimateGas. 
-				log.Debug("MMDBG-HC HybridCompute triggered", "txn", txn, "request", hc.Request)
-				hcFlag = 1
-				continue
-			} else if hcFlag == 2 {
-				log.Warn("MMDBG-HC OffchainTx failed", "hcFlag", hcFlag, "txn", txn)
-				hcFlag = 3 // Will not try to intercept the original txn next time
-				continue
-			}
-		}
-*/
+
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
 			log.Debug(fmt.Sprintf("[%s] Gas limit exceeded for env block", logPrefix), "hash", txn.Hash(), "sender", from)

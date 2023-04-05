@@ -54,10 +54,6 @@ const (
 	DepositTxType = 0x7e
 )
 
-// DepositsNonce identifies a deposit, since go-ethereum/Erigon abstracts all transaction types to a core.Message.
-// Deposits do not set a nonce, deposits are included by the system and cannot be repeated or included elsewhere.
-const DepositsNonce uint64 = 0xffff_ffff_ffff_fffd
-
 // Transaction is an Ethereum transaction.
 type Transaction interface {
 	Type() byte
@@ -517,6 +513,7 @@ func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amo
 	return m
 }
 
+func (m Message) SourceHash() *libcommon.Hash   { return m.sourceHash }
 func (m Message) From() libcommon.Address       { return m.from }
 func (m Message) To() *libcommon.Address        { return m.to }
 func (m Message) GasPrice() *uint256.Int        { return &m.gasPrice }

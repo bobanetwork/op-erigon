@@ -46,7 +46,7 @@ type DepositTransaction struct {
 	TransactionMisc
 
 	SourceHash *libcommon.Hash
-	Nonce      uint64
+//	Nonce      uint64
 	From       *libcommon.Address
 	To         *libcommon.Address
 	Mint       *uint256.Int
@@ -60,7 +60,7 @@ func (tx DepositTransaction) GetGas() uint64          { return tx.GasLimit }
 func (tx DepositTransaction) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx DepositTransaction) GetTip() *uint256.Int    { return uint256.NewInt(0) }
 func (tx DepositTransaction) GetFeeCap() *uint256.Int { return uint256.NewInt(0) }
-func (tx DepositTransaction) GetNonce() uint64        { return tx.Nonce }
+func (tx DepositTransaction) GetNonce() uint64        { return 0 }
 func (tx DepositTransaction) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
 	/*
 		if baseFee == nil {
@@ -113,7 +113,7 @@ func (tx DepositTransaction) EncodingSize() int {
 func (tx DepositTransaction) copy() *DepositTransaction {
 	cpy := &DepositTransaction{
 		SourceHash: tx.SourceHash,
-		Nonce:      tx.Nonce,
+//		Nonce:      tx.Nonce,
 		From:       tx.From,
 		To:         tx.To,
 		Mint:       tx.Mint,
@@ -178,8 +178,6 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 		return fmt.Errorf("list header: %w", err)
 	}
 
-	tx.Nonce = 0xffff_ffff_ffff_fffd // DepositsNonce from Optimism
-
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read SourceHash: %w", err)
 	}
@@ -239,7 +237,7 @@ func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Me
 	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
 		sourceHash: tx.SourceHash,
-		nonce:      tx.Nonce,
+//		nonce:      tx.Nonce,
 		from:       *tx.From,
 		gasLimit:   tx.GasLimit,
 		to:         tx.To,

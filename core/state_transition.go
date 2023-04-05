@@ -80,6 +80,7 @@ type StateTransition struct {
 
 // Message represents a message sent to a contract.
 type Message interface {
+	SourceHash() *libcommon.Hash
 	From() libcommon.Address
 	To() *libcommon.Address
 
@@ -260,7 +261,7 @@ func CheckEip1559TxGasFeeCap(from libcommon.Address, gasFeeCap, tip, baseFee *ui
 
 // DESCRIBED: docs/programmers_guide/guide.md#nonce
 func (st *StateTransition) preCheck(gasBailout bool) error {
-       if st.msg.Nonce() == 0xffff_ffff_ffff_fffd { //types.DepositsNonce
+       if st.msg.SourceHash() != nil {
        		log.Debug("MMDBG preCheck for Deposit txn")
 	
 		// Following section copied from Optimism patchset
@@ -336,7 +337,7 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
        result, err := st.innerTransitionDb(refunds, gasBailout)
        // Failed deposits must still be included. Unless we cannot produce the block at all due to the gas limit.
        // On deposit failure, we rewind any state changes from after the minting, and increment the nonce.
-       if err != nil && err != ErrGasLimitReached && st.msg.Nonce() == types.DepositsNonce {
+       if err != nil && err != ErrGasLimitReached && st.msg.SourceHash() != nil {
 	       st.state.RevertToSnapshot(snap)
 	       // Even though we revert the state changes, always increment the nonce for the next deposit transaction
 	       st.state.SetNonce(st.msg.From(), st.state.GetNonce(st.msg.From())+1)

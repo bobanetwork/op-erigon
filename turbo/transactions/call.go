@@ -209,22 +209,13 @@ func (r *ReusableCaller) DoCallWithNewGas(
 	if err == vm.ErrHCReverted {	
 		if vm.HCResponseCache[mh] == nil {
 			log.Debug("MMDBG-HC call.go Offchain triggered", "mh", mh, "hc", hc, "cache", vm.HCResponseCache[mh])
-			time.Sleep(2 * time.Second)
-			log.Debug("MMDBG-HC call.go Sleep done")
 			
-			hcData, err := vm.HCRequest(hc.Request)
+			err = vm.DoOffchain(hc)
 			if err != nil {
 				log.Warn("MMDBG-HC Request failed", "err", err)
 				return nil, vm.ErrHCFailed
 			}
 
-			hc.Response = make([]byte, len(hcData))
-			copy(hc.Response, hcData)
-
-			//result, err = core.ApplyMessage(r.evm, r.message, gp, true /* refunds */, false /* gasBailout */)
-			//log.Debug("MMDBG-HC call.go after ApplyMessage2", "err", err, "result", result)
-			
-			hc.HcFlag = 2
 			vm.HCResponseCache[mh] = hc
 			// the caller will get ErrHCReverted as a signal to retry. The cached response
 			// will be used on that call. 
