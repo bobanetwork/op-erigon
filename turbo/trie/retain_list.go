@@ -131,6 +131,14 @@ func (pr *ProofRetainer) ProofResult() (*accounts.AccProofResult, error) {
 		CodeHash: pr.acc.CodeHash,
 	}
 
+	// EIP-1186 specifies that the proof order must start at the root,
+	// and descend throught  the intermediate nodes ending in the leaf
+	// It would probably be adequate to simply reverse the order in which we
+	// appended the nodes, but, sorting is safer and given maximum sizes, cheap.
+	sort.Slice(pr.proofs, func(i, j int) bool {
+		return bytes.Compare(pr.proofs[i].hexKey, pr.proofs[j].hexKey) < 0
+	})
+
 	for _, pe := range pr.proofs {
 		if !bytes.HasPrefix(pr.accHexKey, pe.hexKey) {
 			continue

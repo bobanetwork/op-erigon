@@ -84,8 +84,8 @@ func TestProofRetainerConstruction(t *testing.T) {
 
 	require.Equal(t, accProof.StorageProof[2].Key, libcommon.Hash{3})
 	require.Len(t, accProof.StorageProof[2].Proof, 3)
-	require.Equal(t, validKeys[7], []byte(accProof.StorageProof[2].Proof[0]))
-	require.Equal(t, validKeys[8], []byte(accProof.StorageProof[2].Proof[1]))
+	require.Equal(t, validKeys[7], []byte(accProof.StorageProof[2].Proof[1]))
+	require.Equal(t, validKeys[8], []byte(accProof.StorageProof[2].Proof[0])) // Note, re-ordered to be root->leaf
 	require.Equal(t, validKeys[9], []byte(accProof.StorageProof[2].Proof[2]))
 
 	t.Run("missingStorageRoot", func(t *testing.T) {
