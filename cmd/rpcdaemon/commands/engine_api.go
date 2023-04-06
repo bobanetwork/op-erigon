@@ -239,62 +239,6 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 	return json, nil
 }
 
-func (e *EngineImpl) MMProof(ctx context.Context, BN uint64, BH common.Hash) error {
-	return nil // TODO(jky) remove this function
-	/*
-		if BN == 0 {
-			return nil
-		}
-
-		tx, err := e.db.BeginRo(ctx)
-		if err != nil {
-			return err
-		}
-
-		pAddr := common.HexToAddress("0x4200000000000000000000000000000000000016")
-		pRL := trie.NewRetainList(0)
-		addrHash, err := common2.HashData(pAddr[:])
-		if err != nil {
-			return err
-		}
-
-		pRL.AddKey(addrHash[:])
-		loader := trie.NewFlatDBTrieLoader("mmProof")
-		if err := loader.Reset(pRL, nil, nil, true); err != nil {
-			return err
-		}
-
-		pc := trie.NewProofRetainer(pAddr,
-		var accProof accounts.AccProofResult
-		accProof.Address = pAddr
-		loader.SetProofReturn(&accProof)
-
-		var quit <-chan struct{}
-		hash, err := loader.CalcTrieRoot(tx, quit)
-		if err != nil {
-			return err
-		}
-		log.Debug("MMGP engine_api ProofResult", "blockNum", BN-1, "blockHash", BH, "stateroot", hash, "result", accProof)
-		log.Debug("MMGP proof db", "db", e._proofDB)
-		proofDB := e._proofDB
-
-		blockKey := []byte(fmt.Sprint(BN - 1))
-
-		if err := proofDB.Update(context.Background(), func(tx kv.RwTx) (err error) {
-			dbVal, err := rlp.EncodeToBytes(accProof)
-			if err != nil {
-				return err
-			}
-			return tx.Put("AccountProof", blockKey, dbVal)
-		}); err != nil {
-			return err
-		}
-		log.Debug("MMGP engine_api wrote to proofDB", "BN", BN-1, "dbEntry", accProof)
-
-		return nil
-	*/
-}
-
 // NewPayloadV1 processes new payloads (blocks) from the beacon chain without withdrawals.
 
 // See https://github.com/ethereum/execution-apis/blob/main/src/engine/paris.md#engine_newpayloadv1
@@ -365,12 +309,6 @@ func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *Ex
 		log.Warn("NewPayload", "err", err)
 		return nil, err
 	}
-	// if (uint64(payload.BlockNumber)-1)%20 == 0 {
-	pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
-	if pErr != nil {
-		log.Warn("MMDBG Proof pre-calculation failed", "Block", uint64(payload.BlockNumber), "err", pErr)
-	}
-	// }
 	log.Debug("MMDBG <<< NewPayload Response", "BN", uint64(payload.BlockNumber), "res", res)
 	return convertPayloadStatus(ctx, e.db, res)
 }

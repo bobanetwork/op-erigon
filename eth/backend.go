@@ -121,7 +121,6 @@ type Ethereum struct {
 
 	// DB interfaces
 	chainDB    kv.RwDB
-	proofDB    kv.RwDB
 	privateAPI *grpc.Server
 
 	engine consensus.Engine
@@ -208,12 +207,6 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	if err != nil {
 		return nil, err
 	}
-	proofKv, err := node.OpenDatabase(stack.Config(), logger, kv.AcctProofDB)
-	log.Debug("MMDBG backend.New opened proofDB", "err", err, "proofKv", proofKv)
-	if err != nil {
-		return nil, err
-	}
-
 	var currentBlock *types.Block
 
 	// Check if we have an already initialized chain and fall back to
@@ -296,7 +289,6 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		config:               config,
 		log:                  logger,
 		chainDB:              chainKv,
-		proofDB:              proofKv,
 		networkID:            config.NetworkID,
 		etherbase:            config.Miner.Etherbase,
 		chainConfig:          chainConfig,
@@ -751,8 +743,8 @@ func (backend *Ethereum) Init(stack *node.Node, config *ethconfig.Config) error 
 	if casted, ok := backend.engine.(*bor.Bor); ok {
 		borDb = casted.DB
 	}
-	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine, backend.proofDB)
-	authApiList := commands.AuthAPIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine, backend.proofDB)
+	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine)
+	authApiList := commands.AuthAPIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine)
 	go func() {
 		if err := cli.StartRpcServer(ctx, httpRpcCfg, apiList, authApiList); err != nil {
 			log.Error(err.Error())
