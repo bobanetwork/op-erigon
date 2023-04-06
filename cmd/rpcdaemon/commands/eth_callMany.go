@@ -170,6 +170,7 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 		Difficulty:  new(big.Int).Set(parent.Difficulty),
 		GasLimit:    parent.GasLimit,
 		BaseFee:     &baseFee,
+		L1CostFunc:  types.NewL1CostFunc(chainConfig, st),
 	}
 
 	// Get a new instance of the EVM

@@ -35,6 +35,7 @@ import (
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
 )
 
@@ -50,6 +51,7 @@ const (
 	LegacyTxType = iota
 	AccessListTxType
 	DynamicFeeTxType
+	BlobTxType    = 5
 	DepositTxType = 0x7e
 )
 
@@ -67,6 +69,7 @@ type Transaction interface {
 	GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int
 	GetFeeCap() *uint256.Int
 	Cost() *uint256.Int
+	GetDataHashes() []libcommon.Hash
 	GetGas() uint64
 	GetValue() *uint256.Int
 	Time() time.Time
@@ -123,6 +126,33 @@ func (tm TransactionMisc) Time() time.Time {
 
 func (tm TransactionMisc) From() *atomic.Value {
 	return &tm.from
+}
+
+type binMarshalable interface {
+	MarshalBinary(io.Writer) error
+}
+
+func rollupDataGas(tx binMarshalable) uint64 {
+	var buf bytes.Buffer
+	if err := tx.MarshalBinary(&buf); err != nil {
+		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
+		log.Error("failed to encode tx for L1 cost computation", "err", err)
+		return 0
+	}
+	var zeroes uint64
+	var ones uint64
+	for _, byt := range buf.Bytes() {
+		if byt == 0 {
+			zeroes++
+		} else {
+			ones++
+		}
+	}
+	zeroesGas := zeroes * params.TxDataZeroGas
+	onesGas := (ones + 68) * params.TxDataNonZeroGasEIP2028
+	total := zeroesGas + onesGas
+	log.Info("MMDBG computing rollupDataGas", "total", total, "tx", tx)
+	return total
 }
 
 func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
@@ -468,34 +498,36 @@ func (t *TransactionsFixedOrder) Pop() {
 
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
-	sourceHash *libcommon.Hash
-	to         *libcommon.Address
-	from       libcommon.Address
-	nonce      uint64
-	mint       uint256.Int
-	amount     uint256.Int
-	gasLimit   uint64
-	gasPrice   uint256.Int
-	feeCap     uint256.Int
-	tip        uint256.Int
-	data       []byte
-	accessList types2.AccessList
-	checkNonce bool
-	isFree     bool
-	isSystemTx bool
+	sourceHash    *libcommon.Hash
+	to            *libcommon.Address
+	from          libcommon.Address
+	nonce         uint64
+	mint          uint256.Int
+	amount        uint256.Int
+	gasLimit      uint64
+	gasPrice      uint256.Int
+	feeCap        uint256.Int
+	tip           uint256.Int
+	data          []byte
+	accessList    types2.AccessList
+	checkNonce    bool
+	isFree        bool
+	isSystemTx    bool
+	rollupDataGas uint64
 }
 
-func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64, gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList types2.AccessList, checkNonce bool, isFree bool) Message {
+func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64, gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList types2.AccessList, checkNonce bool, isFree bool, rollupDataGas uint64) Message {
 	m := Message{
-		from:       from,
-		to:         to,
-		nonce:      nonce,
-		amount:     *amount,
-		gasLimit:   gasLimit,
-		data:       data,
-		accessList: accessList,
-		checkNonce: checkNonce,
-		isFree:     isFree,
+		from:          from,
+		to:            to,
+		nonce:         nonce,
+		amount:        *amount,
+		gasLimit:      gasLimit,
+		data:          data,
+		accessList:    accessList,
+		checkNonce:    checkNonce,
+		isFree:        isFree,
+		rollupDataGas: rollupDataGas,
 	}
 	if gasPrice != nil {
 		m.gasPrice.Set(gasPrice)
@@ -516,6 +548,8 @@ func (m Message) FeeCap() *uint256.Int          { return &m.feeCap }
 func (m Message) Tip() *uint256.Int             { return &m.tip }
 func (m Message) Value() *uint256.Int           { return &m.amount }
 func (m Message) Mint() *uint256.Int            { return &m.mint }
+func (m Message) IsDepositTx() bool             { return m.nonce == DepositsNonce /* FIXME just set explicitly */ }
+func (m Message) RollupDataGas() uint64         { return m.rollupDataGas }
 func (m Message) Gas() uint64                   { return m.gasLimit }
 func (m Message) Nonce() uint64                 { return m.nonce }
 func (m Message) Data() []byte                  { return m.data }

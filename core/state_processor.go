@@ -17,8 +17,11 @@
 package core
 
 import (
+	"math/big"
+
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -43,7 +46,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	if msg.FeeCap().IsZero() && engine != nil {
 		// Only zero-gas transactions may be service ones
 		syscall := func(contract libcommon.Address, data []byte) ([]byte, error) {
-			return SysCallContract(contract, data, *config, ibs, header, engine, true /* constCall */)
+			return SysCallContract(contract, data, *config, ibs, header, engine, true /* constCall */, nil /*excessDataGas*/)
 		}
 		msg.SetIsFree(engine.IsServiceTransaction(msg.From(), syscall))
 	}
@@ -88,6 +91,20 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 		receipt.BlockNumber = header.Number
 		receipt.TransactionIndex = uint(ibs.TxIndex())
+
+		if config.Optimism != nil {
+			// FIXME there are other fields to populate, but we don't have easy access
+			// to them, should address in a refactor.
+			if l1CostFunc := evm.Context().L1CostFunc; l1CostFunc != nil {
+				l1Fee := l1CostFunc(evm.Context().BlockNumber, msg)
+				if l1Fee != nil {
+					receipt.L1Fee = l1Fee.ToBig()
+				}
+				log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "txhash", tx.Hash())
+			} else {
+				log.Warn("MMDBG No cost function set in context", "txhash", tx.Hash())
+			}
+		}
 	}
 
 	return receipt, result.ReturnData, err
@@ -97,14 +114,16 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, []byte, error) {
+func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config, excessDataGas *big.Int) (*types.Receipt, []byte, error) {
+	log.Info("MMDBG ApplyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
 
 	// Add addresses to access list if applicable
 	// about the transaction and calling mechanisms.
 	cfg.SkipAnalysis = SkipAnalysis(config, header.Number.Uint64())
 
-	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author)
+	l1CostFunc := types.NewL1CostFunc(config, ibs)
+	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, excessDataGas, l1CostFunc)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
 	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg)

@@ -31,7 +31,7 @@ import (
 	"github.com/ledgerwatch/log/v3"
 )
 
-// go:generate gencodec -type Receipt -field-override receiptMarshaling -out gen_receipt_json.go
+//go:generate gencodec -type Receipt -field-override receiptMarshaling -out gen_receipt_json.go
 //go:generate codecgen -o receipt_codecgen_gen.go -r "^Receipts$|^Receipt$|^Logs$|^Log$" -st "codec" -j=false -nx=true -ta=true -oe=false -d 2 receipt.go log.go
 
 var (
@@ -69,6 +69,12 @@ type Receipt struct {
 	BlockHash        libcommon.Hash `json:"blockHash,omitempty" codec:"-"`
 	BlockNumber      *big.Int       `json:"blockNumber,omitempty" codec:"-"`
 	TransactionIndex uint           `json:"transactionIndex" codec:"-"`
+
+	// OVM legacy: extend receipts with their L1 price (if a rollup tx)
+	L1GasPrice *big.Int   `json:"l1GasPrice,omitempty"`
+	L1GasUsed  *big.Int   `json:"l1GasUsed,omitempty"`
+	L1Fee      *big.Int   `json:"l1Fee,omitempty"` // FIXME, should these be uint256?
+	FeeScalar  *big.Float `json:"l1FeeScalar,omitempty"`
 }
 
 type receiptMarshaling struct {
@@ -79,6 +85,7 @@ type receiptMarshaling struct {
 	GasUsed           hexutil.Uint64
 	BlockNumber       *hexutil.Big
 	TransactionIndex  hexutil.Uint
+	L1Fee             *hexutil.Big
 }
 
 // receiptRLP is the consensus encoding of a receipt.

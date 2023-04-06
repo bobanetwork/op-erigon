@@ -3,6 +3,7 @@ package engineapi
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/emirpasic/gods/maps/treemap"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/core/types"
-	"go.uber.org/atomic"
 )
 
 // This is the status of a newly execute block.
@@ -99,7 +99,7 @@ func (rl *RequestList) AddForkChoiceRequest(message *ForkChoiceMessage) {
 	rl.requestId++
 
 	log.Debug("MMDBG AddForkChoiceRequest", "id", rl.requestId, "msg", message)
-	
+
 	// purge previous fork choices that are still syncing
 	rl.requests = rl.requests.Select(func(key interface{}, value interface{}) bool {
 		req := value.(*RequestWithStatus)

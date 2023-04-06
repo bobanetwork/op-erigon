@@ -377,16 +377,17 @@ func (tx *DynamicFeeTransaction) DecodeRLP(s *rlp.Stream) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx DynamicFeeTransaction) AsMessage(s Signer, baseFee *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
-		nonce:      tx.Nonce,
-		gasLimit:   tx.Gas,
-		gasPrice:   *tx.FeeCap,
-		tip:        *tx.Tip,
-		feeCap:     *tx.FeeCap,
-		to:         tx.To,
-		amount:     *tx.Value,
-		data:       tx.Data,
-		accessList: tx.AccessList,
-		checkNonce: true,
+		nonce:         tx.Nonce,
+		gasLimit:      tx.Gas,
+		gasPrice:      *tx.FeeCap,
+		tip:           *tx.Tip,
+		feeCap:        *tx.FeeCap,
+		to:            tx.To,
+		amount:        *tx.Value,
+		data:          tx.Data,
+		accessList:    tx.AccessList,
+		checkNonce:    true,
+		rollupDataGas: rollupDataGas(tx),
 	}
 	if !rules.IsLondon {
 		return msg, errors.New("eip-1559 transactions require London")
@@ -463,7 +464,7 @@ func (tx *DynamicFeeTransaction) Sender(signer Signer) (libcommon.Address, error
 	return addr, nil
 }
 
-// NewTransaction creates an unsigned eip1559 transaction.
+// NewEIP1559Transaction creates an unsigned eip1559 transaction.
 func NewEIP1559Transaction(chainID uint256.Int, nonce uint64, to libcommon.Address, amount *uint256.Int, gasLimit uint64, gasPrice *uint256.Int, gasTip *uint256.Int, gasFeeCap *uint256.Int, data []byte) *DynamicFeeTransaction {
 	return &DynamicFeeTransaction{
 		CommonTx: CommonTx{
