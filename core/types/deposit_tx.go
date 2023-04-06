@@ -27,14 +27,17 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+
 	//"math/bits"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/common"
+
 	//"github.com/ledgerwatch/erigon/common/u256"
 	"bytes"
+
 	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 	"github.com/ledgerwatch/erigon/rlp"
@@ -94,6 +97,10 @@ func (tx DepositTransaction) GetAccessList() types2.AccessList {
 }
 func (tx DepositTransaction) GetData() []byte {
 	return tx.Data
+}
+func (tx DepositTransaction) GetDataHashes() []libcommon.Hash {
+	// Only blob txs have data hashes
+	return []libcommon.Hash{}
 }
 
 func (tx DepositTransaction) Protected() bool {

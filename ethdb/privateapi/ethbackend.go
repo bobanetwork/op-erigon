@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"sync"
 	"time"
 
@@ -62,15 +63,17 @@ type EthBackendServer struct {
 	db          kv.RoDB
 	blockReader services.BlockAndTxnReader
 	config      *chain.Config
-	// Block proposing for proof-of-stake
-	payloadId uint64
-	builders  map[uint64]*builder.BlockBuilder
 
-	builderFunc builder.BlockBuilderFunc
-	proposing   bool
-	lock        sync.Mutex // Engine API is asynchronous, we want to avoid CL to call different APIs at the same time
-	logsFilter  *LogsFilterAggregator
-	hd          *headerdownload.HeaderDownload
+	// Block proposing for proof-of-stake
+	payloadId      uint64
+	lastParameters *core.BlockBuilderParameters
+	builders       map[uint64]*builder.BlockBuilder
+	builderFunc    builder.BlockBuilderFunc
+	proposing      bool
+
+	lock       sync.Mutex // Engine API is asynchronous, we want to avoid CL to call different APIs at the same time
+	logsFilter *LogsFilterAggregator
+	hd         *headerdownload.HeaderDownload
 }
 
 type EthBackend interface {
@@ -333,6 +336,14 @@ func (s *EthBackendServer) EngineNewPayload(ctx context.Context, req *types2.Exe
 		return nil, err
 	}
 
+	if req.Version >= 3 {
+		header.ExcessDataGas = gointerfaces.ConvertH256ToUint256Int(req.ExcessDataGas).ToBig()
+	}
+
+	if !s.config.IsCancun(header.Time) && header.ExcessDataGas != nil || s.config.IsCancun(header.Time) && header.ExcessDataGas == nil {
+		return nil, &rpc.InvalidParamsError{Message: "excess data gas setting doesn't match sharding state"}
+	}
+
 	blockHash := gointerfaces.ConvertH256ToHash(req.BlockHash)
 	if header.Hash() != blockHash {
 		log.Error("[NewPayload] invalid block hash", "stated", libcommon.Hash(blockHash), "actual", header.Hash())
@@ -591,6 +602,13 @@ func (s *EthBackendServer) EngineGetPayload(ctx context.Context, req *remote.Eng
 		payload.Withdrawals = ConvertWithdrawalsToRpc(block.Withdrawals())
 	}
 
+	if block.ExcessDataGas() != nil {
+		payload.Version = 3
+		var excessDataGas uint256.Int
+		excessDataGas.SetFromBig(block.Header().ExcessDataGas)
+		payload.ExcessDataGas = gointerfaces.ConvertUint256IntToH256(&excessDataGas)
+	}
+
 	blockValue := blockValue(blockWithReceipts, baseFee)
 	return &remote.EngineGetPayloadResponse{
 		ExecutionPayload: payload,
@@ -680,7 +698,6 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	if payloadAttributes.Version >= 2 {
 		param.Withdrawals = ConvertWithdrawalsFromRpc(payloadAttributes.Withdrawals)
 	}
-
 	if err := s.checkWithdrawalsPresence(payloadAttributes.Timestamp, param.Withdrawals); err != nil {
 		return nil, err
 	}
@@ -692,10 +709,24 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 		log.Debug("MMDBG ", "hB", hB)
 	}
 
+	// First check if we're already building a block with the requested parameters
+	if reflect.DeepEqual(s.lastParameters, &param) {
+		log.Info("[ForkChoiceUpdated] duplicate build request")
+		return &remote.EngineForkChoiceUpdatedResponse{
+			PayloadStatus: &remote.EnginePayloadStatus{
+				Status:          remote.EngineStatus_VALID,
+				LatestValidHash: gointerfaces.ConvertHashToH256(headHash),
+			},
+			PayloadId: s.payloadId,
+		}, nil
+	}
+
+	// Initiate payload building
 	s.evictOldBuilders()
 
-	// payload IDs start from 1 (0 signifies null)
 	s.payloadId++
+	param.PayloadId = s.payloadId
+	s.lastParameters = &param
 
 	mmChan := make(chan int)
 	s.builders[s.payloadId] = builder.NewBlockBuilderMM(
@@ -724,6 +755,7 @@ func (s *EthBackendServer) EngineGetPayloadBodiesByHashV1(ctx context.Context, r
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
 	bodies := make([]*types2.ExecutionPayloadBodyV1, len(request.Hashes))
 
@@ -749,6 +781,7 @@ func (s *EthBackendServer) EngineGetPayloadBodiesByRangeV1(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
 	bodies := make([]*types2.ExecutionPayloadBodyV1, 0, request.Count)
 
