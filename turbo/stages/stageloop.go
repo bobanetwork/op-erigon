@@ -265,7 +265,7 @@ func MiningStep(ctx context.Context, kv kv.RwDB, mining *stagedsync.Sync, tmpDir
 	}() // avoid crash because Erigon's core does many things
 
 	tx, err := kv.BeginRo(ctx)
-        log.Debug("MMDBG kv.BeginRo", "err", err, "tx", tx)
+	log.Debug("MMDBG kv.BeginRo", "err", err, "tx", tx)
 	if err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func MiningStep(ctx context.Context, kv kv.RwDB, mining *stagedsync.Sync, tmpDir
 	if err = mining.Run(nil, miningBatch, false /* firstCycle */, false /* quiet */); err != nil {
 		return err
 	}
-        log.Debug("MMDBG after mining.Run")
+	log.Debug("MMDBG after mining.Run")
 	tx.Rollback()
 	return nil
 }

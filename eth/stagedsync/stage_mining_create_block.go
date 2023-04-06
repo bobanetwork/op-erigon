@@ -33,7 +33,7 @@ type MiningBlock struct {
 	Withdrawals []*types.Withdrawal
 	PreparedTxs types.TransactionsStream
 
-        Deposits [][]byte
+	Deposits [][]byte
 	NoTxPool bool
 }
 
@@ -175,11 +175,10 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	}
 
 	//header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
-	var newGas uint64
-	newGas = 15_000_000	// FIXME - extract from 1st Deposit tx
+	newGas := uint64(15_000_000) // FIXME - extract from 1st Deposit tx
 	log.Debug("MMDBG Override gas limit", "old", cfg.miner.MiningConfig.GasLimit, "new", newGas)
 	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &newGas)
-	
+
 	header.Coinbase = coinbase
 	header.Extra = cfg.miner.MiningConfig.ExtraData
 
@@ -206,7 +205,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		current.Header = header
 		current.Uncles = nil
 		current.Withdrawals = cfg.blockBuilderParameters.Withdrawals
-		
+
 		current.Deposits = cfg.blockBuilderParameters.Deposits
 		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
 		return nil

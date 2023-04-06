@@ -211,6 +211,9 @@ func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, addrHash libcommon.Hash, i
 
 	log.Debug("MMGP-1 CalcStorageProof start", "sp", sp, "addrHash", addrHash, "inc", inc, "expectedRoot", expectedRoot)
 	trieStorageC, err := tx.CursorDupSort(kv.TrieOfStorage)
+	if err != nil {
+		return err
+	}
 	defer trieStorageC.Close()
 
 	var canUse = func(prefix []byte) (bool, []byte) {
@@ -220,6 +223,9 @@ func (l *FlatDBTrieLoader) CalcStorageProof(tx kv.Tx, addrHash libcommon.Hash, i
 	}
 	storageTrie := StorageTrie(canUse, l.shc, trieStorageC /* quit */, nil)
 	ss, err := tx.CursorDupSort(kv.HashedStorage)
+	if err != nil {
+		return err
+	}
 
 	copy(accWithInc[:], addrHash.Bytes())
 	binary.BigEndian.PutUint64(accWithInc[32:], inc)

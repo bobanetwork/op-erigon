@@ -99,7 +99,7 @@ func (rl *RequestList) AddForkChoiceRequest(message *ForkChoiceMessage) {
 	rl.requestId++
 
 	log.Debug("MMDBG AddForkChoiceRequest", "id", rl.requestId, "msg", message)
-	
+
 	// purge previous fork choices that are still syncing
 	rl.requests = rl.requests.Select(func(key interface{}, value interface{}) bool {
 		req := value.(*RequestWithStatus)

@@ -53,14 +53,14 @@ func NewBlockBuilderMM(
 	deposits [][]byte,
 	noTxPool bool,
 	mmChan chan int,
-	) *BlockBuilder {
+) *BlockBuilder {
 
 	builder := new(BlockBuilder)
 	builder.syncCond = sync.NewCond(new(sync.Mutex))
-        
-        param.Deposits = deposits
+
+	param.Deposits = deposits
 	param.NoTxPool = noTxPool
-        log.Debug("MMDBG NewBlockBuilderMM", "deposits", deposits, "param", param)
+	log.Debug("MMDBG NewBlockBuilderMM", "deposits", deposits, "param", param)
 
 	go func() {
 		log.Info("Building block...")

@@ -36,9 +36,9 @@ import (
 	//"github.com/ledgerwatch/erigon/common/u256"
 	"bytes"
 	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
+	types2 "github.com/ledgerwatch/erigon-lib/types"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
-	types2 "github.com/ledgerwatch/erigon-lib/types"
 )
 
 // DepositTransaction is the transaction data of regular Ethereum transactions.
@@ -105,7 +105,7 @@ func (tx DepositTransaction) EncodingSize() int {
 	var bb bytes.Buffer
 	tx.EncodeRLP(&bb)
 	log.Debug("MMDBG tx.EncodingSize", "tx", tx, "len", bb.Len())
-	
+
 	return bb.Len()
 }
 

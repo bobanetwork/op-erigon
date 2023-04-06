@@ -173,6 +173,9 @@ clean:
 	go clean -cache
 	rm -fr build/*
 
+format:
+	@find ./ -type f -name "*.go" -exec gofmt -w {} \;
+
 # The devtools target installs tools required for 'go generate'.
 # You need to put $GOBIN (or $GOPATH/bin) in your PATH to use 'go generate'.
 

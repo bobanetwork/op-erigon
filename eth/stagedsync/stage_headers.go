@@ -289,7 +289,7 @@ func startHandlingForkChoice(
 	defer cfg.forkValidator.ClearWithUnwind(tx, cfg.notifications.Accumulator, cfg.notifications.StateChangesConsumer)
 	headerHash := forkChoice.HeadBlockHash
 	log.Debug(fmt.Sprintf("[%s] Handling fork choice", s.LogPrefix()), "headerHash", headerHash)
-        log.Debug("MMDBG Handling fork choice", "fc", forkChoice)
+	log.Debug("MMDBG Handling fork choice", "fc", forkChoice)
 
 	canonical, err := rawdb.IsCanonicalHash(tx, headerHash)
 	if err != nil {

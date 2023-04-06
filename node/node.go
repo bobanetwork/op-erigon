@@ -339,10 +339,10 @@ func OpenDatabase(config *nodecfg.Config, logger log.Logger, label kv.Label) (kv
 			opts = opts.GrowthStep(16 * datasize.MB)
 		}
 		if label == kv.AcctProofDB {
-			proofCfg :=  func(defaultBuckets kv.TableCfg) kv.TableCfg {
-				return kv.TableCfg {
+			proofCfg := func(defaultBuckets kv.TableCfg) kv.TableCfg {
+				return kv.TableCfg{
 					"AccountProof": {},
-					"DbInfo": {},
+					"DbInfo":       {},
 				}
 			}
 			opts = opts.WithTableCfg(proofCfg)

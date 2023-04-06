@@ -522,7 +522,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 
 	// proof-of-stake mining
 	assembleBlockPOS := func(param *core.BlockBuilderParameters, interrupt *int32) (*types.BlockWithReceipts, error) {
-        	//log.Debug("MMDBG assembleBlockPOS", "param", param)
+		//log.Debug("MMDBG assembleBlockPOS", "param", param)
 		miningStatePos := stagedsync.NewProposingState(&config.Miner)
 		miningStatePos.MiningConfig.Etherbase = param.SuggestedFeeRecipient
 		proposingSync := stagedsync.New(
@@ -534,11 +534,11 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 				stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miningStatePos, backend.miningSealingQuit),
 			), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder)
 		// We start the mining step
-                log.Debug("MMDBG backend.go Start mining step", "param", param, "proposingSync", proposingSync)
+		log.Debug("MMDBG backend.go Start mining step", "param", param, "proposingSync", proposingSync)
 		if err := stages2.MiningStep(ctx, backend.chainDB, proposingSync, tmpdir); err != nil {
 			return nil, err
 		}
-                log.Debug("MMDBG backend.go Done mining step")
+		log.Debug("MMDBG backend.go Done mining step")
 		block := <-miningStatePos.MiningResultPOSCh
 		return block, nil
 	}

@@ -119,8 +119,9 @@ type BaseAPI struct {
 	_engine      consensus.EngineReader
 
 	evmCallTimeout time.Duration
-	_proofDB     kv.RwDB
+	_proofDB       kv.RwDB
 }
+
 func NewBaseApiMM(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, proofDB kv.RwDB) *BaseAPI {
 	blocksLRUSize := 128 // ~32Mb
 	if !singleNodeMode {
