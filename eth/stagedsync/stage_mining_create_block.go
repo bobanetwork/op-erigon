@@ -1,7 +1,6 @@
 package stagedsync
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"math/big"
@@ -33,7 +32,7 @@ type MiningBlock struct {
 	Withdrawals []*types.Withdrawal
 	PreparedTxs types.TransactionsStream
 
-        Deposits [][]byte
+	Deposits [][]byte
 	NoTxPool bool
 }
 
@@ -95,7 +94,7 @@ var maxTransactions uint16 = 1000
 // - resubmitAdjustCh - variable is not implemented
 func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBlockCfg, quit <-chan struct{}) (err error) {
 	current := cfg.miner.MiningBlock
-	txPoolLocals := []libcommon.Address{} //txPoolV2 has no concept of local addresses (yet?)
+	txPoolLocals := []libcommon.Address{} // txPoolV2 has no concept of local addresses (yet?)
 	coinbase := cfg.miner.MiningConfig.Etherbase
 
 	const (
@@ -132,7 +131,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		return err
 	}
 	chain := ChainReader{Cfg: cfg.chainConfig, Db: tx}
-	var GetBlocksFromHash = func(hash libcommon.Hash, n int) (blocks []*types.Block) {
+	GetBlocksFromHash := func(hash libcommon.Hash, n int) (blocks []*types.Block) {
 		number := rawdb.ReadHeaderNumber(tx, hash)
 		if number == nil {
 			return nil
@@ -174,12 +173,20 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		timestamp = cfg.blockBuilderParameters.Timestamp
 	}
 
-	//header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
-	var newGas uint64
-	newGas = 15_000_000	// FIXME - extract from 1st Deposit tx
-	log.Debug("MMDBG Override gas limit", "old", cfg.miner.MiningConfig.GasLimit, "new", newGas)
-	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &newGas)
-	
+	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
+	if cfg.blockBuilderParameters.GasLimit != nil {
+		log.Info("MMDBG Override gas limit from Engine API", "old", header.GasLimit, "new", *cfg.blockBuilderParameters.GasLimit)
+		header.GasLimit = *cfg.blockBuilderParameters.GasLimit
+	} else if cfg.chainConfig.Optimism != nil && cfg.miner.MiningConfig.GasLimit != 0 {
+		// TODO(jky) this seems incomaptible with the requirement that GasLimit is
+		// specified by the payload attributes -- Clarification, in op-geth, they
+		// seem to build blocks without input from op-node, but, Erigon only begins
+		// the block building process when a forkchoice is supplied (with gas limit)
+		// so this path is dead in Erigon.
+		log.Info("MMDBG Override gas limit as is optimism, but not set by engine", "old", header.GasLimit, "new", cfg.miner.MiningConfig.GasLimit)
+		header.GasLimit = cfg.miner.MiningConfig.GasLimit
+	}
+
 	header.Coinbase = coinbase
 	header.Extra = cfg.miner.MiningConfig.ExtraData
 
@@ -200,13 +207,14 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		return err
 	}
 
+	log.Info("MMDBG JKY cfg.blockBuilderParamters", "params", cfg.blockBuilderParameters)
 	if cfg.blockBuilderParameters != nil {
 		header.MixDigest = cfg.blockBuilderParameters.PrevRandao
 
 		current.Header = header
 		current.Uncles = nil
 		current.Withdrawals = cfg.blockBuilderParameters.Withdrawals
-		
+
 		current.Deposits = cfg.blockBuilderParameters.Deposits
 		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
 		return nil
@@ -217,17 +225,12 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		// Check whether the block is among the fork extra-override range
 		limit := new(big.Int).Add(daoBlock, params.DAOForkExtraRange)
 		if header.Number.Cmp(daoBlock) >= 0 && header.Number.Cmp(limit) < 0 {
-			// Depending whether we support or oppose the fork, override differently
-			if cfg.chainConfig.DAOForkSupport {
-				header.Extra = libcommon.Copy(params.DAOForkBlockExtra)
-			} else if bytes.Equal(header.Extra, params.DAOForkBlockExtra) {
-				header.Extra = []byte{} // If miner opposes, don't let it use the reserved extra-data
-			}
+			header.Extra = libcommon.Copy(params.DAOForkBlockExtra)
 		}
 	}
 
 	// analog of miner.Worker.updateSnapshot
-	var makeUncles = func(proposedUncles mapset.Set) []*types.Header {
+	makeUncles := func(proposedUncles mapset.Set) []*types.Header {
 		var uncles []*types.Header
 		proposedUncles.Each(func(item interface{}) bool {
 			hash, ok := item.(libcommon.Hash)
@@ -315,7 +318,6 @@ func readNonCanonicalHeaders(tx kv.Tx, blockNum uint64, engine consensus.Engine,
 		} else {
 			remoteUncles[u.Hash()] = u
 		}
-
 	}
 	return
 }

@@ -145,7 +145,7 @@ func (args *CallArgs) ToMessage(globalGasCap uint64, baseFee *uint256.Int) (type
 		accessList = *args.AccessList
 	}
 
-	msg := types.NewMessage(addr, args.To, 0, value, gas, gasPrice, gasFeeCap, gasTipCap, data, accessList, false /* checkNonce */, false /* isFree */)
+	msg := types.NewMessage(addr, args.To, 0, value, gas, gasPrice, gasFeeCap, gasTipCap, data, accessList, false /* checkNonce */, false /* isFree */, 0 /* rollupDataGas */)
 	return msg, nil
 }
 
@@ -280,6 +280,9 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 	}
 	if head.WithdrawalsHash != nil {
 		result["withdrawalsRoot"] = head.WithdrawalsHash
+	}
+	if head.ExcessDataGas != nil {
+		result["excessDataGas"] = (*hexutil.Big)(head.ExcessDataGas)
 	}
 
 	return result

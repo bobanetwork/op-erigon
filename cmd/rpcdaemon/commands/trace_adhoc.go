@@ -214,7 +214,7 @@ func (args *TraceCallParam) ToMessage(globalGasCap uint64, baseFee *uint256.Int)
 	if args.AccessList != nil {
 		accessList = *args.AccessList
 	}
-	msg := types.NewMessage(addr, args.To, 0, value, gas, gasPrice, gasFeeCap, gasTipCap, data, accessList, false /* checkNonce */, false /* isFree */)
+	msg := types.NewMessage(addr, args.To, 0, value, gas, gasPrice, gasFeeCap, gasTipCap, data, accessList, false /* checkNonce */, false /* isFree */, 0 /* rollupDataGas FIXME */)
 	return msg, nil
 }
 
@@ -744,15 +744,8 @@ func (api *TraceAPIImpl) ReplayTransaction(ctx context.Context, txHash libcommon
 		}
 	}
 
-	bn := hexutil.Uint64(blockNum)
-
-	parentNr := bn
-	if parentNr > 0 {
-		parentNr -= 1
-	}
-
 	// Returns an array of trace arrays, one trace array for each transaction
-	traces, err := api.callManyTransactions(ctx, tx, block.Transactions(), traceTypes, block.ParentHash(), rpc.BlockNumber(parentNr), block.Header(), int(txnIndex), types.MakeSigner(chainConfig, blockNum), chainConfig.Rules(blockNum, block.Time()))
+	traces, err := api.callManyTransactions(ctx, tx, block, traceTypes, int(txnIndex), types.MakeSigner(chainConfig, blockNum), chainConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -808,10 +801,6 @@ func (api *TraceAPIImpl) ReplayBlockTransactions(ctx context.Context, blockNrOrH
 		return nil, err
 	}
 
-	parentNr := blockNumber
-	if parentNr > 0 {
-		parentNr -= 1
-	}
 	// Extract transactions from block
 	block, bErr := api.blockByNumberWithSenders(tx, blockNumber)
 	if bErr != nil {
@@ -835,7 +824,7 @@ func (api *TraceAPIImpl) ReplayBlockTransactions(ctx context.Context, blockNrOrH
 	}
 
 	// Returns an array of trace arrays, one trace array for each transaction
-	traces, err := api.callManyTransactions(ctx, tx, block.Transactions(), traceTypes, block.ParentHash(), rpc.BlockNumber(parentNr), block.Header(), -1 /* all tx indices */, types.MakeSigner(chainConfig, blockNumber), chainConfig.Rules(blockNumber, block.Time()))
+	traces, err := api.callManyTransactions(ctx, tx, block, traceTypes, -1 /* all tx indices */, types.MakeSigner(chainConfig, blockNumber), chainConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -954,7 +943,8 @@ func (api *TraceAPIImpl) Call(ctx context.Context, args TraceCallParam, traceTyp
 		return nil, err
 	}
 
-	blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, tx, api._blockReader)
+	l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
+	blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, tx, api._blockReader, l1CostFunc)
 	txCtx := core.NewEVMTxContext(msg)
 
 	blockCtx.GasLimit = math.MaxUint64
@@ -1060,10 +1050,10 @@ func (api *TraceAPIImpl) CallMany(ctx context.Context, calls json.RawMessage, pa
 	if err != nil {
 		return nil, err
 	}
-	parentHeader := parentBlock.Header()
-	if parentHeader == nil {
-		return nil, fmt.Errorf("parent header %d(%x) not found", blockNumber, hash)
+	if parentBlock == nil {
+		return nil, fmt.Errorf("parent block %d(%x) not found", blockNumber, hash)
 	}
+	parentHeader := parentBlock.Header()
 	if parentHeader != nil && parentHeader.BaseFee != nil {
 		var overflow bool
 		baseFee, overflow = uint256.FromBig(parentHeader.BaseFee)
@@ -1172,8 +1162,9 @@ func (api *TraceAPIImpl) doCallMany(ctx context.Context, dbtx kv.Tx, msgs []type
 			vmConfig.Tracer = &ot
 		}
 
+		l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
 		// Get a new instance of the EVM.
-		blockCtx := transactions.NewEVMBlockContext(engine, header, parentNrOrHash.RequireCanonical, dbtx, api._blockReader)
+		blockCtx := transactions.NewEVMBlockContext(engine, header, parentNrOrHash.RequireCanonical, dbtx, api._blockReader, l1CostFunc)
 		txCtx := core.NewEVMTxContext(msg)
 
 		if useParent {

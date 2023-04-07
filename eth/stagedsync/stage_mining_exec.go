@@ -66,6 +66,8 @@ func StageMiningExecCfg(
 	payloadId uint64,
 	txPool2 *txpool.TxPool,
 	txPool2DB kv.RoDB,
+	snapshots *snapshotsync.RoSnapshots,
+	transactionsV3 bool,
 ) MiningExecCfg {
 	return MiningExecCfg{
 		db:          db,
@@ -73,7 +75,7 @@ func StageMiningExecCfg(
 		notifier:    notifier,
 		chainConfig: chainConfig,
 		engine:      engine,
-		blockReader: snapshotsync.NewBlockReader(),
+		blockReader: snapshotsync.NewBlockReaderWithSnapshots(snapshots, transactionsV3),
 		vmConfig:    vmConfig,
 		tmpdir:      tmpdir,
 		interrupt:   interrupt,
@@ -97,7 +99,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	stateReader := state.NewPlainStateReader(tx)
 	ibs := state.New(stateReader)
 	stateWriter := state.NewPlainStateWriter(tx, tx, current.Header.Number.Uint64())
-	if cfg.chainConfig.DAOForkSupport && cfg.chainConfig.DAOForkBlock != nil && cfg.chainConfig.DAOForkBlock.Cmp(current.Header.Number) == 0 {
+	if cfg.chainConfig.DAOForkBlock != nil && cfg.chainConfig.DAOForkBlock.Cmp(current.Header.Number) == 0 {
 		misc.ApplyDAOHardFork(ibs)
 	}
 	systemcontracts.UpgradeBuildInSystemContract(&cfg.chainConfig, current.Header.Number, ibs)
@@ -115,19 +117,16 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	// But if we disable empty precommit already, ignore it. Since
 	// empty block is necessary to keep the liveness of the network.
 	if noempty {
-		var cLogs types.Logs
-
 		log.Debug("MMDBG SpawnMiningExecStage", "txs", txs, "Deposits", current.Deposits, "NoTxPool", current.NoTxPool)
 
-		if current.Deposits != nil && len(current.Deposits) != 0 {
-		
+		if len(current.Deposits) > 0 {
 			var txs []types.Transaction
 			for i := range current.Deposits {
 				s := rlp.NewStream(bytes.NewReader(current.Deposits[i]), uint64(len(current.Deposits[i])))
-                		log.Debug("MMDBG Candidate transaction", "i", i, "tx", current.Deposits[i], "s", s)
+				log.Debug("MMDBG Candidate transaction", "i", i, "tx", current.Deposits[i], "s", s)
 
 				transaction, err := types.DecodeTransaction(s)
-                		log.Debug("MMDBG Decoded", "err", err, "tx", transaction)
+				log.Debug("MMDBG Decoded", "err", err, "tx", transaction)
 				if err == io.EOF {
 					continue
 				}
@@ -144,7 +143,6 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			if err != nil {
 				return err
 			}
-			cLogs = append(cLogs, logs...)
 		}
 
 		if txs != nil && !txs.Empty() {
@@ -165,6 +163,12 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			}
 
 			for {
+				if current.NoTxPool {
+					// Only allow the Deposit transactions from op-node
+					log.Debug("Not adding transactions because NoTxPool is set")
+					break
+				}
+
 				txs, y, err := getNextTransactions(cfg, chainID, current.Header, 50, executionAt, simulationTx, yielded)
 				log.Debug("MMDBG addTransactionsToMiningBlock getNextTransactions", "txs", txs, "y", y, "err", err)
 				if err != nil {
@@ -205,8 +209,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	}
 
 	var err error
-	_, current.Txs, current.Receipts, err = core.FinalizeBlockExecution(cfg.engine, stateReader, current.Header, current.Txs, current.Uncles, stateWriter,
-		&cfg.chainConfig, ibs, current.Receipts, current.Withdrawals, EpochReaderImpl{tx: tx}, ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, true)
+	_, current.Txs, current.Receipts, err = core.FinalizeBlockExecution(cfg.engine, stateReader, current.Header, current.Txs, current.Uncles, stateWriter, &cfg.chainConfig, ibs, current.Receipts, current.Withdrawals, ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, true, nil)
 	if err != nil {
 		return err
 	}
@@ -430,11 +433,9 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		ibs.Prepare(txn.Hash(), libcommon.Hash{}, tcount)
 		gasSnap := gasPool.Gas()
 		snap := ibs.Snapshot()
-		log.Debug("miningCommitTx calling addTransactionsToMiningBlock", "tcount", tcount, "txn hash", txn.Hash())
-		
-		receipt, _, err := core.ApplyTransactionMM(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, hc)
+		log.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
+		receipt, _, err := core.ApplyTransactionMM(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, nil /*excessDataGas*/, hc)
 		log.Debug("MMDBG-HC miningCommitTx", "err", err, "receipt", receipt, "hc", hc)
-		
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap) // restore gasPool as well as ibs

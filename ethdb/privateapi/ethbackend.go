@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"sync"
 	"time"
 
@@ -33,8 +34,6 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/turbo/shards"
 	"github.com/ledgerwatch/erigon/turbo/stages/headerdownload"
-//	"google.golang.org/protobuf/types/known/emptypb"
-	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 // EthBackendAPIVersion
@@ -48,10 +47,12 @@ var EthBackendAPIVersion = &types2.VersionReply{Major: 3, Minor: 2, Patch: 0}
 
 const MaxBuilders = 128
 
-var UnknownPayloadErr = rpc.CustomError{Code: -38001, Message: "Unknown payload"}
-var InvalidForkchoiceStateErr = rpc.CustomError{Code: -38002, Message: "Invalid forkchoice state"}
-var InvalidPayloadAttributesErr = rpc.CustomError{Code: -38003, Message: "Invalid payload attributes"}
-var TooLargeRequestErr = rpc.CustomError{Code: -38004, Message: "Too large request"}
+var (
+	UnknownPayloadErr           = rpc.CustomError{Code: -38001, Message: "Unknown payload"}
+	InvalidForkchoiceStateErr   = rpc.CustomError{Code: -38002, Message: "Invalid forkchoice state"}
+	InvalidPayloadAttributesErr = rpc.CustomError{Code: -38003, Message: "Invalid payload attributes"}
+	TooLargeRequestErr          = rpc.CustomError{Code: -38004, Message: "Too large request"}
+)
 
 type EthBackendServer struct {
 	remote.UnimplementedETHBACKENDServer // must be embedded to have forward compatible implementations.
@@ -62,15 +63,17 @@ type EthBackendServer struct {
 	db          kv.RoDB
 	blockReader services.BlockAndTxnReader
 	config      *chain.Config
-	// Block proposing for proof-of-stake
-	payloadId uint64
-	builders  map[uint64]*builder.BlockBuilder
 
-	builderFunc builder.BlockBuilderFunc
-	proposing   bool
-	lock        sync.Mutex // Engine API is asynchronous, we want to avoid CL to call different APIs at the same time
-	logsFilter  *LogsFilterAggregator
-	hd          *headerdownload.HeaderDownload
+	// Block proposing for proof-of-stake
+	payloadId      uint64
+	lastParameters *core.BlockBuilderParameters
+	builders       map[uint64]*builder.BlockBuilder
+	builderFunc    builder.BlockBuilderFunc
+	proposing      bool
+
+	lock       sync.Mutex // Engine API is asynchronous, we want to avoid CL to call different APIs at the same time
+	logsFilter *LogsFilterAggregator
+	hd         *headerdownload.HeaderDownload
 }
 
 type EthBackend interface {
@@ -84,7 +87,8 @@ type EthBackend interface {
 func NewEthBackendServer(ctx context.Context, eth EthBackend, db kv.RwDB, events *shards.Events, blockReader services.BlockAndTxnReader,
 	config *chain.Config, builderFunc builder.BlockBuilderFunc, hd *headerdownload.HeaderDownload, proposing bool,
 ) *EthBackendServer {
-	s := &EthBackendServer{ctx: ctx, eth: eth, events: events, db: db, blockReader: blockReader, config: config,
+	s := &EthBackendServer{
+		ctx: ctx, eth: eth, events: events, db: db, blockReader: blockReader, config: config,
 		builders:    make(map[uint64]*builder.BlockBuilder),
 		builderFunc: builderFunc, proposing: proposing, logsFilter: NewLogsFilterAggregator(events), hd: hd,
 	}
@@ -251,6 +255,7 @@ func (s *EthBackendServer) PendingBlock(_ context.Context, _ *emptypb.Empty) (*r
 		return nil, nil
 	}
 
+	// TODO(jky) this seems to return a bad encoding now
 	blockRlp, err := rlp.EncodeToBytes(pendingBlock)
 	if err != nil {
 		return nil, err
@@ -331,6 +336,14 @@ func (s *EthBackendServer) EngineNewPayload(ctx context.Context, req *types2.Exe
 
 	if err := s.checkWithdrawalsPresence(header.Time, withdrawals); err != nil {
 		return nil, err
+	}
+
+	if req.Version >= 3 {
+		header.ExcessDataGas = gointerfaces.ConvertH256ToUint256Int(req.ExcessDataGas).ToBig()
+	}
+
+	if !s.config.IsCancun(header.Time) && header.ExcessDataGas != nil || s.config.IsCancun(header.Time) && header.ExcessDataGas == nil {
+		return nil, &rpc.InvalidParamsError{Message: "excess data gas setting doesn't match sharding state"}
 	}
 
 	blockHash := gointerfaces.ConvertH256ToHash(req.BlockHash)
@@ -564,7 +577,7 @@ func (s *EthBackendServer) EngineGetPayload(ctx context.Context, req *remote.Eng
 
 	encodedTransactions, err := types.MarshalTransactionsBinary(block.Transactions())
 	log.Debug("MMDBG EngineGetPayload response", "err", err, "encoded", encodedTransactions)
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -591,6 +604,14 @@ func (s *EthBackendServer) EngineGetPayload(ctx context.Context, req *remote.Eng
 		payload.Withdrawals = ConvertWithdrawalsToRpc(block.Withdrawals())
 	}
 
+	if block.ExcessDataGas() != nil {
+		payload.Version = 3
+		var excessDataGas uint256.Int
+		excessDataGas.SetFromBig(block.Header().ExcessDataGas)
+		payload.ExcessDataGas = gointerfaces.ConvertUint256IntToH256(&excessDataGas)
+	}
+	log.Debug("MMDBG EngineGetPayload response has", "blockNum", block.NumberU64(), "blockHash", block.Hash(), "blockTime", block.Header().Time, "txes", len(block.Transactions()), "payloadId", req.PayloadId)
+
 	blockValue := blockValue(blockWithReceipts, baseFee)
 	return &remote.EngineGetPayloadResponse{
 		ExecutionPayload: payload,
@@ -607,18 +628,24 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 		FinalizedBlockHash: gointerfaces.ConvertH256ToHash(req.ForkchoiceState.FinalizedBlockHash),
 	}
 
-        log.Debug("MMDBG >>> ethbackend.go EngineForkChoiceUpdated got", "req", req)
-	status, err := s.getQuickPayloadStatusIfPossible(forkChoice.HeadBlockHash, 0, libcommon.Hash{}, &forkChoice, false)
-	if err != nil {
-		return nil, err
+	log.Debug("MMDBG >>> ethbackend.go EngineForkChoiceUpdated got", "req", req)
+	var status *engineapi.PayloadStatus
+	var err error
+	// In the Optimism case, we allow arbitrary rewinding of the safe block
+	// hash, so we skip the path which might short-circuit that
+	if s.config.Optimism == nil {
+		status, err = s.getQuickPayloadStatusIfPossible(forkChoice.HeadBlockHash, 0, libcommon.Hash{}, &forkChoice, false)
+		if err != nil {
+			return nil, err
+		}
 	}
-        log.Debug("MMDBG ethbackend.go getQuickPayloadStatusIfPossible", "err", err, "status", status)
+	log.Debug("MMDBG ethbackend.go getQuickPayloadStatusIfPossible", "err", err, "status", status)
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	if status == nil {
-		log.Debug("[ForkChoiceUpdated] sending forkChoiceMessage", "head", forkChoice.HeadBlockHash)
+		log.Debug("[ForkChoiceUpdated] sending forkChoiceMessage", "head", forkChoice.HeadBlockHash, "safe", forkChoice.SafeBlockHash, "final", forkChoice.FinalizedBlockHash)
 		s.hd.BeaconRequestList.AddForkChoiceRequest(&forkChoice)
 
 		statusDeref := <-s.hd.PayloadStatusCh
@@ -629,7 +656,7 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 			return nil, status.CriticalError
 		}
 	}
-        log.Debug("MMDBG EngineForkChoiceUpdated Payload", "status", status.Status, "attrs", req.PayloadAttributes)
+	log.Info("MMDBG EngineForkChoiceUpdated Payload", "status", status.Status, "attrs", req.PayloadAttributes)
 
 	// No need for payload building
 	payloadAttributes := req.PayloadAttributes
@@ -640,9 +667,7 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	if !s.proposing {
 		return nil, fmt.Errorf("execution layer not running as a proposer. enable proposer by taking out the --proposer.disable flag on startup")
 	}
-	
-        log.Debug("MMDBG continuing EngineForkChoiceUpdated")
-        
+
 	tx2, err := s.db.BeginRo(ctx)
 	if err != nil {
 		return nil, err
@@ -654,17 +679,35 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	tx2.Rollback()
 
 	if headHeader.Hash() != forkChoice.HeadBlockHash {
-		// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
-		// Client software MAY skip an update of the forkchoice state and
-		// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
-		// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
-		// In the case of such an event, client software MUST return
-		// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
+		// Optimism deviates slightly and allows arbitrary depth re-orgs.
+		if s.config.Optimism == nil {
+			// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
+			// Client software MAY skip an update of the forkchoice state and
+			// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
+			// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
+			// In the case of such an event, client software MUST return
+			// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
 
-		log.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
-			"forkChoice.HeadBlockHash", forkChoice.HeadBlockHash, "headHeader.Hash", headHeader.Hash())
-		return &remote.EngineForkChoiceUpdatedResponse{PayloadStatus: convertPayloadStatus(status)}, nil
+			log.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
+				"forkChoice.HeadBlockHash", forkChoice.HeadBlockHash, "headHeader.Hash", headHeader.Hash())
+			return &remote.EngineForkChoiceUpdatedResponse{PayloadStatus: convertPayloadStatus(status)}, nil
+		}
+
+		tx3, err := s.db.BeginRo(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer tx3.Rollback()
+		headHash = forkChoice.HeadBlockHash
+		headNumber = rawdb.ReadHeaderNumber(tx3, headHash)
+		if headNumber == nil {
+			log.Warn("MMDBG Optimism asked to re-org to header we do not have", "blockHash", headHash)
+			return &remote.EngineForkChoiceUpdatedResponse{PayloadStatus: convertPayloadStatus(status)}, nil
+		}
+		headHeader = rawdb.ReadHeader(tx3, headHash, *headNumber)
+		tx3.Rollback()
 	}
+	log.Debug("MMDBG continuing EngineForkChoiceUpdated", "headNumber", *headNumber, "headHash", headHash)
 
 	if headHeader.Time >= payloadAttributes.Timestamp {
 		return nil, &InvalidPayloadAttributesErr
@@ -676,39 +719,57 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 		PrevRandao:            gointerfaces.ConvertH256ToHash(payloadAttributes.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertH160toAddress(payloadAttributes.SuggestedFeeRecipient),
 		PayloadId:             s.payloadId,
+		GasLimit:              payloadAttributes.GasLimit,
+		Deposits:              payloadAttributes.Transactions,
+		NoTxPool:              payloadAttributes.NoTxPool,
 	}
 	if payloadAttributes.Version >= 2 {
 		param.Withdrawals = ConvertWithdrawalsFromRpc(payloadAttributes.Withdrawals)
 	}
-
 	if err := s.checkWithdrawalsPresence(payloadAttributes.Timestamp, param.Withdrawals); err != nil {
 		return nil, err
 	}
 
 	// Initiate payload building
 	log.Debug("MMDBG ethbackend.go Initiate payload building", "len", len(payloadAttributes.Transactions), "depositTx", payloadAttributes.Transactions)
-        if len(payloadAttributes.Transactions) > 0 {
-		hB := hexutil.Bytes(payloadAttributes.Transactions[0])
-		log.Debug("MMDBG ","hB", hB)
+
+	// First check if we're already building a block with the requested parameters
+	if reflect.DeepEqual(s.lastParameters, &param) {
+		log.Info("[ForkChoiceUpdated] duplicate build request")
+		return &remote.EngineForkChoiceUpdatedResponse{
+			PayloadStatus: &remote.EnginePayloadStatus{
+				Status:          remote.EngineStatus_VALID,
+				LatestValidHash: gointerfaces.ConvertHashToH256(headHash),
+			},
+			PayloadId: s.payloadId,
+		}, nil
 	}
-        
+
+	// Initiate payload building
 	s.evictOldBuilders()
 
-	// payload IDs start from 1 (0 signifies null)
 	s.payloadId++
+	param.PayloadId = s.payloadId
+	s.lastParameters = &param
 
-	mmChan := make(chan int)
-	s.builders[s.payloadId]= builder.NewBlockBuilderMM(
-		s.builderFunc,
-		&param,
-		payloadAttributes.Transactions,
-		payloadAttributes.NoTxPool,
-		mmChan)
-        
-	log.Debug("BlockBuilder added", "payload", s.payloadId)
-        log.Debug("MMDBG waiting before EngineForkChoiceUpdatedReply", "param", param, "builder", s.builders[s.payloadId])
-	<-mmChan
-	log.Debug("MMDBG continuing with EngineForkChoiceUpdatedReply")
+	bldr := builder.NewBlockBuilder(s.builderFunc, &param)
+	s.builders[s.payloadId] = bldr
+
+	log.Debug("MMDBG waiting before EngineForkChoiceUpdatedReply", "param", param, "builder", s.builders[s.payloadId])
+	if s.config.Optimism != nil {
+		blockAndReceipts, err := bldr.WaitForBlock()
+		if err != nil {
+			return &remote.EngineForkChoiceUpdatedResponse{
+				PayloadStatus: &remote.EnginePayloadStatus{
+					Status:          remote.EngineStatus_INVALID,
+					LatestValidHash: gointerfaces.ConvertHashToH256(headHash),
+					ValidationError: err.Error(),
+				},
+			}, nil
+		}
+		block := blockAndReceipts.Block
+		log.Debug("MMDBG Optimism BlockBuilder added", "payload", s.payloadId, "blockHash", block.Hash(), "blockNum", block.NumberU64(), "txes", len(block.Transactions()))
+	}
 
 	return &remote.EngineForkChoiceUpdatedResponse{
 		PayloadStatus: &remote.EnginePayloadStatus{
@@ -724,6 +785,7 @@ func (s *EthBackendServer) EngineGetPayloadBodiesByHashV1(ctx context.Context, r
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
 	bodies := make([]*types2.ExecutionPayloadBodyV1, len(request.Hashes))
 
@@ -749,6 +811,7 @@ func (s *EthBackendServer) EngineGetPayloadBodiesByRangeV1(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
 	bodies := make([]*types2.ExecutionPayloadBodyV1, 0, request.Count)
 

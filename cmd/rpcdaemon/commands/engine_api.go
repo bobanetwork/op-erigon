@@ -15,16 +15,12 @@ import (
 	types2 "github.com/ledgerwatch/erigon-lib/gointerfaces/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
 
-	common2 "github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
-	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/ethdb/privateapi"
-	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
-	"github.com/ledgerwatch/erigon/turbo/trie"
 )
 
 // ExecutionPayload represents an execution payload (aka block)
@@ -44,6 +40,7 @@ type ExecutionPayload struct {
 	BlockHash     common.Hash         `json:"blockHash"     gencodec:"required"`
 	Transactions  []hexutil.Bytes     `json:"transactions"  gencodec:"required"`
 	Withdrawals   []*types.Withdrawal `json:"withdrawals"`
+	ExcessDataGas *hexutil.Big        `json:"excessDataGas"`
 }
 
 // GetPayloadV2Response represents the response of the getPayloadV2 method
@@ -64,9 +61,10 @@ type PayloadAttributes struct {
 	Timestamp             hexutil.Uint64      `json:"timestamp"             gencodec:"required"`
 	PrevRandao            common.Hash         `json:"prevRandao"            gencodec:"required"`
 	SuggestedFeeRecipient common.Address      `json:"suggestedFeeRecipient" gencodec:"required"`
-	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
-	Transactions          []hexutil.Bytes     `json:"transactions"          gencodec:"required"`
-	NoTxPool              bool                `json:"noTxPool"              gencodec:"required"`
+	Withdrawals           []*types.Withdrawal `json:"withdrawals"           gencodec:"optional"`
+	Transactions          []hexutil.Bytes     `json:"transactions"          gencodec:"optional"`
+	NoTxPool              bool                `json:"noTxPool"              gencodec:"optional"`
+	GasLimit              *hexutil.Uint64     `json:"gasLimit"              gencodec:"optional"`
 }
 
 // TransitionConfiguration represents the correct configurations of the CL and the EL
@@ -157,13 +155,32 @@ func (e *EngineImpl) ForkchoiceUpdatedV2(ctx context.Context, forkChoiceState *F
 	return e.forkchoiceUpdated(2, ctx, forkChoiceState, payloadAttributes)
 }
 
+// Converts slice of pointers to slice of structs
+func withdrawalValues(ptrs []*types.Withdrawal) []types.Withdrawal {
+	if ptrs == nil {
+		return nil
+	}
+	vals := make([]types.Withdrawal, 0, len(ptrs))
+	for _, w := range ptrs {
+		vals = append(vals, *w)
+	}
+	return vals
+}
+
 func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, forkChoiceState *ForkChoiceState, payloadAttributes *PayloadAttributes) (map[string]interface{}, error) {
 	if e.internalCL {
 		log.Error("EXTERNAL CONSENSUS LAYER IS NOT ENABLED, PLEASE RESTART WITH FLAG --externalcl")
 		return nil, fmt.Errorf("engine api should not be used, restart with --externalcl")
 	}
-	log.Debug("Received ForkchoiceUpdated", "version", version, "head", forkChoiceState.HeadHash, "safe", forkChoiceState.HeadHash, "finalized", forkChoiceState.FinalizedBlockHash,
-		"build", payloadAttributes != nil)
+	if payloadAttributes == nil {
+		log.Debug("Received ForkchoiceUpdated", "version", version,
+			"head", forkChoiceState.HeadHash, "safe", forkChoiceState.SafeBlockHash, "finalized", forkChoiceState.FinalizedBlockHash)
+	} else {
+		log.Info("Received ForkchoiceUpdated [build]", "version", version,
+			"head", forkChoiceState.HeadHash, "safe", forkChoiceState.SafeBlockHash, "finalized", forkChoiceState.FinalizedBlockHash,
+			"timestamp", payloadAttributes.Timestamp, "prevRandao", payloadAttributes.PrevRandao, "suggestedFeeRecipient", payloadAttributes.SuggestedFeeRecipient,
+			"withdrawals", withdrawalValues(payloadAttributes.Withdrawals))
+	}
 
 	var attributes *remote.EnginePayloadAttributes
 	if payloadAttributes != nil {
@@ -174,7 +191,7 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 		transactions := make([][]byte, len(payloadAttributes.Transactions))
 		for i, transaction := range payloadAttributes.Transactions {
 			transactions[i] = ([]byte)(transaction)
-			//log.Debug("MMDBG  -> ", "idx", i, "in", transaction, "out", transactions[i])
+			// log.Debug("MMDBG  -> ", "idx", i, "in", transaction, "out", transactions[i])
 		}
 		attributes = &remote.EnginePayloadAttributes{
 			Version:               1,
@@ -183,6 +200,7 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 			SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
 			Transactions:          transactions,
 			NoTxPool:              payloadAttributes.NoTxPool,
+			GasLimit:              (*uint64)(payloadAttributes.GasLimit),
 		}
 		if version >= 2 && payloadAttributes.Withdrawals != nil {
 			attributes.Version = 2
@@ -219,58 +237,6 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 	addPayloadId(json, reply.PayloadId)
 
 	return json, nil
-}
-
-func (e *EngineImpl) MMProof(ctx context.Context, BN uint64, BH common.Hash) error {
-	if BN == 0 {
-		return nil
-	}
-
-	tx, err := e.db.BeginRo(ctx)
-	if err != nil {
-		return err
-	}
-
-	pAddr := common.HexToAddress("0x4200000000000000000000000000000000000016")
-	pRL := trie.NewRetainList(0)
-	addrHash, err := common2.HashData(pAddr[:])
-	if err != nil {
-		return err
-	}
-
-	pRL.AddKey(addrHash[:])
-	loader := trie.NewFlatDBTrieLoader("mmProof")
-	if err := loader.Reset(pRL, nil, nil, true); err != nil {
-		return err
-	}
-
-	var accProof accounts.AccProofResult
-	accProof.Address = pAddr
-	loader.SetProofReturn(&accProof)
-
-	var quit <-chan struct{}
-	hash, err := loader.CalcTrieRoot(tx, []byte{}, quit)
-	if err != nil {
-		return err
-	}
-	log.Debug("MMGP engine_api ProofResult", "blockNum", BN-1, "blockHash", BH, "stateroot", hash, "result", accProof)
-	log.Debug("MMGP proof db", "db", e._proofDB)
-	proofDB := e._proofDB
-
-	blockKey := []byte(fmt.Sprint(BN - 1))
-
-	if err := proofDB.Update(context.Background(), func(tx kv.RwTx) (err error) {
-		dbVal, err := rlp.EncodeToBytes(accProof)
-		if err != nil {
-			return err
-		}
-		return tx.Put("AccountProof", blockKey, dbVal)
-	}); err != nil {
-		return err
-	}
-	log.Debug("MMGP engine_api wrote to proofDB", "BN", BN-1, "dbEntry", accProof)
-
-	return nil
 }
 
 // NewPayloadV1 processes new payloads (blocks) from the beacon chain without withdrawals.
@@ -326,17 +292,22 @@ func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *Ex
 		ep.Version = 2
 		ep.Withdrawals = privateapi.ConvertWithdrawalsToRpc(payload.Withdrawals)
 	}
+	if version >= 3 && payload.ExcessDataGas != nil {
+		ep.Version = 3
+		var excessDataGas *uint256.Int
+		var overflow bool
+		excessDataGas, overflow = uint256.FromBig((*big.Int)(payload.ExcessDataGas))
+		if overflow {
+			log.Warn("NewPayload ExcessDataGas overflow")
+			return nil, fmt.Errorf("invalid request, excess data gas overflow")
+		}
+		ep.ExcessDataGas = gointerfaces.ConvertUint256IntToH256(excessDataGas)
+	}
 
 	res, err := e.api.EngineNewPayload(ctx, ep)
 	if err != nil {
 		log.Warn("NewPayload", "err", err)
 		return nil, err
-	}
-	if (uint64(payload.BlockNumber)-1)%20 == 0 {
-		pErr := e.MMProof(ctx, uint64(payload.BlockNumber), payload.BlockHash)
-		if pErr != nil {
-			log.Warn("MMDBG Proof pre-calculation failed", "Block", uint64(payload.BlockNumber), "err", pErr)
-		}
 	}
 	log.Debug("MMDBG <<< NewPayload Response", "BN", uint64(payload.BlockNumber), "res", res)
 	return convertPayloadStatus(ctx, e.db, res)
@@ -372,7 +343,10 @@ func convertPayloadFromRpc(payload *types2.ExecutionPayload) *ExecutionPayload {
 	if payload.Version >= 2 {
 		res.Withdrawals = privateapi.ConvertWithdrawalsFromRpc(payload.Withdrawals)
 	}
-
+	if payload.Version >= 3 {
+		edg := gointerfaces.ConvertH256ToUint256Int(payload.ExcessDataGas).ToBig()
+		res.ExcessDataGas = (*hexutil.Big)(edg)
+	}
 	return res
 }
 

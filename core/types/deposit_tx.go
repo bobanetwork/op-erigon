@@ -23,25 +23,23 @@
 package types
 
 import (
-	//"encoding/binary"
 	"fmt"
 	"io"
 	"math/big"
-	//"math/bits"
 
+	"bytes"
+
+	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	types2 "github.com/ledgerwatch/erigon-lib/types"
 	"github.com/ledgerwatch/erigon/common"
-	//"github.com/ledgerwatch/erigon/common/u256"
-	"bytes"
-	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
-	types2 "github.com/ledgerwatch/erigon-lib/types"
 )
 
-// DepositTransaction is the transaction data of regular Ethereum transactions.
+// DepositTransaction is the transaction data of an Optimism Deposit Transaction
 type DepositTransaction struct {
 	TransactionMisc
 
@@ -62,22 +60,6 @@ func (tx DepositTransaction) GetTip() *uint256.Int    { return uint256.NewInt(0)
 func (tx DepositTransaction) GetFeeCap() *uint256.Int { return uint256.NewInt(0) }
 func (tx DepositTransaction) GetNonce() uint64        { return 0 }
 func (tx DepositTransaction) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
-	/*
-		if baseFee == nil {
-			return tx.GetTip()
-		}
-		gasFeeCap := tx.GetFeeCap()
-		// return 0 because effectiveFee cant be < 0
-		if gasFeeCap.Lt(baseFee) {
-			return uint256.NewInt(0)
-		}
-		effectiveFee := new(uint256.Int).Sub(gasFeeCap, baseFee)
-		if tx.GetTip().Lt(effectiveFee) {
-			return tx.GetTip()
-		} else {
-			return effectiveFee
-		}
-	*/
 	return uint256.NewInt(0)
 }
 
@@ -95,6 +77,10 @@ func (tx DepositTransaction) GetAccessList() types2.AccessList {
 func (tx DepositTransaction) GetData() []byte {
 	return tx.Data
 }
+func (tx DepositTransaction) GetDataHashes() []libcommon.Hash {
+	// Only blob txs have data hashes
+	return []libcommon.Hash{}
+}
 
 func (tx DepositTransaction) Protected() bool {
 	return true // FIXME
@@ -105,7 +91,7 @@ func (tx DepositTransaction) EncodingSize() int {
 	var bb bytes.Buffer
 	tx.EncodeRLP(&bb)
 	log.Debug("MMDBG tx.EncodingSize", "tx", tx, "len", bb.Len())
-	
+
 	return bb.Len()
 }
 
@@ -236,22 +222,23 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
 	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
-		sourceHash: tx.SourceHash,
-//		nonce:      tx.Nonce,
-		from:       *tx.From,
-		gasLimit:   tx.GasLimit,
-		to:         tx.To,
-		mint:       *tx.Mint,
-		amount:     *tx.Value,
-		isSystemTx: tx.IsSystemTx,
-		data:       tx.Data,
-		accessList: nil,
-		checkNonce: true,
+		sourceHash:    tx.SourceHash,
+//		nonce:         tx.Nonce,
+		from:          *tx.From,
+		gasLimit:      tx.GasLimit,
+		to:            tx.To,
+		mint:          *tx.Mint,
+		amount:        *tx.Value,
+		isSystemTx:    tx.IsSystemTx,
+		data:          tx.Data,
+		accessList:    nil,
+		checkNonce:    true,
+		rollupDataGas: rollupDataGas(tx),
 	}
 
 	var err error
 	//msg.from, err = tx.Sender(s)
-	log.Debug("MMDBG dtX AsMessage", "msg", msg)
+	log.Debug("MMDBG dtX AsMessage", "txhash", tx.Hash(), "msg", msg)
 	return msg, err
 }
 
@@ -287,16 +274,19 @@ func (tx *DepositTransaction) Hash() libcommon.Hash {
 	if hash := tx.hash.Load(); hash != nil {
 		return *hash.(*libcommon.Hash)
 	}
-	hash := rlpHash([]interface{}{
-		tx.SourceHash,
-		tx.From,
-		tx.To,
-		tx.Mint,
-		tx.Value,
-		tx.GasLimit,
-		tx.IsSystemTx,
-		tx.Data,
-	})
+	hash := prefixedRlpHash(
+		DepositTxType,
+		[]interface{}{
+			tx.SourceHash,
+			tx.From,
+			tx.To,
+			tx.Mint,
+			tx.Value,
+			tx.GasLimit,
+			tx.IsSystemTx,
+			tx.Data,
+		},
+	)
 	tx.hash.Store(&hash)
 	return hash
 
