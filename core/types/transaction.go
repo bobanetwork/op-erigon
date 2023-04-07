@@ -502,6 +502,7 @@ func (t *TransactionsFixedOrder) Pop() {
 
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
+	txType        byte
 	sourceHash    *libcommon.Hash
 	to            *libcommon.Address
 	from          libcommon.Address
@@ -553,7 +554,7 @@ func (m Message) FeeCap() *uint256.Int          { return &m.feeCap }
 func (m Message) Tip() *uint256.Int             { return &m.tip }
 func (m Message) Value() *uint256.Int           { return &m.amount }
 func (m Message) Mint() *uint256.Int            { return &m.mint }
-func (m Message) IsDepositTx() bool             { return m.nonce == DepositsNonce /* FIXME just set explicitly */ }
+func (m Message) IsDepositTx() bool             { return m.txType == DepositTxType }
 func (m Message) RollupDataGas() uint64         { return m.rollupDataGas }
 func (m Message) Gas() uint64                   { return m.gasLimit }
 func (m Message) Nonce() uint64                 { return m.nonce }

@@ -95,6 +95,10 @@ func (tx OffchainTransaction) GetAccessList() types2.AccessList {
 func (tx OffchainTransaction) GetData() []byte {
 	return tx.Data
 }
+func (tx OffchainTransaction) GetDataHashes() []libcommon.Hash {
+	// Only blob txs have data hashes
+	return []libcommon.Hash{}
+}
 
 func (tx OffchainTransaction) Protected() bool {
 	return true // FIXME
@@ -238,6 +242,7 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
 	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
+		txType:     OffchainTxType,
 		sourceHash: tx.SourceHash,
 		nonce:      tx.Nonce,
 		from:       *tx.From,

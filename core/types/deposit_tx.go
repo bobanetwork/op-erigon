@@ -222,6 +222,7 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
 	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
+		txType:        DepositTxType,
 		sourceHash:    tx.SourceHash,
 //		nonce:         tx.Nonce,
 		from:          *tx.From,
