@@ -283,7 +283,8 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 			if !evm.hc.Failed && evm.hc.HcFlag == 0 && err == ErrExecutionReverted && addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
 				// FIXME - check 'ret' for specific trigger msg
 
-				log.Debug("MMDBG-HC HybridCompute triggered")
+				log.Debug("MMDBG-HC HybridCompute triggered by", "caller", caller.Address())
+				evm.hc.Caller = caller.Address()
 				evm.hc.HcFlag = 1
 				evm.hc.Request = make([]byte,len(input))
 				copy(evm.hc.Request, input)

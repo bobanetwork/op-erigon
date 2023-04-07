@@ -32,6 +32,7 @@ type HCContext struct {
 	Response []byte
 	MayBlock bool
 	Failed bool
+	Caller   libcommon.Address
 }
 
 var HCResponseCache map[libcommon.Hash] *HCContext
@@ -80,7 +81,7 @@ func HCSimpleRandom() ([]byte, error) {
 	return hcData, nil
 }
 
-func HCRequest(req []byte) ([]byte, error) {
+func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
 	log.Debug("MMDBG-HC Request", "req", req)
 	
 	if len(req) == 4 && bytes.Equal(req, []byte{125,191,124,16}) {
@@ -106,7 +107,7 @@ func HCRequest(req []byte) ([]byte, error) {
 	t2,_ := abi.NewType("string","",nil)
 	t3,_ := abi.NewType("bytes","",nil)
 	
-	dec,err := (abi.Arguments{{Type: t1}, {Type: t2}, {Type: t2}, {Type: t3}}).Unpack(req[4:])
+	dec,err := (abi.Arguments{{Type: t1}, {Type: t2}, {Type: t3}}).Unpack(req[4:])
 	log.Debug("MMDBG-HC ABI decode", "dec", dec, "err", err)
 
 	if err != nil {
@@ -115,12 +116,12 @@ func HCRequest(req []byte) ([]byte, error) {
 	}
 	
 	reqUrl := dec[1].(string)
-	reqMethod := dec[2].(string)
-	reqPayload := dec[3].([]byte)
+	reqMethod := string(caller.Hex())
+	reqPayload := dec[2].([]byte)
 
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write([]byte(reqUrl))
-	hasher.Write([]byte(reqMethod))
+	hasher.Write(caller.Bytes())
 	hasher.Write(reqPayload)
 	reqKey := libcommon.BytesToHash(hasher.Sum(nil))
 	
@@ -170,7 +171,7 @@ func DoOffchain(hc *HCContext) error {
 	time.Sleep(2 * time.Second)
 	log.Debug("MMDBG-HC call.go Sleep done")
 
-	hcData, err := HCRequest(hc.Request)
+	hcData, err := HCRequest(hc.Request, hc.Caller)
 	hc.Response = make([]byte, len(hcData))
 	copy(hc.Response, hcData)
 
