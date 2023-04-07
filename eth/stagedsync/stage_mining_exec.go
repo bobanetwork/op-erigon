@@ -120,14 +120,14 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 		log.Debug("MMDBG SpawnMiningExecStage", "txs", txs, "Deposits", current.Deposits, "NoTxPool", current.NoTxPool)
 
 		if current.Deposits != nil && len(current.Deposits) != 0 {
-		
+
 			var txs []types.Transaction
 			for i := range current.Deposits {
 				s := rlp.NewStream(bytes.NewReader(current.Deposits[i]), uint64(len(current.Deposits[i])))
-                		log.Debug("MMDBG Candidate transaction", "i", i, "tx", current.Deposits[i], "s", s)
+				log.Debug("MMDBG Candidate transaction", "i", i, "tx", current.Deposits[i], "s", s)
 
 				transaction, err := types.DecodeTransaction(s)
-                		log.Debug("MMDBG Decoded", "err", err, "tx", transaction)
+				log.Debug("MMDBG Decoded", "err", err, "tx", transaction)
 				if err == io.EOF {
 					continue
 				}
@@ -425,12 +425,14 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		snap := ibs.Snapshot()
 		log.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
 		receipt, _, err := core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig)
+		log.Debug("BC - ApplyTransaction error: ", "err", err, "receipt", receipt)
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap) // restore gasPool as well as ibs
 			return nil, err
 		}
 
+		log.Debug("BC - addTransactionsToMiningBlock - logs", "logs", receipt.Logs)
 		current.Txs = append(current.Txs, txn)
 		current.Receipts = append(current.Receipts, receipt)
 		return receipt.Logs, nil
@@ -478,8 +480,23 @@ LOOP:
 			break
 		}
 
+		var (
+			from libcommon.Address
+			err  error
+		)
 		// We use the eip155 signer regardless of the env hf.
-		from, err := txn.Sender(*signer)
+		if chainConfig.IsBobaPreBedrock(header.Number) {
+			fmt.Println("Boba pre bedrock activated")
+			fmt.Println("txn.IsLegacyDepositTx(): ", txn.IsLegacyDepositTx(), err == nil)
+			if txn.IsLegacyDepositTx() {
+				from = types.ZeroAddress
+			} else {
+				from, err = txn.Sender(*signer)
+			}
+		} else {
+			from, err = txn.Sender(*signer)
+		}
+
 		if err != nil {
 			log.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
 			txs.Pop()

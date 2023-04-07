@@ -208,9 +208,18 @@ func VerifyHeaderBasics(chain consensus.ChainHeaderReader, header, parent *types
 			return consensus.ErrFutureBlock
 		}
 	}
-	if header.Time <= parent.Time {
-		return errOlderBlockTime
+
+	fmt.Println("BC - verifyHeader consensus: ", header.Number, chain.Config().IsBobaPreBedrock(header.Number))
+	if chain.Config().IsBobaPreBedrock(header.Number) {
+		if header.Time < parent.Time {
+			return errOlderBlockTime
+		}
+	} else {
+		if header.Time <= parent.Time {
+			return errOlderBlockTime
+		}
 	}
+
 	// Verify that the gas limit is <= 2^63-1
 	if header.GasLimit > params.MaxGasLimit {
 		return fmt.Errorf("invalid gasLimit: have %v, max %v", header.GasLimit, params.MaxGasLimit)

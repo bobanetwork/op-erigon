@@ -179,8 +179,15 @@ func (s *Serenity) verifyHeader(chain consensus.ChainHeaderReader, header, paren
 		return fmt.Errorf("extra-data longer than %d bytes (%d)", params.MaximumExtraDataSize, len(header.Extra))
 	}
 
-	if header.Time <= parent.Time {
-		return errOlderBlockTime
+	fmt.Println("BC - verifyHeader serenity: ", header.Number, chain.Config().IsBobaPreBedrock(header.Number))
+	if chain.Config().IsBobaPreBedrock(header.Number) {
+		if header.Time < parent.Time {
+			return errOlderBlockTime
+		}
+	} else {
+		if header.Time <= parent.Time {
+			return errOlderBlockTime
+		}
 	}
 
 	if header.Difficulty.Cmp(SerenityDifficulty) != 0 {

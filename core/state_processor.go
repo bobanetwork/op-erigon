@@ -17,6 +17,8 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
@@ -35,6 +37,7 @@ import (
 func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, evm vm.VMInterface, cfg vm.Config) (*types.Receipt, []byte, error) {
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64()), header.BaseFee, rules)
+	fmt.Println("BC - applyTransaction: ", "msg", msg, "err", err)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -56,6 +59,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	// Update the evm with the new transaction context.
 	evm.Reset(txContext, ibs)
 
+	fmt.Println("Executing EVM call", "state_processer#60")
 	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
 	if err != nil {
 		return nil, nil, err
@@ -85,6 +89,19 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		}
 		// Set the receipt logs and create a bloom for filtering
 		receipt.Logs = ibs.GetLogs(tx.Hash())
+		// fmt.Println("inserting fake log!!!")
+		// log := types.Log{
+		// 	Address:     common.HexToAddress("0x6900000000000000000000000000000000000002"),
+		// 	Topics:      []common.Hash{},
+		// 	Data:        []byte{},
+		// 	BlockNumber: 0,
+		// 	TxHash:      common.HexToHash("0x3bbe99066f01b29013c5b3bf759bfef62b930d58d73532b06b3e3854af9a67bf"),
+		// 	TxIndex:     0,
+		// 	BlockHash:   common.HexToHash("0x3bbe99066f01b29013c5b3bf759bfef62b930d58d73532b06b3e3854af9a67bf"),
+		// 	Index:       0,
+		// 	Removed:     false,
+		// }
+		// receipt.Logs = []*types.Log{&log}
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 		receipt.BlockNumber = header.Number
 		receipt.TransactionIndex = uint(ibs.TxIndex())

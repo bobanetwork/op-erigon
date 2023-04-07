@@ -249,6 +249,9 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 	default:
 		return libcommon.Address{}, ErrTxTypeNotSupported
 	}
+	if tx.IsLegacyDepositTx() {
+		return ZeroAddress, nil
+	}
 	return recoverPlain(context, tx.SigningHash(signChainID), R, S, &V, !sg.maleable)
 }
 

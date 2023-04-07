@@ -27,18 +27,21 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+
 	//"math/bits"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/common"
+
 	//"github.com/ledgerwatch/erigon/common/u256"
 	"bytes"
+
 	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
+	types2 "github.com/ledgerwatch/erigon-lib/types"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
-	types2 "github.com/ledgerwatch/erigon-lib/types"
 )
 
 // DepositTransaction is the transaction data of regular Ethereum transactions.
@@ -105,7 +108,7 @@ func (tx DepositTransaction) EncodingSize() int {
 	var bb bytes.Buffer
 	tx.EncodeRLP(&bb)
 	log.Debug("MMDBG tx.EncodingSize", "tx", tx, "len", bb.Len())
-	
+
 	return bb.Len()
 }
 
@@ -367,4 +370,12 @@ func (tx *DepositTransaction) Sender(signer Signer) (libcommon.Address, error) {
 func (tx *DepositTransaction) SetSender(addr libcommon.Address) {
 	log.Warn("MMDBG dtX SetSender")
 	// NOP - FIXME? ct.from.Store(addr)
+}
+
+func (tx *DepositTransaction) IsLegacyDepositTx() bool {
+	V, R, S := tx.RawSignatureValues()
+	if *tx.To == MessengerAddress && V == uint256.NewInt(0) && R == uint256.NewInt(0) && S == uint256.NewInt(0) && S == uint256.NewInt(0) {
+		return true
+	}
+	return false
 }

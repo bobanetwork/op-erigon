@@ -94,6 +94,8 @@ type Transaction interface {
 	GetSender() (libcommon.Address, bool)
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
+	// Legacy deposit tx
+	IsLegacyDepositTx() bool
 }
 
 // TransactionMisc is collection of miscelaneous fields for transaction that is supposed to be embedded into concrete
@@ -127,7 +129,7 @@ func (tm TransactionMisc) From() *atomic.Value {
 
 func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 	kind, size, err := s.Kind()
-	//log.Debug("MMDBG transaction.go DecodeTransaction", "kind", kind, "size", size, "err", err)
+	log.Debug("MMDBG transaction.go DecodeTransaction", "kind", kind, "size", size, "err", err)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +151,7 @@ func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 		return nil, fmt.Errorf("%w, got %d bytes", rlp.ErrWrongTxTypePrefix, len(b))
 	}
 	var tx Transaction
-	//log.Debug("MMDBG Decoding", "b[0]", b[0], "s", s)
+	log.Debug("MMDBG Transaction Decoding", "b[0]", b[0], "s", s)
 	switch b[0] {
 	case AccessListTxType:
 		t := &AccessListTx{}
