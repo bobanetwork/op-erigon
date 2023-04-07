@@ -943,10 +943,15 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 	if len(data) == 0 {
 		return nil
 	}
-	var receipts types.Receipts
-	if err := cbor.Unmarshal(&receipts, bytes.NewReader(data)); err != nil {
+	var receiptsMarshal []*types.ReceiptMarshal
+	if err := cbor.Unmarshal(&receiptsMarshal, bytes.NewReader(data)); err != nil {
 		log.Error("receipt unmarshal failed", "err", err)
 		return nil
+	}
+
+	receipts := make(types.Receipts, len(receiptsMarshal))
+	for i, receipt := range receiptsMarshal {
+		receipts[i] = types.ReceiptPrepareUnmarshal(receipt)
 	}
 
 	prefix := make([]byte, 8)
@@ -994,6 +999,7 @@ func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) typ
 	}
 	// We're deriving many fields from the block body, retrieve beside the receipt
 	receipts := ReadRawReceipts(db, block.NumberU64())
+	fmt.Println("BC - ReadReceipts", receipts[0])
 	if receipts == nil {
 		return nil
 	}
@@ -1004,6 +1010,7 @@ func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) typ
 		log.Error("Failed to derive block receipts fields", "hash", block.Hash(), "number", block.NumberU64(), "err", err, "stack", dbg.Stack())
 		return nil
 	}
+	fmt.Println("BC - final ReadReceipts", receipts[0])
 	return receipts
 }
 
@@ -1032,6 +1039,10 @@ func ReadReceiptsByHash(db kv.Tx, hash libcommon.Hash) (types.Receipts, error) {
 
 // WriteReceipts stores all the transaction receipts belonging to a block.
 func WriteReceipts(tx kv.Putter, number uint64, receipts types.Receipts) error {
+	fmt.Println("BC - WriteReceipts - receipts", len(receipts))
+	if len(receipts) == 1 {
+		fmt.Println("BC - WriteReceipts - receipts[0]", receipts[0])
+	}
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	for txId, r := range receipts {
 		if len(r.Logs) == 0 {
@@ -1063,6 +1074,7 @@ func WriteReceipts(tx kv.Putter, number uint64, receipts types.Receipts) error {
 
 // AppendReceipts stores all the transaction receipts belonging to a block.
 func AppendReceipts(tx kv.StatelessWriteTx, blockNumber uint64, receipts types.Receipts) error {
+	fmt.Println("BC - AppendReceipts - receipts", receipts[0])
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 
 	for txId, r := range receipts {
@@ -1082,10 +1094,23 @@ func AppendReceipts(tx kv.StatelessWriteTx, blockNumber uint64, receipts types.R
 	}
 
 	buf.Reset()
-	err := cbor.Marshal(buf, receipts)
+
+	receiptsMarshal := make([]*types.ReceiptMarshal, len(receipts))
+	for i, receipt := range receipts {
+		receiptsMarshal[i] = types.ReceiptPrepareMarshal(receipt)
+	}
+	err := cbor.Marshal(buf, receiptsMarshal)
 	if err != nil {
 		return fmt.Errorf("encode block receipts for block %d: %w", blockNumber, err)
 	}
+
+	var decodeReceipt []*types.ReceiptMarshal
+	if err := cbor.Unmarshal(&decodeReceipt, bytes.NewReader(buf.Bytes())); err != nil {
+		log.Error("receipt unmarshal failed", "err", err)
+		return nil
+	}
+
+	fmt.Println("BC - AppendReceipts - receipts", decodeReceipt[0])
 
 	if err = tx.Append(kv.Receipts, hexutility.EncodeTs(blockNumber), buf.Bytes()); err != nil {
 		return fmt.Errorf("writing receipts for block %d: %w", blockNumber, err)

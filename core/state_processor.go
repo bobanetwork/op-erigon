@@ -17,7 +17,10 @@
 package core
 
 import (
+	"context"
 	"fmt"
+	"math/big"
+	"time"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -28,6 +31,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/erigon/rpc"
 )
 
 // applyTransaction attempts to apply a transaction to the given state database
@@ -59,7 +63,6 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	// Update the evm with the new transaction context.
 	evm.Reset(txContext, ibs)
 
-	fmt.Println("Executing EVM call", "state_processer#60")
 	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
 	if err != nil {
 		return nil, nil, err
@@ -74,38 +77,63 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	// based on the eip phase, we're passing whether the root touch-delete accounts.
 	var receipt *types.Receipt
 	if !cfg.NoReceipts {
-		// by the tx.
-		receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
+
+		var (
+			legacyReceipt    *types.LegacyReceipt
+			isBobaPreBedrock bool
+		)
+		if evm.ChainConfig().IsBobaPreBedrock(header.Number) {
+			isBobaPreBedrock = true
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			client, err := rpc.DialContext(ctx, config.GetBobaLegacyURL())
+			cancel()
+			if err != nil {
+				return nil, nil, err
+			}
+			err = client.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+			if err != nil {
+				return nil, nil, err
+			}
+			receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: uint64(legacyReceipt.GasUsed)}
+		} else {
+			receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
+		}
+
 		if result.Failed() {
 			receipt.Status = types.ReceiptStatusFailed
 		} else {
 			receipt.Status = types.ReceiptStatusSuccessful
 		}
 		receipt.TxHash = tx.Hash()
-		receipt.GasUsed = result.UsedGas
+		if isBobaPreBedrock {
+			receipt.GasUsed = uint64(legacyReceipt.GasUsed)
+		} else {
+			receipt.GasUsed = result.UsedGas
+		}
 		// if the transaction created a contract, store the creation address in the receipt.
 		if msg.To() == nil {
 			receipt.ContractAddress = crypto.CreateAddress(evm.TxContext().Origin, tx.GetNonce())
 		}
 		// Set the receipt logs and create a bloom for filtering
-		receipt.Logs = ibs.GetLogs(tx.Hash())
-		// fmt.Println("inserting fake log!!!")
-		// log := types.Log{
-		// 	Address:     common.HexToAddress("0x6900000000000000000000000000000000000002"),
-		// 	Topics:      []common.Hash{},
-		// 	Data:        []byte{},
-		// 	BlockNumber: 0,
-		// 	TxHash:      common.HexToHash("0x3bbe99066f01b29013c5b3bf759bfef62b930d58d73532b06b3e3854af9a67bf"),
-		// 	TxIndex:     0,
-		// 	BlockHash:   common.HexToHash("0x3bbe99066f01b29013c5b3bf759bfef62b930d58d73532b06b3e3854af9a67bf"),
-		// 	Index:       0,
-		// 	Removed:     false,
-		// }
-		// receipt.Logs = []*types.Log{&log}
+		if isBobaPreBedrock {
+			receipt.Logs = legacyReceipt.Logs
+		} else {
+			receipt.Logs = ibs.GetLogs(tx.Hash())
+		}
+		// Set Boba legacy receipt fields
+		if isBobaPreBedrock {
+			receipt.L1GasPrice = (*big.Int)(legacyReceipt.L1GasPrice)
+			receipt.L1GasUsed = (*big.Int)(legacyReceipt.L1GasUsed)
+			receipt.L1Fee = (*big.Int)(legacyReceipt.L1Fee)
+			receipt.FeeScalar = legacyReceipt.FeeScalar
+			receipt.L2BobaFee = (*big.Int)(legacyReceipt.L2BobaFee)
+		}
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 		receipt.BlockNumber = header.Number
 		receipt.TransactionIndex = uint(ibs.TxIndex())
 	}
+
+	fmt.Println("BC - applyTransaction: ", "receipt", receipt.L1GasPrice, receipt.L1GasUsed)
 
 	return receipt, result.ReturnData, err
 }
