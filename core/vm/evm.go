@@ -18,6 +18,7 @@ package vm
 
 import (
 	"sync/atomic"
+	"bytes"
 
 	"github.com/holiman/uint256"
 
@@ -275,19 +276,25 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 			readOnly = true
 		}
 		if evm.hc != nil {
-			log.Debug("MMDBG-HC before evm.run", "hcFlag", evm.hc.HcFlag, "addr", addr, "input", input)
+			log.Debug("MMDBG-HC before evm.run", "hcFlag", evm.hc.HcFlag, "addr", addr, "typ", typ, "depth", depth, "input", input)
 		}
 		ret, err = run(evm, contract, input, readOnly)
 		if evm.hc != nil {
-			log.Debug("MMDBG-HC after evm.run", "hcFlag", evm.hc.HcFlag, "err", err, "ret", ret, "addr", addr, "input", input)
+			log.Debug("MMDBG-HC after evm.run", "hcFlag", evm.hc.HcFlag, "err", err, "ret", ret, "addr", addr, "typ", typ, "depth", depth, "ret", ret)
 			if !evm.hc.Failed && evm.hc.HcFlag == 0 && err == ErrExecutionReverted && addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
 				// FIXME - check 'ret' for specific trigger msg
 
-				log.Debug("MMDBG-HC HybridCompute triggered by", "caller", caller.Address())
-				evm.hc.Caller = caller.Address()
-				evm.hc.HcFlag = 1
-				evm.hc.Request = make([]byte,len(input))
-				copy(evm.hc.Request, input)
+				// simplerandom 125,191,124,16
+				if bytes.Equal(input[:4], []byte{0x7d, 0xbf, 0x7c, 0x10}) || bytes.Equal(input[:4], []byte{0x7d, 0x93, 0x61, 0x6c}) {
+					log.Debug("MMDBG-HC evm.Call method triggered", "prefix", input[:4], "addr", addr, "caller", caller.Address())
+
+					evm.hc.Caller = caller.Address()
+					evm.hc.HcFlag = 1
+					evm.hc.Request = make([]byte,len(input))
+					copy(evm.hc.Request, input)
+				} else {
+					log.Debug("MMDBG-HC evm.Call method not triggered", "prefix", input[:4], "addr", addr, "caller", caller.Address());
+				}
 			}
 		}
 		gas = contract.Gas
@@ -314,7 +321,8 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 func (evm *EVM) Call(caller ContractRef, addr libcommon.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
 	ret, leftOverGas, err = evm.call(CALL, caller, addr, input, gas, value, bailout)
 	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.HcFlag == 1 {
-		log.Debug("MMDBG-HC evm.Call setting ErrHCReverted")
+		// If previously triggered, pass ErrHCReverted up each level of the call stack
+		log.Debug("MMDBG-HC evm.Call setting ErrHCReverted", "prefix", input[:4], "addr", addr, "caller", caller.Address())
 		err = ErrHCReverted
 	}
 	return ret, leftOverGas, err
