@@ -175,9 +175,10 @@ func (s *Serenity) CalcDifficulty(chain consensus.ChainHeaderReader, time, paren
 // stock Ethereum consensus engine with EIP-3675 modifications.
 func (s *Serenity) verifyHeader(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
 
-	if uint64(len(header.Extra)) > params.MaximumExtraDataSize {
-		return fmt.Errorf("extra-data longer than %d bytes (%d)", params.MaximumExtraDataSize, len(header.Extra))
-	}
+	fmt.Println("BC - verifyHeader serenity - Remove extra data length check")
+	// if uint64(len(header.Extra)) > params.MaximumExtraDataSize {
+	// 	return fmt.Errorf("extra-data longer than %d bytes (%d)", params.MaximumExtraDataSize, len(header.Extra))
+	// }
 
 	fmt.Println("BC - verifyHeader serenity: ", header.Number, chain.Config().IsBobaPreBedrock(header.Number))
 	if chain.Config().IsBobaPreBedrock(header.Number) {
@@ -191,7 +192,8 @@ func (s *Serenity) verifyHeader(chain consensus.ChainHeaderReader, header, paren
 	}
 
 	if header.Difficulty.Cmp(SerenityDifficulty) != 0 {
-		return errInvalidDifficulty
+		fmt.Println("BC - verifyHeader serenity: ", header.Difficulty, SerenityDifficulty)
+		// return errInvalidDifficulty
 	}
 
 	if !bytes.Equal(header.Nonce[:], SerenityNonce[:]) {

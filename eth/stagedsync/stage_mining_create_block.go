@@ -33,7 +33,7 @@ type MiningBlock struct {
 	Withdrawals []*types.Withdrawal
 	PreparedTxs types.TransactionsStream
 
-        Deposits [][]byte
+	Deposits [][]byte
 	NoTxPool bool
 }
 
@@ -176,11 +176,12 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 
 	//header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
 	var newGas uint64
-	newGas = 15_000_000	// FIXME - extract from 1st Deposit tx
+	newGas = 15_000_000 // FIXME - extract from 1st Deposit tx
 	log.Debug("MMDBG Override gas limit", "old", cfg.miner.MiningConfig.GasLimit, "new", newGas)
 	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &newGas)
-	
+
 	header.Coinbase = coinbase
+	fmt.Println("BC - extraData: ", cfg.miner.MiningConfig.ExtraData)
 	header.Extra = cfg.miner.MiningConfig.ExtraData
 
 	log.Info(fmt.Sprintf("[%s] Start mine", logPrefix), "block", executionAt+1, "baseFee", header.BaseFee, "gasLimit", header.GasLimit)
@@ -201,12 +202,16 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	}
 
 	if cfg.blockBuilderParameters != nil {
+		fmt.Println("Return in cfg.blockBuilderParameters != nil")
 		header.MixDigest = cfg.blockBuilderParameters.PrevRandao
 
 		current.Header = header
+		fmt.Println("BC - override header")
+		current.Header.Coinbase = libcommon.HexToAddress("0x0000000000000000000000000000000000000000")
+		current.Header.GasLimit = 11000000
 		current.Uncles = nil
 		current.Withdrawals = cfg.blockBuilderParameters.Withdrawals
-		
+
 		current.Deposits = cfg.blockBuilderParameters.Deposits
 		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
 		return nil
@@ -300,6 +305,9 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	current.Header = header
 	current.Uncles = makeUncles(env.uncles)
 	current.Withdrawals = nil
+	fmt.Println("BC - current.Header.Coinbase", current.Header.Coinbase.String())
+	fmt.Println("BC - overrideCoinbase", libcommon.HexToAddress("0x0000000000000000000000000000000000000000").String())
+	current.Header.Coinbase = libcommon.HexToAddress("0x0000000000000000000000000000000000000000")
 	return nil
 }
 

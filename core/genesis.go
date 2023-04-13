@@ -46,7 +46,6 @@ import (
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/params/networkname"
-	"github.com/ledgerwatch/erigon/turbo/trie"
 	"github.com/ledgerwatch/log/v3"
 	"golang.org/x/exp/slices"
 )
@@ -209,6 +208,7 @@ func CommitGenesisBlockWithOverride(db kv.RwDB, genesis *Genesis, overrideShangh
 }
 
 func MustCommitGenesisBlock(db kv.RwDB, genesis *Genesis, tmpDir string) (*chain.Config, *types.Block) {
+	fmt.Println("BC - MustCommitGenesisBlock")
 	c, b, err := CommitGenesisBlock(db, genesis, tmpDir)
 	if err != nil {
 		panic(err)
@@ -217,6 +217,7 @@ func MustCommitGenesisBlock(db kv.RwDB, genesis *Genesis, tmpDir string) (*chain
 }
 
 func WriteGenesisBlock(db kv.RwTx, genesis *Genesis, overrideShanghaiTime *big.Int, tmpDir string) (*chain.Config, *types.Block, error) {
+	fmt.Println("BC - WriteGenesisBlock")
 	if genesis != nil && genesis.Config == nil {
 		return params.AllProtocolChanges, nil, ErrGenesisNoConfig
 	}
@@ -332,23 +333,41 @@ func sortedAllocKeys(m GenesisAlloc) []string {
 // ToBlock creates the genesis block and writes state of a genesis specification
 // to the given database (or discards it if nil).
 func (g *Genesis) ToBlock(tmpDir string) (*types.Block, *state.IntraBlockState, error) {
+	fmt.Println("BC - ToBlock")
 	_ = g.Alloc //nil-check
 
+	fmt.Println("BC - override initial block")
+	// Override the default configurations of the genesis block.
 	head := &types.Header{
 		Number:     new(big.Int).SetUint64(g.Number),
 		Nonce:      types.EncodeNonce(g.Nonce),
-		Time:       g.Timestamp,
+		Time:       0,
 		ParentHash: g.ParentHash,
-		Extra:      g.ExtraData,
+		Extra:      common.Hex2Bytes("000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
 		GasLimit:   g.GasLimit,
 		GasUsed:    g.GasUsed,
-		Difficulty: g.Difficulty,
+		Difficulty: big.NewInt(1),
 		MixDigest:  g.Mixhash,
-		Coinbase:   g.Coinbase,
+		Coinbase:   libcommon.HexToAddress("0x0000000000000000000000000000000000000000"),
 		BaseFee:    g.BaseFee,
 		AuRaStep:   g.AuRaStep,
 		AuRaSeal:   g.AuRaSeal,
 	}
+	// head := &types.Header{
+	// 	Number:     new(big.Int).SetUint64(g.Number),
+	// 	Nonce:      types.EncodeNonce(g.Nonce),
+	// 	Time:       g.Timestamp,
+	// 	ParentHash: g.ParentHash,
+	// 	Extra:      g.ExtraData,
+	// 	GasLimit:   g.GasLimit,
+	// 	GasUsed:    g.GasUsed,
+	// 	Difficulty: g.Difficulty,
+	// 	MixDigest:  g.Mixhash,
+	// 	Coinbase:   g.Coinbase,
+	// 	BaseFee:    g.BaseFee,
+	// 	AuRaStep:   g.AuRaStep,
+	// 	AuRaSeal:   g.AuRaSeal,
+	// }
 	if g.GasLimit == 0 {
 		head.GasLimit = params.GenesisGasLimit
 	}
@@ -368,7 +387,7 @@ func (g *Genesis) ToBlock(tmpDir string) (*types.Block, *state.IntraBlockState, 
 		withdrawals = []*types.Withdrawal{}
 	}
 
-	var root libcommon.Hash
+	// var root libcommon.Hash
 	var statedb *state.IntraBlockState
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -432,16 +451,17 @@ func (g *Genesis) ToBlock(tmpDir string) (*types.Block, *state.IntraBlockState, 
 		if err = statedb.FinalizeTx(&chain.Rules{}, w); err != nil {
 			return
 		}
-		if root, err = trie.CalcRoot("genesis", tx); err != nil {
-			return
-		}
+		// if root, err = trie.CalcRoot("genesis", tx); err != nil {
+		// 	return
+		// }
 	}()
 	wg.Wait()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	head.Root = root
+	head.Root = libcommon.HexToHash("0x36c808dc3bb586c14bebde3ca630a4d49a1fdad0b01d7e58f96f2fcd1aa0003d")
+	// head.Root = root
 
 	return types.NewBlock(head, nil, nil, nil, withdrawals), statedb, nil
 }

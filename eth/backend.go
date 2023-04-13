@@ -544,6 +544,25 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		}
 		log.Debug("MMDBG backend.go Done mining step")
 		block := <-miningStatePos.MiningResultPOSCh
+
+		block.Block.Header().Difficulty = big.NewInt(3)
+		log.Debug("BC - override block mining")
+		fmt.Println("BC - override block mining param: ParentHash", block.Block.Header().ParentHash)
+		fmt.Println("BC - override block mining param: UncleHash", block.Block.Header().UncleHash)
+		fmt.Println("BC - override block mining param: Coinbase", block.Block.Header().Coinbase)
+		fmt.Println("BC - override block mining param: Root", block.Block.Header().Root)
+		fmt.Println("BC - override block mining param: TxHash", block.Block.Header().TxHash)
+		fmt.Println("BC - override block mining param: ReceiptHash", block.Block.Header().ReceiptHash)
+		fmt.Println("BC - override block mining param: Bloom", block.Block.Header().Bloom)
+		fmt.Println("BC - override block mining param: Difficulty", block.Block.Header().Difficulty)
+		fmt.Println("BC - override block mining param: Number", block.Block.Header().Number)
+		fmt.Println("BC - override block mining param: GasLimit", block.Block.Header().GasLimit)
+		fmt.Println("BC - override block mining param: GasUsed", block.Block.Header().GasUsed)
+		fmt.Println("BC - override block mining param: Time", block.Block.Header().Time)
+		fmt.Println("BC - override block mining param: Extra", block.Block.Header().Extra)
+		fmt.Println("BC - override block mining param: MixDigest", block.Block.Header().MixDigest)
+		fmt.Println("BC - override block mining param: Nonce", block.Block.Header().Nonce)
+
 		return block, nil
 	}
 

@@ -302,20 +302,22 @@ func (s *EthBackendServer) EngineGetBlobsBundleV1(ctx context.Context, in *remot
 
 // EngineNewPayload validates and possibly executes payload
 func (s *EthBackendServer) EngineNewPayload(ctx context.Context, req *types2.ExecutionPayload) (*remote.EnginePayloadStatus, error) {
+	fmt.Println("BC - override EngineNewPayload - Difficulty")
 	header := types.Header{
-		ParentHash:  gointerfaces.ConvertH256ToHash(req.ParentHash),
-		Coinbase:    gointerfaces.ConvertH160toAddress(req.Coinbase),
-		Root:        gointerfaces.ConvertH256ToHash(req.StateRoot),
-		Bloom:       gointerfaces.ConvertH2048ToBloom(req.LogsBloom),
-		BaseFee:     gointerfaces.ConvertH256ToUint256Int(req.BaseFeePerGas).ToBig(),
-		Extra:       req.ExtraData,
-		Number:      big.NewInt(int64(req.BlockNumber)),
-		GasUsed:     req.GasUsed,
-		GasLimit:    req.GasLimit,
-		Time:        req.Timestamp,
-		MixDigest:   gointerfaces.ConvertH256ToHash(req.PrevRandao),
-		UncleHash:   types.EmptyUncleHash,
-		Difficulty:  serenity.SerenityDifficulty,
+		ParentHash: gointerfaces.ConvertH256ToHash(req.ParentHash),
+		Coinbase:   gointerfaces.ConvertH160toAddress(req.Coinbase),
+		Root:       gointerfaces.ConvertH256ToHash(req.StateRoot),
+		Bloom:      gointerfaces.ConvertH2048ToBloom(req.LogsBloom),
+		BaseFee:    gointerfaces.ConvertH256ToUint256Int(req.BaseFeePerGas).ToBig(),
+		Extra:      req.ExtraData,
+		Number:     big.NewInt(int64(req.BlockNumber)),
+		GasUsed:    req.GasUsed,
+		GasLimit:   req.GasLimit,
+		Time:       req.Timestamp,
+		MixDigest:  gointerfaces.ConvertH256ToHash(req.PrevRandao),
+		UncleHash:  types.EmptyUncleHash,
+		// Difficulty:  serenity.SerenityDifficulty,
+		Difficulty:  big.NewInt(2),
 		Nonce:       serenity.SerenityNonce,
 		ReceiptHash: gointerfaces.ConvertH256ToHash(req.ReceiptRoot),
 		TxHash:      types.DeriveSha(types.BinaryTransactions(req.Transactions)),
@@ -439,10 +441,13 @@ func (s *EthBackendServer) getQuickPayloadStatusIfPossible(blockHash libcommon.H
 		return nil, err
 	}
 
+	fmt.Println("BC - TTD check?")
 	if td != nil && td.Cmp(s.config.TerminalTotalDifficulty) < 0 {
 		log.Warn(fmt.Sprintf("[%s] Beacon Chain request before TTD", prefix), "hash", blockHash)
 		return &engineapi.PayloadStatus{Status: remote.EngineStatus_INVALID, LatestValidHash: libcommon.Hash{}}, nil
 	}
+
+	fmt.Println("BC - PASS TTD check!")
 
 	if !s.hd.POSSync() {
 		log.Info(fmt.Sprintf("[%s] Still in PoW sync", prefix), "hash", blockHash)

@@ -98,11 +98,14 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		} else {
 			receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
 		}
-
-		if result.Failed() {
-			receipt.Status = types.ReceiptStatusFailed
+		if isBobaPreBedrock {
+			receipt.Status = uint64(legacyReceipt.Status)
 		} else {
-			receipt.Status = types.ReceiptStatusSuccessful
+			if result.Failed() {
+				receipt.Status = types.ReceiptStatusFailed
+			} else {
+				receipt.Status = types.ReceiptStatusSuccessful
+			}
 		}
 		receipt.TxHash = tx.Hash()
 		if isBobaPreBedrock {
@@ -110,6 +113,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		} else {
 			receipt.GasUsed = result.UsedGas
 		}
+		fmt.Println("BC - applyGasUsed: ", "legacyReceipt.GasUsed", legacyReceipt.GasUsed, "result.UsedGas", result.UsedGas)
 		// if the transaction created a contract, store the creation address in the receipt.
 		if msg.To() == nil {
 			receipt.ContractAddress = crypto.CreateAddress(evm.TxContext().Origin, tx.GetNonce())
