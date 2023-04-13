@@ -48,7 +48,7 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 	//	continue
 	//}
 	fmt.Println("BC - in state_miner.go SpawnMiningFinishStage() - before types.NewBlock()")
-	client, err := rpc.Dial("https://goerli.boba.network")
+	client, err := rpc.Dial(cfg.chainConfig.GetBobaLegacyURL())
 	if err != nil {
 		return err
 	}
@@ -73,6 +73,8 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 	current.Header.Difficulty = r.Difficulty.ToInt()
 	current.Header.Root = r.Root
 	current.Header.Extra = r.Extra
+
+	fmt.Println("BC - in state_miner.go SpawnMiningFinishStage() - after types.NewBlock() - extra: ", current.Header.Extra)
 
 	block := types.NewBlock(current.Header, current.Txs, current.Uncles, current.Receipts, current.Withdrawals)
 	blockWithReceipts := &types.BlockWithReceipts{Block: block, Receipts: current.Receipts}

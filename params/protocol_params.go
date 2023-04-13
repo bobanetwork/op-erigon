@@ -16,11 +16,22 @@
 
 package params
 
-import "math/big"
+import (
+	"math/big"
+
+	"github.com/ledgerwatch/erigon-lib/common"
+)
 
 // GasLimitBoundDivisor it can be changed by BSC
 var (
 	GasLimitBoundDivisor uint64 = 1024 // The bound divisor of the gas limit, used in update calculations.
+)
+
+var (
+	// The base fee portion of the transaction fee accumulates at this predeploy
+	OptimismBaseFeeRecipient = common.HexToAddress("0x4200000000000000000000000000000000000019")
+	// The L1 portion of the transaction fee accumulates at this predeploy
+	OptimismL1FeeRecipient = common.HexToAddress("0x420000000000000000000000000000000000001A")
 )
 
 const (
@@ -165,6 +176,19 @@ const (
 	// up to half the consumed gas could be refunded. Redefined as 1/5th in EIP-3529
 	RefundQuotient        uint64 = 2
 	RefundQuotientEIP3529 uint64 = 5
+
+	// stuff from EIP-4844
+	FieldElementsPerBlob       = 4096 // each field element is 32 bytes
+	MaxDataGasPerBlock         = 1 << 19
+	DataGasPerBlob             = 1 << 17
+	TargetDataGasPerBlock      = 1 << 18
+	MinDataGasPrice            = 1
+	DataGasPriceUpdateFraction = 2225652
+	MaxBlobsPerBlock           = MaxDataGasPerBlock / DataGasPerBlob
+
+	BlobVerificationGas      uint64 = 1800000
+	BlobCommitmentVersionKZG uint8  = 0x01
+	PointEvaluationGas       uint64 = 50000
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations

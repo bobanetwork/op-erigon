@@ -1,0 +1,27 @@
+{
+  "ChainName": "optimism",
+  "chainId": 1337,
+  "consensus": "ethash",
+  "homesteadBlock": 0,
+  "daoForkSupport": true,
+  "eip150Block": 0,
+  "eip150Hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "eip155Block": 0,
+  "byzantiumBlock": 0,
+  "constantinopleBlock": 0,
+  "petersburgBlock": 0,
+  "istanbulBlock": 0,
+  "muirGlacierBlock": 0,
+  "berlinBlock": 0,
+  "londonBlock": 0,
+  "terminalTotalDifficulty": 0,
+  "terminalTotalDifficultyPassed": true,
+  "mergeNetsplitBlock": 1735371,
+  "shanghaiTime": 1677557088,
+  "bedrockBlock": 5,
+  "optimism": {
+    "eip1559Elasticity": 50,
+    "eip1559Denominator": 10
+  },
+  "ethash": {}
+}

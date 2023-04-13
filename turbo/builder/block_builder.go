@@ -47,44 +47,6 @@ func NewBlockBuilder(build BlockBuilderFunc, param *core.BlockBuilderParameters)
 	return builder
 }
 
-func NewBlockBuilderMM(
-	build BlockBuilderFunc,
-	param *core.BlockBuilderParameters,
-	deposits [][]byte,
-	noTxPool bool,
-	mmChan chan int,
-	) *BlockBuilder {
-
-	builder := new(BlockBuilder)
-	builder.syncCond = sync.NewCond(new(sync.Mutex))
-        
-        param.Deposits = deposits
-	param.NoTxPool = noTxPool
-        log.Debug("MMDBG NewBlockBuilderMM", "deposits", deposits, "param", param)
-
-	go func() {
-		log.Info("Building block...")
-		t := time.Now()
-		result, err := build(param, &builder.interrupt)
-		if err != nil {
-			log.Warn("Failed to build a block", "err", err)
-		} else {
-			block := result.Block
-			log.Info("Built block", "hash", block.Hash(), "height", block.NumberU64(), "txs", len(block.Transactions()), "gas used %", 100*float64(block.GasUsed())/float64(block.GasLimit()), "time", time.Since(t))
-		}
-		builder.syncCond.L.Lock()
-		defer builder.syncCond.L.Unlock()
-		builder.result = result
-		builder.err = err
-		log.Debug("MMDBG NewBlockBuilderMM notifying mmChan")
-		mmChan <- 1
-		log.Debug("MMDBG NewBlockBuilderMM broadcasting syncCond", "builder", builder)
-		builder.syncCond.Broadcast()
-	}()
-	log.Debug("MMDBG NewBlockBuilderMM returning", "builder", builder)
-	return builder
-}
-
 func (b *BlockBuilder) Stop() (*types.BlockWithReceipts, error) {
 	atomic.StoreInt32(&b.interrupt, 1)
 
@@ -97,12 +59,27 @@ func (b *BlockBuilder) Stop() (*types.BlockWithReceipts, error) {
 	return b.result, b.err
 }
 
-func (b *BlockBuilder) Block() *types.Block {
+func (b *BlockBuilder) WaitForBlock() (*types.BlockWithReceipts, error) {
 	b.syncCond.L.Lock()
 	defer b.syncCond.L.Unlock()
+
+	for b.result == nil && b.err == nil {
+		b.syncCond.Wait()
+	}
+
+	return b.result, b.err
+}
+
+func (b *BlockBuilder) Block() *types.BlockWithReceipts {
+	b.syncCond.L.Lock()
+	defer b.syncCond.L.Unlock()
+
+	if b.err != nil {
+		log.Warn("MMDBG NewBlockBuilder returning block but has error", "err", b.err)
+	}
 
 	if b.result == nil {
 		return nil
 	}
-	return b.result.Block
+	return b.result
 }
