@@ -8,7 +8,6 @@ import (
 	"math/big"
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
-
 	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
@@ -101,7 +100,7 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 	if dec.Logs == nil {
 		return errors.New("missing required field 'logs' for Receipt")
 	}
-	r.Logs = dec.Logs
+	r.Logs = *dec.Logs
 	if dec.TxHash == nil {
 		return errors.New("missing required field 'transactionHash' for Receipt")
 	}

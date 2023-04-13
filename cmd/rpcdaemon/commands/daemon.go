@@ -20,10 +20,9 @@ type RollupRPCService struct {
 // APIList describes the list of available RPC apis
 func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
 	filters *rpchelper.Filters, stateCache kvcache.Cache,
-	blockReader services.FullBlockReader, agg *libstate.AggregatorV3, cfg httpcfg.HttpCfg, engine consensus.EngineReader, proofDB kv.RwDB,
-	rollupRPCService *RollupRPCService,
+	blockReader services.FullBlockReader, agg *libstate.AggregatorV3, cfg httpcfg.HttpCfg, engine consensus.EngineReader,
 ) (list []rpc.API) {
-	base := NewBaseApiMM(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, proofDB, rollupRPCService)
+	base := NewBaseApi(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, cfg.Dirs)
 	ethImpl := NewEthAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit)
 	erigonImpl := NewErigonAPI(base, db, eth)
 	txpoolImpl := NewTxPoolAPI(base, db, txPool)
@@ -36,6 +35,16 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.
 	parityImpl := NewParityAPIImpl(db)
 	borImpl := NewBorAPI(base, db, borDb) // bor (consensus) specific
 	otsImpl := NewOtterscanAPI(base, db)
+	gqlImpl := NewGraphQLAPI(base, db)
+
+	if cfg.GraphQLEnabled {
+		list = append(list, rpc.API{
+			Namespace: "graphql",
+			Public:    true,
+			Service:   GraphQLAPI(gqlImpl),
+			Version:   "1.0",
+		})
+	}
 
 	for _, enabledAPI := range cfg.API {
 		switch enabledAPI {
@@ -132,10 +141,9 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.
 func AuthAPIList(db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
 	filters *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader,
 	agg *libstate.AggregatorV3,
-	cfg httpcfg.HttpCfg, engine consensus.EngineReader, proofDB kv.RwDB,
-	rollupRPCService *RollupRPCService,
+	cfg httpcfg.HttpCfg, engine consensus.EngineReader,
 ) (list []rpc.API) {
-	base := NewBaseApiMM(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, proofDB, rollupRPCService)
+	base := NewBaseApi(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, cfg.Dirs)
 
 	ethImpl := NewEthAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit)
 	engineImpl := NewEngineAPI(base, db, eth, cfg.InternalCL)

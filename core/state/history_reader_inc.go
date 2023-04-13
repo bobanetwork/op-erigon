@@ -116,7 +116,7 @@ func (hr *HistoryReaderInc) ReadAccountData(address libcommon.Address) (*account
 	return &a, nil
 }
 
-func (hr *HistoryReaderInc) ReadAccountStorage(address libcommon.Address, incarnation uint64, key *libcommon.Hash) ([]byte, error) {
+func (hr *HistoryReaderInc) ReadAccountStorage(address libcommon.Address /* incarnation? */, _ uint64, key *libcommon.Hash) ([]byte, error) {
 	addr, k := address.Bytes(), key.Bytes()
 	var err error
 	enc, noState, stateTxNum := hr.as.ReadAccountStorageNoState(addr, k, hr.txNum)
