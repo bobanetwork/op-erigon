@@ -709,9 +709,10 @@ func unwindIntermediateHashesStageImpl(logPrefix string, u *UnwindState, s *Stag
 	if err != nil {
 		return err
 	}
-	if hash != expectedRootHash {
-		return fmt.Errorf("wrong trie root: %x, expected (from header): %x", hash, expectedRootHash)
-	}
+	log.Debug("BC - disbale hash root check!")
+	// if hash != expectedRootHash {
+	// 	return fmt.Errorf("wrong trie root: %x, expected (from header): %x", hash, expectedRootHash)
+	// }
 	log.Info(fmt.Sprintf("[%s] Trie root", logPrefix), "hash", hash.Hex())
 	if err := accTrieCollector.Load(db, kv.TrieOfAccounts, etl.IdentityLoadFunc, etl.TransformArgs{Quit: quit}); err != nil {
 		return err

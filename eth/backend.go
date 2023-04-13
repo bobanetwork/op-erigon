@@ -705,27 +705,27 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		return nil, err
 	}
 
-	// Rollup Sequencer Client
-	if config.RollupSequencerHTTP != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP)
-		cancel()
-		if err != nil {
-			return nil, err
-		}
-		backend.seqRPCService = client
-	}
+	// // Rollup Sequencer Client
+	// if config.RollupSequencerHTTP != "" {
+	// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 	client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP)
+	// 	cancel()
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	backend.seqRPCService = client
+	// }
 
-	// Rollup History Client
-	if config.RollupHistoricalRPC != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
-		client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC)
-		cancel()
-		if err != nil {
-			return nil, err
-		}
-		backend.historicalRPCService = client
-	}
+	// // Rollup History Client
+	// if config.RollupHistoricalRPC != "" {
+	// 	ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
+	// 	client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC)
+	// 	cancel()
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	backend.historicalRPCService = client
+	// }
 
 	backend.ethBackendRPC, backend.miningRPC, backend.stateChangesClient = ethBackendRPC, miningRPC, stateDiffClient
 
