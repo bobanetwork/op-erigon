@@ -457,38 +457,38 @@ var genesisDBLock sync.Mutex
 func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.IntraBlockState, error) {
 	_ = g.Alloc //nil-check
 
+	var (
+		time      = g.Timestamp
+		extraData = g.ExtraData
+		coinbase  = g.Coinbase
+	)
+	if g.Config.ChainID.Cmp(big.NewInt(2888)) == 0 {
+		time = 0
+		extraData = common.Hex2Bytes("000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+		coinbase = libcommon.HexToAddress("0x0000000000000000000000000000000000000000")
+	}
+
 	fmt.Println("BC - override initial block")
+	fmt.Println("BC - override initial block: ", g.Difficulty)
+	fmt.Println("BC - override initial block: ", g.GasLimit)
+	fmt.Println("BC - override initial block: ", common.Bytes2Hex(g.ExtraData))
+	fmt.Println("BC - override initial block: ", g.Coinbase)
 	// Override the default configurations of the genesis block.
 	head := &types.Header{
 		Number:     new(big.Int).SetUint64(g.Number),
 		Nonce:      types.EncodeNonce(g.Nonce),
-		Time:       0,
+		Time:       time,
 		ParentHash: g.ParentHash,
-		Extra:      common.Hex2Bytes("000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+		Extra:      extraData,
 		GasLimit:   g.GasLimit,
 		GasUsed:    g.GasUsed,
 		Difficulty: big.NewInt(1),
 		MixDigest:  g.Mixhash,
-		Coinbase:   libcommon.HexToAddress("0x0000000000000000000000000000000000000000"),
+		Coinbase:   coinbase,
 		BaseFee:    g.BaseFee,
 		AuRaStep:   g.AuRaStep,
 		AuRaSeal:   g.AuRaSeal,
 	}
-	// head := &types.Header{
-	// 	Number:     new(big.Int).SetUint64(g.Number),
-	// 	Nonce:      types.EncodeNonce(g.Nonce),
-	// 	Time:       g.Timestamp,
-	// 	ParentHash: g.ParentHash,
-	// 	Extra:      g.ExtraData,
-	// 	GasLimit:   g.GasLimit,
-	// 	GasUsed:    g.GasUsed,
-	// 	Difficulty: g.Difficulty,
-	// 	MixDigest:  g.Mixhash,
-	// 	Coinbase:   g.Coinbase,
-	// 	BaseFee:    g.BaseFee,
-	// 	AuRaStep:   g.AuRaStep,
-	// 	AuRaSeal:   g.AuRaSeal,
-	// }
 	if g.GasLimit == 0 {
 		head.GasLimit = params.GenesisGasLimit
 	}

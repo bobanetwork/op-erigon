@@ -484,6 +484,28 @@ func NewBackend(stack *node.Node, config *ethconfig.Config, logger log.Logger) (
 	backend.pendingBlocks = miner.PendingResultCh
 	backend.minedBlocks = miner.MiningResultCh
 
+	// Rollup Sequencer Client
+	if config.RollupSequencerHTTP != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.seqRPCService = client
+	}
+
+	// Rollup History Client
+	if config.RollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.historicalRPCService = client
+	}
+
 	// proof-of-work mining
 	mining := stagedsync.New(
 		stagedsync.MiningStages(backend.sentryCtx,
@@ -491,7 +513,7 @@ func NewBackend(stack *node.Node, config *ethconfig.Config, logger log.Logger) (
 			stagedsync.StageMiningExecCfg(backend.chainDB, miner, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, nil, 0, backend.txPool2, backend.txPool2DB, allSnapshots, config.TransactionsV3),
 			stagedsync.StageHashStateCfg(backend.chainDB, dirs, config.HistoryV3, backend.agg),
 			stagedsync.StageTrieCfg(backend.chainDB, false, true, true, tmpdir, backend.blockReader, nil, config.HistoryV3, backend.agg),
-			stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miner, backend.miningSealingQuit),
+			stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miner, backend.miningSealingQuit, nil),
 		), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder)
 
 	var ethashApi *ethash.API
@@ -509,7 +531,7 @@ func NewBackend(stack *node.Node, config *ethconfig.Config, logger log.Logger) (
 				stagedsync.StageMiningExecCfg(backend.chainDB, miningStatePos, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, interrupt, param.PayloadId, backend.txPool2, backend.txPool2DB, allSnapshots, config.TransactionsV3),
 				stagedsync.StageHashStateCfg(backend.chainDB, dirs, config.HistoryV3, backend.agg),
 				stagedsync.StageTrieCfg(backend.chainDB, false, true, true, tmpdir, backend.blockReader, nil, config.HistoryV3, backend.agg),
-				stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miningStatePos, backend.miningSealingQuit),
+				stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miningStatePos, backend.miningSealingQuit, backend.historicalRPCService),
 			), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder)
 		// We start the mining step
 		if err := stages2.MiningStep(ctx, backend.chainDB, proposingSync, tmpdir); err != nil {
@@ -666,28 +688,6 @@ func NewBackend(stack *node.Node, config *ethconfig.Config, logger log.Logger) (
 	if err != nil {
 		return nil, err
 	}
-
-	// // Rollup Sequencer Client
-	// if config.RollupSequencerHTTP != "" {
-	// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// 	client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP)
-	// 	cancel()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	backend.seqRPCService = client
-	// }
-
-	// // Rollup History Client
-	// if config.RollupHistoricalRPC != "" {
-	// 	ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
-	// 	client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC)
-	// 	cancel()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	backend.historicalRPCService = client
-	// }
 
 	var borDb kv.RoDB
 	if casted, ok := backend.engine.(*bor.Bor); ok {

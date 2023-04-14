@@ -74,70 +74,54 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	}
 	*usedGas += result.UsedGas
 
+	// fmt.Println("BC - Called ApplyTransaction", "historicalRPCService: ", historicalRPCService)
+	var (
+		legacyReceipt     *types.LegacyReceipt
+		isBobaLegacyBlock bool
+	)
+	if evm.ChainConfig().IsBobaPreBedrock(header.Number) {
+		isBobaLegacyBlock = true
+	}
+
+	// if isBobaLegacyBlock && historicalRPCService != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := rpc.DialContext(ctx, config.GetBobaLegacyURL())
+	// client, err := rpc.DialContext(context.Background(), "https://replica.goerli.boba.network")
+	// err = client.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+	err = client.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+	if err != nil {
+		return nil, nil, err
+	}
+	//  if err != nil {
+	//    return nil, nil, err
+	//  }
+	*usedGas = uint64(legacyReceipt.GasUsed)
+	// }
+
 	// Set the receipt logs and create the bloom filter.
 	// based on the eip phase, we're passing whether the root touch-delete accounts.
 	var receipt *types.Receipt
 	if !cfg.NoReceipts {
-
-		var (
-			legacyReceipt    *types.LegacyReceipt
-			isBobaPreBedrock bool
-		)
-		if evm.ChainConfig().IsBobaPreBedrock(header.Number) {
-			isBobaPreBedrock = true
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			client, err := rpc.DialContext(ctx, config.GetBobaLegacyURL())
-			cancel()
-			if err != nil {
-				return nil, nil, err
-			}
-			err = client.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
-			if err != nil {
-				return nil, nil, err
-			}
-			receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: uint64(legacyReceipt.GasUsed)}
+		receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
+		if result.Failed() {
+			receipt.Status = types.ReceiptStatusFailed
 		} else {
-			receipt = &types.Receipt{Type: tx.Type(), CumulativeGasUsed: *usedGas}
-		}
-		if isBobaPreBedrock {
-			receipt.Status = uint64(legacyReceipt.Status)
-		} else {
-			if result.Failed() {
-				receipt.Status = types.ReceiptStatusFailed
-			} else {
-				receipt.Status = types.ReceiptStatusSuccessful
-			}
+			receipt.Status = types.ReceiptStatusSuccessful
 		}
 		receipt.TxHash = tx.Hash()
-		if isBobaPreBedrock {
-			receipt.GasUsed = uint64(legacyReceipt.GasUsed)
-		} else {
-			receipt.GasUsed = result.UsedGas
-		}
-		fmt.Println("BC - applyGasUsed: ", "legacyReceipt.GasUsed", legacyReceipt.GasUsed, "result.UsedGas", result.UsedGas)
+		receipt.GasUsed = result.UsedGas
+
 		// if the transaction created a contract, store the creation address in the receipt.
 		if msg.To() == nil {
 			receipt.ContractAddress = crypto.CreateAddress(evm.TxContext().Origin, tx.GetNonce())
 		}
-		// Set the receipt logs and create a bloom for filtering
-		if isBobaPreBedrock {
-			receipt.Logs = legacyReceipt.Logs
-		} else {
-			receipt.Logs = ibs.GetLogs(tx.Hash())
-		}
-		// Set Boba legacy receipt fields
-		if isBobaPreBedrock {
-			receipt.L1GasPrice = (*big.Int)(legacyReceipt.L1GasPrice)
-			receipt.L1GasUsed = (*big.Int)(legacyReceipt.L1GasUsed)
-			receipt.L1Fee = (*big.Int)(legacyReceipt.L1Fee)
-			receipt.FeeScalar = legacyReceipt.FeeScalar
-			receipt.L2BobaFee = (*big.Int)(legacyReceipt.L2BobaFee)
-		}
-		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+
+		receipt.Logs = ibs.GetLogs(tx.Hash())
 		receipt.BlockNumber = header.Number
 		receipt.TransactionIndex = uint(ibs.TxIndex())
 
-		if config.Optimism != nil {
+		if config.Optimism != nil && !isBobaLegacyBlock {
 			// FIXME there are other fields to populate, but we don't have easy access
 			// to them, should address in a refactor.
 			if l1CostFunc := evm.Context().L1CostFunc; l1CostFunc != nil {
@@ -150,10 +134,21 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 				log.Warn("MMDBG No cost function set in context", "txhash", tx.Hash())
 			}
 		}
+
+		// Apply BOBA legacy block logic
+		if isBobaLegacyBlock && legacyReceipt != nil {
+			receipt.GasUsed = uint64(legacyReceipt.GasUsed)
+			receipt.Logs = legacyReceipt.Logs
+			receipt.Status = uint64(legacyReceipt.Status)
+			receipt.L1GasPrice = (*big.Int)(legacyReceipt.L1GasPrice)
+			receipt.L1GasUsed = (*big.Int)(legacyReceipt.L1GasUsed)
+			receipt.L1Fee = (*big.Int)(legacyReceipt.L1Fee)
+			receipt.FeeScalar = legacyReceipt.FeeScalar
+			receipt.L2BobaFee = (*big.Int)(legacyReceipt.L2BobaFee)
+		}
+
+		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 	}
-
-	fmt.Println("BC - applyTransaction: ", "receipt", receipt.L1GasPrice, receipt.L1GasUsed)
-
 	return receipt, result.ReturnData, err
 }
 

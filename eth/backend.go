@@ -507,6 +507,28 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	backend.pendingBlocks = miner.PendingResultCh
 	backend.minedBlocks = miner.MiningResultCh
 
+	// Rollup Sequencer Client
+	if config.RollupSequencerHTTP != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.seqRPCService = client
+	}
+
+	// Rollup History Client
+	if config.RollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.historicalRPCService = client
+	}
+
 	// proof-of-work mining
 	mining := stagedsync.New(
 		stagedsync.MiningStages(backend.sentryCtx,
@@ -514,7 +536,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 			stagedsync.StageMiningExecCfg(backend.chainDB, miner, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, nil, 0, backend.txPool2, backend.txPool2DB, allSnapshots, config.TransactionsV3),
 			stagedsync.StageHashStateCfg(backend.chainDB, dirs, config.HistoryV3, backend.agg),
 			stagedsync.StageTrieCfg(backend.chainDB, false, true, true, tmpdir, blockReader, nil, config.HistoryV3, backend.agg),
-			stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miner, backend.miningSealingQuit),
+			stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miner, backend.miningSealingQuit, backend.historicalRPCService),
 		), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder)
 
 	var ethashApi *ethash.API
@@ -533,7 +555,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 				stagedsync.StageMiningExecCfg(backend.chainDB, miningStatePos, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, interrupt, param.PayloadId, backend.txPool2, backend.txPool2DB, allSnapshots, config.TransactionsV3),
 				stagedsync.StageHashStateCfg(backend.chainDB, dirs, config.HistoryV3, backend.agg),
 				stagedsync.StageTrieCfg(backend.chainDB, false, true, true, tmpdir, blockReader, nil, config.HistoryV3, backend.agg),
-				stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miningStatePos, backend.miningSealingQuit),
+				stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miningStatePos, backend.miningSealingQuit, backend.historicalRPCService),
 			), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder)
 		// We start the mining step
 		log.Debug("MMDBG backend.go Start mining step", "param", param, "proposingSync", proposingSync)
@@ -542,24 +564,6 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		}
 		log.Debug("MMDBG backend.go Done mining step")
 		block := <-miningStatePos.MiningResultPOSCh
-
-		block.Block.Header().Difficulty = big.NewInt(3)
-		log.Debug("BC - override block mining")
-		fmt.Println("BC - override block mining param: ParentHash", block.Block.Header().ParentHash)
-		fmt.Println("BC - override block mining param: UncleHash", block.Block.Header().UncleHash)
-		fmt.Println("BC - override block mining param: Coinbase", block.Block.Header().Coinbase)
-		fmt.Println("BC - override block mining param: Root", block.Block.Header().Root)
-		fmt.Println("BC - override block mining param: TxHash", block.Block.Header().TxHash)
-		fmt.Println("BC - override block mining param: ReceiptHash", block.Block.Header().ReceiptHash)
-		fmt.Println("BC - override block mining param: Bloom", block.Block.Header().Bloom)
-		fmt.Println("BC - override block mining param: Difficulty", block.Block.Header().Difficulty)
-		fmt.Println("BC - override block mining param: Number", block.Block.Header().Number)
-		fmt.Println("BC - override block mining param: GasLimit", block.Block.Header().GasLimit)
-		fmt.Println("BC - override block mining param: GasUsed", block.Block.Header().GasUsed)
-		fmt.Println("BC - override block mining param: Time", block.Block.Header().Time)
-		fmt.Println("BC - override block mining param: Extra", block.Block.Header().Extra)
-		fmt.Println("BC - override block mining param: MixDigest", block.Block.Header().MixDigest)
-		fmt.Println("BC - override block mining param: Nonce", block.Block.Header().Nonce)
 
 		return block, nil
 	}
@@ -704,28 +708,6 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	if err := backend.StartMining(context.Background(), backend.chainDB, mining, backend.config.Miner, backend.gasPrice, backend.sentriesClient.Hd.QuitPoWMining, tmpdir); err != nil {
 		return nil, err
 	}
-
-	// // Rollup Sequencer Client
-	// if config.RollupSequencerHTTP != "" {
-	// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// 	client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP)
-	// 	cancel()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	backend.seqRPCService = client
-	// }
-
-	// // Rollup History Client
-	// if config.RollupHistoricalRPC != "" {
-	// 	ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
-	// 	client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC)
-	// 	cancel()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	backend.historicalRPCService = client
-	// }
 
 	backend.ethBackendRPC, backend.miningRPC, backend.stateChangesClient = ethBackendRPC, miningRPC, stateDiffClient
 
