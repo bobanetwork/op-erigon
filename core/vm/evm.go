@@ -18,7 +18,7 @@ package vm
 
 import (
 	"sync/atomic"
-	"bytes"
+	//"bytes"
 
 	"github.com/holiman/uint256"
 
@@ -30,6 +30,7 @@ import (
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/log/v3"
+	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 // emptyCodeHash is used by create to ensure deployment is disallowed to already
@@ -105,7 +106,6 @@ type EVM struct {
 
 func (evm *EVM) SetHC(hc *HCContext) {
 	evm.hc = hc
-	
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -275,27 +275,20 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 		if typ == STATICCALL {
 			readOnly = true
 		}
-		if evm.hc != nil {
+		// Ignore log noise from the L1 attribute deposits
+		if evm.hc != nil && addr != libcommon.HexToAddress("0x4200000000000000000000000000000000000015") && addr != libcommon.HexToAddress("0xc0d3C0D3C0D3c0D3C0D3C0d3C0D3c0D3c0d30015") {
 			log.Debug("MMDBG-HC before evm.run", "hcFlag", evm.hc.HcFlag, "addr", addr, "typ", typ, "depth", depth, "input", input)
 		}
 		ret, err = run(evm, contract, input, readOnly)
-		if evm.hc != nil {
+		if evm.hc != nil  && addr != libcommon.HexToAddress("0x4200000000000000000000000000000000000015") && addr != libcommon.HexToAddress("0xc0d3C0D3C0D3c0D3C0D3C0d3C0D3c0D3c0d30015"){
 			log.Debug("MMDBG-HC after evm.run", "hcFlag", evm.hc.HcFlag, "err", err, "ret", ret, "addr", addr, "typ", typ, "depth", depth, "ret", ret)
-			if !evm.hc.Failed && evm.hc.HcFlag == 0 && err == ErrExecutionReverted && addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
-				// FIXME - check 'ret' for specific trigger msg
-
-				// simplerandom 125,191,124,16
-				if bytes.Equal(input[:4], []byte{0x7d, 0xbf, 0x7c, 0x10}) || bytes.Equal(input[:4], []byte{0x7d, 0x93, 0x61, 0x6c}) {
-					log.Debug("MMDBG-HC evm.Call method triggered", "prefix", input[:4], "addr", addr, "caller", caller.Address())
-
-					evm.hc.Caller = caller.Address()
-					evm.hc.HcFlag = 1
-					evm.hc.Request = make([]byte,len(input))
-					copy(evm.hc.Request, input)
-				} else {
-					log.Debug("MMDBG-HC evm.Call method not triggered", "prefix", input[:4], "addr", addr, "caller", caller.Address());
-				}
-			}
+		}
+		if addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") && CheckTrigger(evm.hc, input, ret, err) {
+			log.Debug("MMDBG-HC evm.Call method triggered", "prefix", hexutil.Bytes(input[:4]), "addr", addr, "caller", caller.Address(), "ret", hexutil.Bytes(ret))
+			evm.hc.Caller = caller.Address()
+			evm.hc.HcFlag = 1
+			evm.hc.Request = make([]byte,len(input))
+			copy(evm.hc.Request, input)
 		}
 		gas = contract.Gas
 	}

@@ -26,6 +26,7 @@ import (
 	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/core/vm/stack"
+	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 // Config are the configuration options for the Interpreter
@@ -192,6 +193,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	if readOnly && !in.readOnly {
 		in.readOnly = true
 		defer func() { in.readOnly = false }()
+	}
+
+	if contract.Address() != libcommon.HexToAddress("0x4200000000000000000000000000000000000015") && contract.Address() != libcommon.HexToAddress("0xc0d3C0D3C0D3c0D3C0D3C0d3C0D3c0D3c0d30015") {
+		log.Debug("MMDBG-HC Run", "depth", in.depth, "in.ro", in.readOnly, "ro", readOnly, "addr", contract.Address(), "input", hexutil.Bytes(input))
 	}
 
 	// Reset the previous call's return data. It's unimportant to preserve the old buffer

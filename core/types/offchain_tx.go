@@ -1,4 +1,4 @@
-// Copyright 2022 mmontour@enya.ai based on legacy_tx.go (original copyright below)
+// Copyright 2022-2023 mmontour@enya.ai based on legacy_tx.go (original copyright below)
 // This file adds support for the Optimistic Rollup deposit transaction type
 // as specified at https://github.com/ethereum-optimism/optimism/blob/develop/specs/deposits.md
 
@@ -375,7 +375,7 @@ func (tx *OffchainTransaction) SetSender(addr libcommon.Address) {
 }
 
 func NewOffchainTx(data []byte) *OffchainTransaction {
-	hcFrom := libcommon.HexToAddress("0xdeaddeaddeaddeaddeaddeaddeaddeaddead9901")
+	hcFrom := libcommon.HexToAddress("0xdEAddEadDeaDDEaDDeadDeAddeadDEaddeaD9901")
 	hcHelper := libcommon.HexToAddress("0x42000000000000000000000000000000000000Fd")
 	var hcHash libcommon.Hash
 	

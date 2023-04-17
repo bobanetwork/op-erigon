@@ -53,7 +53,7 @@ func HCKey (addr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
 }
 
 func HCSimpleRandom() ([]byte, error) {
-	var hcData []byte = []byte{151, 80, 9, 113}
+	//var hcData []byte = []byte{151, 80, 9, 113}
 
 	// Pasted from legacy l2geth
 	// Generate cryptographically strong pseudo-random int between 0 - 2^256 - 1
@@ -76,9 +76,10 @@ func HCSimpleRandom() ([]byte, error) {
 	// rNum32 := uint256.MustFromBig(randomBigInt).Bytes32() // Needs uint256 pkg 1.2.2
 	rNum256,_ := uint256.FromBig(randomBigInt)
 	rNum32 := rNum256.Bytes32()
-	hcData = append(hcData, rNum32[:]...) 
+	//hcData = append(hcData, rNum32[:]...) 
 
-	return hcData, nil
+	//return hcData, nil
+	return rNum32[:], nil
 }
 
 func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
@@ -96,18 +97,20 @@ func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
 	version := big.NewInt(0).SetBytes(req[4:36])
 	log.Debug("MMDBG-HC Request", "method", method, "version", version)
 	
-	if version.Cmp(big.NewInt(1)) != 0 {
-		log.Debug("MMDBG-HC Unknown request version")
+
+	if version.Cmp(big.NewInt(1)) != 0 && version.Cmp(big.NewInt(65537)) != 0{
+		log.Debug("MMDBG-HC Unknown request version", "ver", version)
 		return nil, ErrHCFailed
 	}
 	
-	// We now expect to have an ABI-encoded (url_string, payload_bytes) to send offchain.
+	// We now expect to have an ABI-encoded (url_string, payload_bytes)
 
 	t1,_ := abi.NewType("uint32","",nil)
+	t4,_ := abi.NewType("address","",nil)
 	t2,_ := abi.NewType("string","",nil)
 	t3,_ := abi.NewType("bytes","",nil)
 	
-	dec,err := (abi.Arguments{{Type: t1}, {Type: t2}, {Type: t3}}).Unpack(req[4:])
+	dec,err := (abi.Arguments{{Type: t1}, {Type: t4}, {Type: t2}, {Type: t3}}).Unpack(req[4:])
 	log.Debug("MMDBG-HC ABI decode", "dec", dec, "err", err)
 
 	if err != nil {
@@ -115,38 +118,55 @@ func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
 		return nil, ErrHCFailed
 	}
 	
-	reqUrl := dec[1].(string)
-	reqMethod := string(caller.Hex())
-	reqPayload := dec[2].([]byte)
+	reqUrl := dec[2].(string)
+	reqMethod := dec[1].(libcommon.Address)
+	reqPayload := dec[3].([]byte)
 
 	hasher := sha3.NewLegacyKeccak256()
+
+	hasher.Write(req[32:36]) // Version as a uint32
+	log.Debug("MMDBG-HC hWrite", "ver32", hexutil.Bytes(req[32:36]))
+	hasher.Write(reqMethod.Bytes())
+	log.Debug("MMDBG-HC hWrite", "reqMethod", hexutil.Bytes(reqMethod.Bytes()))
 	hasher.Write([]byte(reqUrl))
-	hasher.Write(caller.Bytes())
+	log.Debug("MMDBG-HC hWrite", "url", hexutil.Bytes([]byte(reqUrl)))
 	hasher.Write(reqPayload)
+	log.Debug("MMDBG-HC hWrite", "payload", hexutil.Bytes(reqPayload))
 	reqKey := libcommon.BytesToHash(hasher.Sum(nil))
 	
 	encPayload := hexutil.Bytes(reqPayload)
-	log.Debug("MMDBG-HC Request", "reqKey", reqKey, "reqUrl", reqUrl, "reqMethod", reqMethod, "encPayload", encPayload)
+	log.Debug("MMDBG-HC Request", "ver", version.Uint64(), "reqKey", reqKey, "reqUrl", reqUrl, "reqMethod", reqMethod, "encPayload", encPayload)
 
-	client, err := rpc.Dial(reqUrl)
-
-	if err != nil {
-		log.Warn("MMDBG-HC Dial failure", "err", err, "url", reqUrl)
-		return nil, ErrHCFailed
-	}
-	
 	var responseBytes []byte
-	var responseStringEnc string
-	err = client.Call(&responseStringEnc, reqMethod, /* time.Duration(1200)*time.Millisecond, */ encPayload)
-	if err != nil {
-		log.Debug("MMDBG-HC ClientCall failed", "err", err, "resp", responseStringEnc)
-		return nil, ErrHCFailed
-	}
-	log.Debug("MMDBG-HC ClientCall result", "responseStringEnc", responseStringEnc)
-	responseBytes, err = hexutil.Decode(responseStringEnc)
-	if err != nil {
-		log.Warn("MMDBG-HC Response decode failed", "err", err)
-		return nil, ErrHCFailed
+	
+	if version.Cmp(big.NewInt(1)) == 0 {
+		// Offchain
+		client, err := rpc.Dial(reqUrl)
+
+		if err != nil {
+			log.Warn("MMDBG-HC Dial failure", "err", err, "url", reqUrl)
+			return nil, ErrHCFailed
+		}
+	
+		var responseStringEnc string
+		err = client.Call(&responseStringEnc, reqMethod.Hex(), /* time.Duration(1200)*time.Millisecond, */ encPayload)
+		if err != nil {
+			log.Debug("MMDBG-HC ClientCall failed", "err", err, "resp", responseStringEnc)
+			return nil, ErrHCFailed
+		}
+		log.Debug("MMDBG-HC ClientCall result", "responseStringEnc", responseStringEnc)
+		responseBytes, err = hexutil.Decode(responseStringEnc)
+		if err != nil {
+			log.Warn("MMDBG-HC Response decode failed", "err", err)
+			return nil, ErrHCFailed
+		}
+	} else if version.Cmp(big.NewInt(65537)) == 0 {
+		// SimpleRandom
+		responseBytes,err = HCSimpleRandom()
+		if err != nil {
+			log.Warn("MMDBG-HC SimpleRandom failed", "err", err)
+			return nil, ErrHCFailed
+		}
 	}
 
 	var hcData []byte = []byte{223, 201, 138, 232}
@@ -162,7 +182,7 @@ func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
 	}
 	
 	hcData = append(hcData, resp...)
-	log.Debug("MMDBG-HC Response", "hcData", hcData)
+	log.Debug("MMDBG-HC Response", "hcData", hexutil.Bytes(hcData))
 
 	return hcData,nil
 }
@@ -184,4 +204,26 @@ func DoOffchain(hc *HCContext) error {
 		hc.Failed = true
 	}
 	return err
+}
+
+// Called after an EVM run to look for a trigger event
+func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
+	if hc == nil || hc.Failed || hc.HcFlag != 0 {
+		return false
+	}
+	// Check the selector for GetResponse(uint32,address,string,bytes)
+	if !bytes.Equal(input[:4], []byte{0x8e, 0x5d, 0xc7, 0x65}) {
+		return false
+	}
+	// Check for a revert
+	if err != ErrExecutionReverted {
+		return false
+	}
+	// Check for an "Error(string)" selector + the expected trigger string
+	if len(ret) >= 100 && bytes.Equal(ret[:4], []byte{0x08, 0xc3, 0x79, 0xa0}) {
+		trigger := []byte("GetResponse: Missing cache entry")
+		return bytes.Equal(ret[68:68 + len(trigger)], trigger)
+	}
+	log.Debug("MMDBG-HC CheckTrigger reverted without trigger string", "ret", hexutil.Bytes(ret))
+	return false
 }

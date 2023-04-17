@@ -28,6 +28,7 @@ import (
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 func opAdd(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
@@ -733,9 +734,9 @@ func opCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byt
 	}
 
 	ret, returnGas, err := interpreter.evm.Call(scope.Contract, toAddr, args, gas, &value, false /* bailout */)
-	
-	if toAddr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") {
-		log.Debug("MMDBG-HC opCall", "err", err, "ret", ret, "returnGas", returnGas, "to", toAddr, "args", args)
+
+	if toAddr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") || toAddr == libcommon.HexToAddress("0xc0d3c0D3c0d3c0d3c0d3c0d3c0D3C0D3C0d300FD"){
+		log.Debug("MMDBG-HC opCall", "err", err, "ret", hexutil.Bytes(ret), "returnGas", returnGas, "to", toAddr, "args", hexutil.Bytes(args))
 	}
 	if err != nil {
 		temp.Clear()
@@ -771,6 +772,9 @@ func opCallCode(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 	}
 
 	ret, returnGas, err := interpreter.evm.CallCode(scope.Contract, toAddr, args, gas, &value)
+	if toAddr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") || toAddr == libcommon.HexToAddress("0xc0d3c0D3c0d3c0d3c0d3c0d3c0D3C0D3C0d300FD"){
+		log.Debug("MMDBG-HC opCallCode", "err", err, "ret", hexutil.Bytes(ret), "returnGas", returnGas, "to", toAddr, "args", hexutil.Bytes(args))
+	}
 	if err != nil {
 		temp.Clear()
 	} else {
@@ -801,6 +805,11 @@ func opDelegateCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext
 	args := scope.Memory.GetPtr(int64(inOffset.Uint64()), int64(inSize.Uint64()))
 
 	ret, returnGas, err := interpreter.evm.DelegateCall(scope.Contract, toAddr, args, gas)
+	if toAddr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") || toAddr == libcommon.HexToAddress("0xc0d3c0D3c0d3c0d3c0d3c0d3c0D3C0D3C0d300FD"){
+		log.Debug("MMDBG-HC opDelegateCall", "err", err, "ret", hexutil.Bytes(ret), "returnGas", returnGas, "to", toAddr, "args", hexutil.Bytes(args))
+	}
+
+
 	if err != nil {
 		temp.Clear()
 	} else {
@@ -831,6 +840,9 @@ func opStaticCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 	args := scope.Memory.GetPtr(int64(inOffset.Uint64()), int64(inSize.Uint64()))
 
 	ret, returnGas, err := interpreter.evm.StaticCall(scope.Contract, toAddr, args, gas)
+	if toAddr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") || toAddr == libcommon.HexToAddress("0xc0d3c0D3c0d3c0d3c0d3c0d3c0D3C0D3C0d300FD"){
+		log.Debug("MMDBG-HC opStaticCall", "err", err, "ret", hexutil.Bytes(ret), "returnGas", returnGas, "to", toAddr, "args", hexutil.Bytes(args))
+	}
 	if err != nil {
 		temp.Clear()
 	} else {
