@@ -210,8 +210,8 @@ func VerifyHeaderBasics(chain consensus.ChainHeaderReader, header, parent *types
 		}
 	}
 
-	fmt.Println("BC - verifyHeader consensus: ", header.Number, chain.Config().IsBobaPreBedrock(header.Number))
-	if chain.Config().IsBobaPreBedrock(header.Number) {
+	fmt.Println("BC - verifyHeader consensus: ", header.Number, chain.Config().IsBobaLegacyBlock(header.Number))
+	if chain.Config().IsBobaLegacyBlock(header.Number) {
 		if header.Time < parent.Time {
 			return errOlderBlockTime
 		}

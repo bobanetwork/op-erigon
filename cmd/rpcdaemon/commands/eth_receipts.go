@@ -40,12 +40,10 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	// FIXME disabling the cached receipt path to avoid wiring L1 Fee stuff for
 	// the moment
 	cached := rawdb.ReadReceipts(tx, block, senders)
-	if cached != nil && len(cached) == 0 {
-		log.Info("MMDBG returning cached receipts")
+	if cached != nil {
 		return cached, nil
-	} else {
-		log.Info("MMDBG skipped cached receipts", "cached", cached)
 	}
+
 	engine := api.engine()
 
 	_, _, _, ibs, _, err := transactions.ComputeTxEnv(ctx, engine, block, chainConfig, api._blockReader, tx, 0, api.historyV3(tx))
@@ -761,7 +759,7 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
 	}
 
-	if chainConfig.IsBobaPreBedrock(header.Number) {
+	if chainConfig.IsBobaLegacyBlock(header.Number) {
 		fmt.Println("BC - Get Receipts")
 		fmt.Println("BC - Get Receipts - L1GasPrice", receipt.L1GasPrice)
 		fmt.Println("BC - Get Receipts - L1GasUsed", receipt.L1GasUsed)

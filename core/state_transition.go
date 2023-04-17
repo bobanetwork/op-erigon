@@ -189,8 +189,8 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
 // for trace_call to replicate OE/Pariry behaviour
 func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
-	fmt.Println("check chain config- ", evm.ChainConfig().IsBobaPreBedrock(big.NewInt(int64(evm.Context().BlockNumber))))
-	if evm.ChainConfig().IsBobaPreBedrock(big.NewInt(int64(evm.Context().BlockNumber))) {
+	fmt.Println("check chain config- ", evm.ChainConfig().IsBobaLegacyBlock(big.NewInt(int64(evm.Context().BlockNumber))))
+	if evm.ChainConfig().IsBobaLegacyBlock(big.NewInt(int64(evm.Context().BlockNumber))) {
 		log.Debug("Applying message bypassing EVM and returning empty result")
 		return &ExecutionResult{
 			UsedGas:    msg.Gas(),

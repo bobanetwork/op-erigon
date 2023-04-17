@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"time"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -39,7 +38,7 @@ import (
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, evm vm.VMInterface, cfg vm.Config) (*types.Receipt, []byte, error) {
+func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, evm vm.VMInterface, cfg vm.Config, historicalRPCService *rpc.Client) (*types.Receipt, []byte, error) {
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64()), header.BaseFee, rules)
 	fmt.Println("BC - applyTransaction: ", "msg", msg, "err", err)
@@ -79,25 +78,20 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		legacyReceipt     *types.LegacyReceipt
 		isBobaLegacyBlock bool
 	)
-	if evm.ChainConfig().IsBobaPreBedrock(header.Number) {
+	if evm.ChainConfig().IsBobaLegacyBlock(header.Number) {
 		isBobaLegacyBlock = true
 	}
 
-	// if isBobaLegacyBlock && historicalRPCService != nil {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	client, err := rpc.DialContext(ctx, config.GetBobaLegacyURL())
-	// client, err := rpc.DialContext(context.Background(), "https://replica.goerli.boba.network")
-	// err = client.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
-	err = client.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
-	if err != nil {
-		return nil, nil, err
+	if isBobaLegacyBlock && historicalRPCService != nil {
+		err = historicalRPCService.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+		if err != nil {
+			return nil, nil, err
+		}
+		*usedGas = uint64(legacyReceipt.GasUsed)
+	} else {
+		// the legacy block must be handled by the historicalRPCService
+		return nil, nil, fmt.Errorf("legacy block must be handled by the historicalRPCService")
 	}
-	//  if err != nil {
-	//    return nil, nil, err
-	//  }
-	*usedGas = uint64(legacyReceipt.GasUsed)
-	// }
 
 	// Set the receipt logs and create the bloom filter.
 	// based on the eip phase, we're passing whether the root touch-delete accounts.
@@ -152,6 +146,21 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	return receipt, result.ReturnData, err
 }
 
+func ApplyBobaLegacyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config, excessDataGas *big.Int, historicalRPCService *rpc.Client) (*types.Receipt, []byte, error) {
+	log.Info("MMDBG ApplyBobaLegacyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
+	// Create a new context to be used in the EVM environment
+
+	// Add addresses to access list if applicable
+	// about the transaction and calling mechanisms.
+	cfg.SkipAnalysis = SkipAnalysis(config, header.Number.Uint64())
+
+	l1CostFunc := types.NewL1CostFunc(config, ibs)
+	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, excessDataGas, l1CostFunc)
+	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
+
+	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg, historicalRPCService)
+}
+
 // ApplyTransaction attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
@@ -168,5 +177,5 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, excessDataGas, l1CostFunc)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
-	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg)
+	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg, nil)
 }
