@@ -43,6 +43,7 @@ import (
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/params/networkname"
+	"github.com/ledgerwatch/erigon/turbo/trie"
 	"github.com/ledgerwatch/log/v3"
 	"golang.org/x/exp/slices"
 )
@@ -457,38 +458,27 @@ var genesisDBLock sync.Mutex
 func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.IntraBlockState, error) {
 	_ = g.Alloc //nil-check
 
-	fmt.Println("BC - override initial block")
+	isBobaLegacyBlock := false
+	if g.Config.ChainID.Cmp(chain.BobaGoerliChainId) == 0 {
+		isBobaLegacyBlock = true
+	}
+
 	// Override the default configurations of the genesis block.
 	head := &types.Header{
 		Number:     new(big.Int).SetUint64(g.Number),
 		Nonce:      types.EncodeNonce(g.Nonce),
-		Time:       0,
+		Time:       g.Timestamp,
 		ParentHash: g.ParentHash,
-		Extra:      common.Hex2Bytes("000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+		Extra:      g.ExtraData,
 		GasLimit:   g.GasLimit,
 		GasUsed:    g.GasUsed,
 		Difficulty: big.NewInt(1),
 		MixDigest:  g.Mixhash,
-		Coinbase:   libcommon.HexToAddress("0x0000000000000000000000000000000000000000"),
+		Coinbase:   g.Coinbase,
 		BaseFee:    g.BaseFee,
 		AuRaStep:   g.AuRaStep,
 		AuRaSeal:   g.AuRaSeal,
 	}
-	// head := &types.Header{
-	// 	Number:     new(big.Int).SetUint64(g.Number),
-	// 	Nonce:      types.EncodeNonce(g.Nonce),
-	// 	Time:       g.Timestamp,
-	// 	ParentHash: g.ParentHash,
-	// 	Extra:      g.ExtraData,
-	// 	GasLimit:   g.GasLimit,
-	// 	GasUsed:    g.GasUsed,
-	// 	Difficulty: g.Difficulty,
-	// 	MixDigest:  g.Mixhash,
-	// 	Coinbase:   g.Coinbase,
-	// 	BaseFee:    g.BaseFee,
-	// 	AuRaStep:   g.AuRaStep,
-	// 	AuRaSeal:   g.AuRaSeal,
-	// }
 	if g.GasLimit == 0 {
 		head.GasLimit = params.GenesisGasLimit
 	}
@@ -508,7 +498,13 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		withdrawals = []*types.Withdrawal{}
 	}
 
-	// var root libcommon.Hash
+	if isBobaLegacyBlock {
+		head.Time = 0
+		head.Extra = common.Hex2Bytes(chain.BobaGoerliGenesisExtraData)
+		head.Coinbase = libcommon.HexToAddress(chain.BobaGoerliGenesisCoinbase)
+	}
+
+	var root libcommon.Hash
 	var statedb *state.IntraBlockState
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -572,17 +568,22 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		if err = statedb.FinalizeTx(&chain.Rules{}, w); err != nil {
 			return
 		}
-		// if root, err = trie.CalcRoot("genesis", tx); err != nil {
-		// 	return
-		// }
+		if !isBobaLegacyBlock {
+			if root, err = trie.CalcRoot("genesis", tx); err != nil {
+				return
+			}
+		}
 	}()
 	wg.Wait()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	head.Root = libcommon.HexToHash("0x36c808dc3bb586c14bebde3ca630a4d49a1fdad0b01d7e58f96f2fcd1aa0003d")
-	// head.Root = root
+	if isBobaLegacyBlock {
+		head.Root = libcommon.HexToHash(chain.BobaGoerliGenesisRoot)
+	} else {
+		head.Root = root
+	}
 
 	return types.NewBlock(head, nil, nil, nil, withdrawals), statedb, nil
 }

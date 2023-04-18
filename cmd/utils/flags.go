@@ -773,13 +773,15 @@ var (
 
 	// Rollup Flags
 	RollupSequencerHTTPFlag = cli.StringFlag{
-		Name:  "rollup.sequencerhttp",
-		Usage: "HTTP endpoint for the sequencer mempool",
+		Name:    "rollup.sequencerhttp",
+		Usage:   "HTTP endpoint for the sequencer mempool",
+		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP"},
 	}
 
 	RollupHistoricalRPCFlag = cli.StringFlag{
-		Name:  "rollup.historicalrpc",
-		Usage: "RPC endpoint for historical data.",
+		Name:    "rollup.historicalrpc",
+		Usage:   "RPC endpoint for historical data.",
+		EnvVars: []string{"HISTORICAL_RPC_ENDPOINT"},
 	}
 
 	RollupHistoricalRPCTimeoutFlag = cli.StringFlag{
@@ -1616,6 +1618,20 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 
 	if ctx.IsSet(SentryDropUselessPeers.Name) {
 		cfg.DropUselessPeers = ctx.Bool(SentryDropUselessPeers.Name)
+	}
+
+	// Rollup params
+	if ctx.IsSet(RollupSequencerHTTPFlag.Name) {
+		cfg.RollupSequencerHTTP = ctx.String(RollupSequencerHTTPFlag.Name)
+	}
+	if ctx.IsSet(RollupHistoricalRPCFlag.Name) {
+		cfg.RollupHistoricalRPC = ctx.String(RollupHistoricalRPCFlag.Name)
+	}
+	if ctx.IsSet(RollupHistoricalRPCTimeoutFlag.Name) {
+		cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
+	}
+	if ctx.IsSet(RollupDisableTxPoolGossipFlag.Name) {
+		cfg.RollupDisableTxPoolGossip = ctx.Bool(RollupDisableTxPoolGossipFlag.Name)
 	}
 }
 

@@ -2,6 +2,7 @@ package stagedsync
 
 import (
 	"context"
+	"time"
 
 	proto_downloader "github.com/ledgerwatch/erigon-lib/gointerfaces/downloader"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -116,6 +117,8 @@ func NewStagedSync(ctx context.Context,
 				cfg.Genesis,
 				cfg.Sync,
 				agg,
+				"",
+				time.Duration(0),
 			),
 			stagedsync.StageHashStateCfg(db, dirs, cfg.HistoryV3, agg),
 			stagedsync.StageTrieCfg(db, true, true, false, dirs.Tmp, blockReader, controlServer.Hd, cfg.HistoryV3, agg),

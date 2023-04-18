@@ -44,7 +44,7 @@ import (
 var stateStages = &cobra.Command{
 	Use: "state_stages",
 	Short: `Run all StateStages (which happen after senders) in loop.
-Examples: 
+Examples:
 --unwind=1 --unwind.every=10  # 10 blocks forward, 1 block back, 10 blocks forward, ...
 --unwind=10 --unwind.every=1  # 1 block forward, 10 blocks back, 1 blocks forward, ...
 --unwind=10  # 10 blocks back, then stop
@@ -200,7 +200,7 @@ func syncBySmallSteps(db kv.RwDB, miningConfig params.MiningConfig, ctx context.
 	syncCfg.ExecWorkerCount = int(workers)
 	syncCfg.ReconWorkerCount = int(reconWorkers)
 
-	execCfg := stagedsync.StageExecuteBlocksCfg(db, pm, batchSize, changeSetHook, chainConfig, engine, vmConfig, changesAcc, false, false, historyV3, dirs, getBlockReader(db), nil, genesis, syncCfg, agg)
+	execCfg := stagedsync.StageExecuteBlocksCfg(db, pm, batchSize, changeSetHook, chainConfig, engine, vmConfig, changesAcc, false, false, historyV3, dirs, getBlockReader(db), nil, genesis, syncCfg, agg, "", time.Duration(0))
 
 	execUntilFunc := func(execToBlock uint64) func(firstCycle bool, badBlockUnwind bool, stageState *stagedsync.StageState, unwinder stagedsync.Unwinder, tx kv.RwTx, quiet bool) error {
 		return func(firstCycle bool, badBlockUnwind bool, s *stagedsync.StageState, unwinder stagedsync.Unwinder, tx kv.RwTx, quiet bool) error {
@@ -533,7 +533,7 @@ func loopExec(db kv.RwDB, ctx context.Context, unwind uint64) error {
 	initialCycle := false
 	cfg := stagedsync.StageExecuteBlocksCfg(db, pm, batchSize, nil, chainConfig, engine, vmConfig, nil,
 		/*stateStream=*/ false,
-		/*badBlockHalt=*/ false, historyV3, dirs, getBlockReader(db), nil, genesis, syncCfg, agg)
+		/*badBlockHalt=*/ false, historyV3, dirs, getBlockReader(db), nil, genesis, syncCfg, agg, "", time.Duration(0))
 
 	// set block limit of execute stage
 	sync.MockExecFunc(stages.Execution, func(firstCycle bool, badBlockUnwind bool, stageState *stagedsync.StageState, unwinder stagedsync.Unwinder, tx kv.RwTx, quiet bool) error {

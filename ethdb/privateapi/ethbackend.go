@@ -716,9 +716,9 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	}
 	log.Debug("MMDBG continuing EngineForkChoiceUpdated", "headNumber", *headNumber, "headHash", headHash)
 
-	log.Debug("BC EngineForkChoiceUpdated Payload", "headNumber", headNumber, "active", s.config.IsBobaPreBedrock(big.NewInt(int64(*headNumber))))
+	log.Debug("BC EngineForkChoiceUpdated Payload", "headNumber", headNumber, "active", s.config.IsBobaLegacyBlock(big.NewInt(int64(*headNumber))))
 	log.Debug("BC EngineForkChoiceUpdated Payload", "headHeader.Time", headHeader.Time, "payloadAttributes.Timestamp", payloadAttributes.Timestamp)
-	if s.config.IsBobaPreBedrock(big.NewInt(int64(*headNumber))) {
+	if s.config.IsBobaLegacyBlock(big.NewInt(int64(*headNumber))) {
 		if headHeader.Time > payloadAttributes.Timestamp {
 			return nil, &InvalidPayloadAttributesErr
 		}

@@ -16,11 +16,12 @@ import (
 )
 
 type MiningFinishCfg struct {
-	db          kv.RwDB
-	chainConfig chain.Config
-	engine      consensus.Engine
-	sealCancel  chan struct{}
-	miningState MiningState
+	db            kv.RwDB
+	chainConfig   chain.Config
+	engine        consensus.Engine
+	sealCancel    chan struct{}
+	miningState   MiningState
+	historicalRPC *rpc.Client
 }
 
 func StageMiningFinishCfg(
@@ -29,13 +30,15 @@ func StageMiningFinishCfg(
 	engine consensus.Engine,
 	miningState MiningState,
 	sealCancel chan struct{},
+	historicalRPC *rpc.Client,
 ) MiningFinishCfg {
 	return MiningFinishCfg{
-		db:          db,
-		chainConfig: chainConfig,
-		engine:      engine,
-		miningState: miningState,
-		sealCancel:  sealCancel,
+		db:            db,
+		chainConfig:   chainConfig,
+		engine:        engine,
+		miningState:   miningState,
+		sealCancel:    sealCancel,
+		historicalRPC: historicalRPC,
 	}
 }
 
@@ -47,12 +50,6 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 	//if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
 	//	continue
 	//}
-	fmt.Println("BC - in state_miner.go SpawnMiningFinishStage() - before types.NewBlock()")
-	client, err := rpc.Dial(cfg.chainConfig.GetBobaLegacyURL())
-	if err != nil {
-		return err
-	}
-	defer client.Close()
 
 	type legacyHeader struct {
 		GasLimit    hexutil.Big   `json:"gasLimit"         gencodec:"required"`
@@ -64,7 +61,7 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 	}
 
 	var r legacyHeader
-	err = client.CallContext(context.Background(), &r, "eth_getBlockByNumber", hexutil.EncodeBig(current.Header.Number), false)
+	err := cfg.historicalRPC.CallContext(context.Background(), &r, "eth_getBlockByNumber", hexutil.EncodeBig(current.Header.Number), false)
 	if err != nil {
 		return err
 	}

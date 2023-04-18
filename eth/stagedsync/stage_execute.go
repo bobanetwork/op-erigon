@@ -42,6 +42,7 @@ import (
 	"github.com/ledgerwatch/erigon/ethdb"
 	"github.com/ledgerwatch/erigon/ethdb/olddb"
 	"github.com/ledgerwatch/erigon/ethdb/prune"
+	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/turbo/shards"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
@@ -82,11 +83,13 @@ type ExecuteBlockCfg struct {
 	blockReader   services.FullBlockReader
 	hd            headerDownloader
 
-	dirs      datadir.Dirs
-	historyV3 bool
-	syncCfg   ethconfig.Sync
-	genesis   *types.Genesis
-	agg       *libstate.AggregatorV3
+	dirs                       datadir.Dirs
+	historyV3                  bool
+	syncCfg                    ethconfig.Sync
+	genesis                    *types.Genesis
+	agg                        *libstate.AggregatorV3
+	rollupHistoricalRPC        string
+	rollupHistoricalRPCTimeout time.Duration
 }
 
 func StageExecuteBlocksCfg(
@@ -108,25 +111,29 @@ func StageExecuteBlocksCfg(
 	genesis *types.Genesis,
 	syncCfg ethconfig.Sync,
 	agg *libstate.AggregatorV3,
+	rollupHistoricalRPC string,
+	rollupHistoricalRPCTimeout time.Duration,
 ) ExecuteBlockCfg {
 	return ExecuteBlockCfg{
-		db:            db,
-		prune:         pm,
-		batchSize:     batchSize,
-		changeSetHook: changeSetHook,
-		chainConfig:   chainConfig,
-		engine:        engine,
-		vmConfig:      vmConfig,
-		dirs:          dirs,
-		accumulator:   accumulator,
-		stateStream:   stateStream,
-		badBlockHalt:  badBlockHalt,
-		blockReader:   blockReader,
-		hd:            hd,
-		genesis:       genesis,
-		historyV3:     historyV3,
-		syncCfg:       syncCfg,
-		agg:           agg,
+		db:                         db,
+		prune:                      pm,
+		batchSize:                  batchSize,
+		changeSetHook:              changeSetHook,
+		chainConfig:                chainConfig,
+		engine:                     engine,
+		vmConfig:                   vmConfig,
+		dirs:                       dirs,
+		accumulator:                accumulator,
+		stateStream:                stateStream,
+		badBlockHalt:               badBlockHalt,
+		blockReader:                blockReader,
+		hd:                         hd,
+		genesis:                    genesis,
+		historyV3:                  historyV3,
+		syncCfg:                    syncCfg,
+		agg:                        agg,
+		rollupHistoricalRPC:        rollupHistoricalRPC,
+		rollupHistoricalRPCTimeout: rollupHistoricalRPCTimeout,
 	}
 }
 
@@ -169,16 +176,29 @@ func executeBlock(
 	isBor := cfg.chainConfig.Bor != nil
 	getHashFn := core.GetHashFn(block.Header(), getHeader)
 
+	// Rollup History Client
+	var historicalRPCService *rpc.Client
+	if cfg.rollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.rollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, cfg.rollupHistoricalRPC)
+		cancel()
+		if err != nil {
+			return err
+		}
+		historicalRPCService = client
+	}
+
 	if isPoSa {
 		execRs, err = core.ExecuteBlockEphemerallyForBSC(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
 	} else if isBor {
 		execRs, err = core.ExecuteBlockEphemerallyBor(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
 	} else {
-		execRs, err = core.ExecuteBlockEphemerally(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
+		execRs, err = core.ExecuteBlockEphemerally(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer, historicalRPCService)
 	}
 	if err != nil {
 		return err
 	}
+
 	receipts = execRs.Receipts
 	stateSyncReceipt = execRs.StateSyncReceipt
 

@@ -36,22 +36,24 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
 )
 
 type MiningExecCfg struct {
-	db          kv.RwDB
-	miningState MiningState
-	notifier    ChainEventNotifier
-	chainConfig chain.Config
-	engine      consensus.Engine
-	blockReader services.FullBlockReader
-	vmConfig    *vm.Config
-	tmpdir      string
-	interrupt   *int32
-	payloadId   uint64
-	txPool2     *txpool.TxPool
-	txPool2DB   kv.RoDB
+	db                   kv.RwDB
+	miningState          MiningState
+	notifier             ChainEventNotifier
+	chainConfig          chain.Config
+	engine               consensus.Engine
+	blockReader          services.FullBlockReader
+	vmConfig             *vm.Config
+	tmpdir               string
+	interrupt            *int32
+	payloadId            uint64
+	txPool2              *txpool.TxPool
+	txPool2DB            kv.RoDB
+	historicalRPCService *rpc.Client
 }
 
 func StageMiningExecCfg(
@@ -68,20 +70,22 @@ func StageMiningExecCfg(
 	txPool2DB kv.RoDB,
 	snapshots *snapshotsync.RoSnapshots,
 	transactionsV3 bool,
+	historicalRPCService *rpc.Client,
 ) MiningExecCfg {
 	return MiningExecCfg{
-		db:          db,
-		miningState: miningState,
-		notifier:    notifier,
-		chainConfig: chainConfig,
-		engine:      engine,
-		blockReader: snapshotsync.NewBlockReaderWithSnapshots(snapshots, transactionsV3),
-		vmConfig:    vmConfig,
-		tmpdir:      tmpdir,
-		interrupt:   interrupt,
-		payloadId:   payloadId,
-		txPool2:     txPool2,
-		txPool2DB:   txPool2DB,
+		db:                   db,
+		miningState:          miningState,
+		notifier:             notifier,
+		chainConfig:          chainConfig,
+		engine:               engine,
+		blockReader:          snapshotsync.NewBlockReaderWithSnapshots(snapshots, transactionsV3),
+		vmConfig:             vmConfig,
+		tmpdir:               tmpdir,
+		interrupt:            interrupt,
+		payloadId:            payloadId,
+		txPool2:              txPool2,
+		txPool2DB:            txPool2DB,
+		historicalRPCService: historicalRPCService,
 	}
 }
 
@@ -137,7 +141,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			}
 			depTS := types.NewTransactionsFixedOrder(txs)
 
-			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId)
+			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, cfg.historicalRPCService)
 			log.Debug("MMDBG addTransactionsToMiningBlock (deposit)", "err", err, "logs", logs)
 			if err != nil {
 				return err
@@ -145,7 +149,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 		}
 
 		if txs != nil && !txs.Empty() {
-			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId)
+			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, cfg.historicalRPCService)
 			log.Debug("MMDBG addTransactionsToMiningBlock (txs)", "err", err, "logs", logs)
 			if err != nil {
 				return err
@@ -175,7 +179,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 				}
 
 				if !txs.Empty() {
-					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId)
+					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, cfg.historicalRPCService)
 					log.Debug("MMDBG addTransactionsToMiningBlock (regular)", "err", err, "logs", logs, "stop", stop)
 					if err != nil {
 						return err
@@ -413,7 +417,7 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 	return filtered, nil
 }
 
-func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainConfig chain.Config, vmConfig *vm.Config, getHeader func(hash libcommon.Hash, number uint64) *types.Header, engine consensus.Engine, txs types.TransactionsStream, coinbase libcommon.Address, ibs *state.IntraBlockState, quit <-chan struct{}, interrupt *int32, payloadId uint64) (types.Logs, bool, error) {
+func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainConfig chain.Config, vmConfig *vm.Config, getHeader func(hash libcommon.Hash, number uint64) *types.Header, engine consensus.Engine, txs types.TransactionsStream, coinbase libcommon.Address, ibs *state.IntraBlockState, quit <-chan struct{}, interrupt *int32, payloadId uint64, historicalRPCService *rpc.Client) (types.Logs, bool, error) {
 	header := current.Header
 	tcount := 0
 	gasPool := new(core.GasPool).AddGas(header.GasLimit - header.GasUsed)
@@ -427,7 +431,7 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		gasSnap := gasPool.Gas()
 		snap := ibs.Snapshot()
 		log.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
-		receipt, _, err := core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, nil /*excessDataGas*/)
+		receipt, _, err := core.ApplyBobaLegacyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, nil /*excessDataGas*/, historicalRPCService)
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap) // restore gasPool as well as ibs
@@ -487,7 +491,7 @@ LOOP:
 			err  error
 		)
 		// We use the eip155 signer regardless of the env hf.
-		if chainConfig.IsBobaPreBedrock(header.Number) {
+		if chainConfig.IsBobaLegacyBlock(header.Number) {
 			fmt.Println("Boba pre bedrock activated")
 			fmt.Println("txn.IsLegacyDepositTx(): ", txn.IsLegacyDepositTx(), err == nil)
 			if txn.IsLegacyDepositTx() {

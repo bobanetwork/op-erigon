@@ -2,5 +2,6 @@
 	path = tests/testdata
 	url = https://github.com/ethereum/tests
 [submodule "erigon-lib"]
+  branch = boba-bedrock-hardfork
 	path = erigon-lib
 	url = https://github.com/bobanetwork/v3-erigon-lib
