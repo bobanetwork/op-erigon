@@ -78,35 +78,6 @@ type Receipt struct {
 	L2BobaFee  *big.Int   `json:"L2BobaFee,omitempty"`
 }
 
-type ReceiptMarshal struct {
-	// Consensus fields: These fields are defined by the Yellow Paper
-	Type              uint8  `json:"type,omitempty"`
-	PostState         []byte `json:"root" codec:"1"`
-	Status            uint64 `json:"status" codec:"2"`
-	CumulativeGasUsed uint64 `json:"cumulativeGasUsed" gencodec:"required" codec:"3"`
-	Bloom             Bloom  `json:"logsBloom"         gencodec:"required" codec:"-"`
-	Logs              Logs   `json:"logs"              gencodec:"required" codec:"-"`
-
-	// Implementation fields: These fields are added by geth when processing a transaction.
-	// They are stored in the chain database.
-	TxHash          libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
-	ContractAddress libcommon.Address `json:"contractAddress" codec:"-"`
-	GasUsed         uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
-
-	// Inclusion information: These fields provide information about the inclusion of the
-	// transaction corresponding to this receipt.
-	BlockHash        libcommon.Hash `json:"blockHash,omitempty" codec:"-"`
-	BlockNumber      *big.Int       `json:"blockNumber,omitempty" codec:"-"`
-	TransactionIndex uint           `json:"transactionIndex" codec:"-"`
-
-	// Boba legacy receipt fields
-	L1GasPrice string `json:"l1GasPrice,omitempty"`
-	L1GasUsed  string `json:"l1GasUsed,omitempty"`
-	L1Fee      string `json:"l1Fee,omitempty"`
-	FeeScalar  string `json:"l1FeeScalar,omitempty"`
-	L2BobaFee  string `json:"L2BobaFee,omitempty"`
-}
-
 type LegacyReceipt struct {
 	PostState         hexutil.Bytes      `json:"root"`
 	Status            hexutil.Uint64     `json:"status"`
@@ -124,23 +95,6 @@ type LegacyReceipt struct {
 	L1Fee             *hexutil.Big       `json:"l1Fee" gencodec:"required"`
 	FeeScalar         *big.Float         `json:"l1FeeScalar" gencodec:"required"`
 	L2BobaFee         *hexutil.Big       `json:"l2BobaFee"`
-}
-
-type receiptMarshaling struct {
-	Type              hexutil.Uint64
-	PostState         hexutil.Bytes
-	Status            hexutil.Uint64
-	CumulativeGasUsed hexutil.Uint64
-	GasUsed           hexutil.Uint64
-	BlockNumber       *hexutil.Big
-	TransactionIndex  hexutil.Uint
-
-	// Boba legacy receipt fields
-	L1GasPrice *hexutil.Big
-	L1GasUsed  *hexutil.Big
-	L1Fee      *hexutil.Big
-	FeeScalar  *big.Float
-	L2BobaFee  *hexutil.Big
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -615,59 +569,4 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 		}
 	}
 	return nil
-}
-
-func ReceiptPrepareMarshal(receipt *Receipt) *ReceiptMarshal {
-	return &ReceiptMarshal{
-		Type:              receipt.Type,
-		PostState:         receipt.PostState,
-		Status:            receipt.Status,
-		CumulativeGasUsed: receipt.CumulativeGasUsed,
-		Bloom:             receipt.Bloom,
-		Logs:              receipt.Logs,
-
-		TxHash:          receipt.TxHash,
-		ContractAddress: receipt.ContractAddress,
-		GasUsed:         receipt.GasUsed,
-
-		BlockHash:        receipt.BlockHash,
-		BlockNumber:      receipt.BlockNumber,
-		TransactionIndex: receipt.TransactionIndex,
-
-		L1GasPrice: receipt.L1GasPrice.String(),
-		L1GasUsed:  receipt.L1GasUsed.String(),
-		L1Fee:      receipt.L1Fee.String(),
-		FeeScalar:  receipt.FeeScalar.String(),
-		L2BobaFee:  receipt.L2BobaFee.String(),
-	}
-}
-
-func ReceiptPrepareUnmarshal(receipt *ReceiptMarshal) *Receipt {
-	L1GasPrice, _ := new(big.Int).SetString(receipt.L1GasPrice, 10)
-	L1GasUsed, _ := new(big.Int).SetString(receipt.L1GasUsed, 10)
-	L1Fee, _ := new(big.Int).SetString(receipt.L1Fee, 10)
-	FeeScalar, _ := new(big.Float).SetString(receipt.FeeScalar)
-	L2BobaFee, _ := new(big.Int).SetString(receipt.L2BobaFee, 10)
-	return &Receipt{
-		Type:              receipt.Type,
-		PostState:         receipt.PostState,
-		Status:            receipt.Status,
-		CumulativeGasUsed: receipt.CumulativeGasUsed,
-		Bloom:             receipt.Bloom,
-		Logs:              receipt.Logs,
-
-		TxHash:          receipt.TxHash,
-		ContractAddress: receipt.ContractAddress,
-		GasUsed:         receipt.GasUsed,
-
-		BlockHash:        receipt.BlockHash,
-		BlockNumber:      receipt.BlockNumber,
-		TransactionIndex: receipt.TransactionIndex,
-
-		L1GasPrice: L1GasPrice,
-		L1GasUsed:  L1GasUsed,
-		L1Fee:      L1Fee,
-		FeeScalar:  FeeScalar,
-		L2BobaFee:  L2BobaFee,
-	}
 }
