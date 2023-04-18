@@ -77,7 +77,6 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 		receipts[i] = receipt
 	}
 
-	fmt.Println("BC - getReceipts - return ", "receipts", len(receipts))
 	return receipts, nil
 }
 
@@ -651,8 +650,6 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
 
-	fmt.Println("BC - GetTransactionReceipt: ", receipts[0])
-
 	if txn == nil {
 		borReceipt, err := rawdb.ReadBorReceipt(tx, block.Hash(), blockNum, receipts)
 		if err != nil {
@@ -760,18 +757,13 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	}
 
 	if chainConfig.IsBobaLegacyBlock(header.Number) {
-		fmt.Println("BC - Get Receipts")
-		fmt.Println("BC - Get Receipts - L1GasPrice", receipt.L1GasPrice)
-		fmt.Println("BC - Get Receipts - L1GasUsed", receipt.L1GasUsed)
-		fmt.Println("BC - Get Receipts - L1Fee", receipt.L1Fee)
-		fmt.Println("BC - Get Receipts - FeeScalar", receipt.FeeScalar)
-		fmt.Println("BC - Get Receipts - L2BobaFee", receipt.L2BobaFee)
 		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
 		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
 		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
 		fields["l1FeeScalar"] = receipt.FeeScalar.String()
 		fields["l2BobaFee"] = (*hexutil.Big)(receipt.L2BobaFee)
 	}
+
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(txn.GetPrice().Uint64())
 	} else {
