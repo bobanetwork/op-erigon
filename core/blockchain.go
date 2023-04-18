@@ -187,8 +187,7 @@ func ExecuteBlockEphemerallyForBSC(
 		}
 	}
 	if !vmConfig.StatelessExec && newBlock.GasUsed() != header.GasUsed {
-		fmt.Println("BC - ignore gas used by execution ExecuteBlockEphemerallyForBSC: ", *usedGas, "in header: ", header.GasUsed, "in new Block: ", newBlock.GasUsed())
-		// return nil, fmt.Errorf("gas used by execution: %d, in header: %d, in new Block: %v", *usedGas, header.GasUsed, newBlock.GasUsed())
+		return nil, fmt.Errorf("gas used by execution: %d, in header: %d, in new Block: %v", *usedGas, header.GasUsed, newBlock.GasUsed())
 	}
 
 	var bloom types.Bloom
@@ -293,9 +292,8 @@ func ExecuteBlockEphemerally(
 		return nil, fmt.Errorf("mismatched receipt headers for block %d (%s != %s)", block.NumberU64(), receiptSha.Hex(), block.ReceiptHash().Hex())
 	}
 
-	if !vmConfig.StatelessExec && *usedGas != header.GasUsed {
-		fmt.Println("BC - ExecuteBlockEphemerally ignore gas used by execution: ", *usedGas, " in header: ", header.GasUsed, " in new Block: ", block.GasUsed())
-		// return nil, fmt.Errorf("gas used by execution: %d, in header: %d", *usedGas, header.GasUsed)
+	if !vmConfig.StatelessExec && *usedGas != header.GasUsed && !chainConfig.IsBobaLegacyBlock(header.Number) {
+		return nil, fmt.Errorf("gas used by execution: %d, in header: %d", *usedGas, header.GasUsed)
 	}
 
 	var bloom types.Bloom
@@ -401,8 +399,7 @@ func ExecuteBlockEphemerallyBor(
 	}
 
 	if !vmConfig.StatelessExec && *usedGas != header.GasUsed {
-		fmt.Println("BC - ignore gas used by execution ExecuteBlockEphemerallyBor: ", *usedGas, "in header: ", header.GasUsed)
-		// return nil, fmt.Errorf("gas used by execution: %d, in header: %d", *usedGas, header.GasUsed)
+		return nil, fmt.Errorf("gas used by execution: %d, in header: %d", *usedGas, header.GasUsed)
 	}
 
 	var bloom types.Bloom

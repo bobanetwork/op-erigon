@@ -210,7 +210,7 @@ func VerifyHeaderBasics(chain consensus.ChainHeaderReader, header, parent *types
 		}
 	}
 
-	fmt.Println("BC - verifyHeader consensus: ", header.Number, chain.Config().IsBobaLegacyBlock(header.Number))
+	// In legacy blocks, allow blocks with timestamps equal to their parent's.
 	if chain.Config().IsBobaLegacyBlock(header.Number) {
 		if header.Time < parent.Time {
 			return errOlderBlockTime
@@ -220,7 +220,6 @@ func VerifyHeaderBasics(chain consensus.ChainHeaderReader, header, parent *types
 			return errOlderBlockTime
 		}
 	}
-
 	// Verify that the gas limit is <= 2^63-1
 	if header.GasLimit > params.MaxGasLimit {
 		return fmt.Errorf("invalid gasLimit: have %v, max %v", header.GasLimit, params.MaxGasLimit)
