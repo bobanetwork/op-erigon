@@ -199,7 +199,6 @@ func executeBlock(
 		return err
 	}
 
-	fmt.Println("stage_execute: ", execRs)
 	receipts = execRs.Receipts
 	stateSyncReceipt = execRs.StateSyncReceipt
 

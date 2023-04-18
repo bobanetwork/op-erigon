@@ -267,7 +267,6 @@ func ExecuteBlockEphemerally(
 			writeTrace = true
 		}
 
-		fmt.Println("BC - ExecuteBlockEphemerally Got you!", "historicalRPCService", historicalRPCService)
 		receipt, _, err := ApplyBobaLegacyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, nil /*excessDataGas*/, historicalRPCService)
 		if writeTrace {
 			if ftracer, ok := vmConfig.Tracer.(vm.FlushableTracer); ok {

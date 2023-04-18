@@ -292,7 +292,6 @@ func Main(ctx *cli.Context) error {
 	reader, writer := MakePreState(chainConfig.Rules(0, 0), tx, prestate.Pre)
 	engine := ethash.NewFaker()
 
-	fmt.Println("BC - transition.go - ExecuteBlockEphemerally")
 	result, err := core.ExecuteBlockEphemerally(chainConfig, &vmConfig, getHash, engine, block, reader, writer, nil, getTracer, nil)
 
 	if hashError != nil {
