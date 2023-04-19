@@ -25,12 +25,12 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
+	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/log/v3"
-	"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 // emptyCodeHash is used by create to ensure deployment is disallowed to already
@@ -66,8 +66,6 @@ func run(evm *EVM, contract *Contract, input []byte, readOnly bool) ([]byte, err
 	return evm.interpreter.Run(contract, input, readOnly)
 }
 
-
-
 // EVM is the Ethereum Virtual Machine base object and provides
 // the necessary tools to run a contract on the given state with
 // the provided context. It should be noted that any error
@@ -101,7 +99,7 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
-	hc *HCContext
+	hc          *HCContext
 }
 
 func (evm *EVM) SetHC(hc *HCContext) {
@@ -277,17 +275,17 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 		}
 		// Ignore log noise from the L1 attribute deposits
 		if evm.hc != nil && addr != libcommon.HexToAddress("0x4200000000000000000000000000000000000015") && addr != libcommon.HexToAddress("0xc0d3C0D3C0D3c0D3C0D3C0d3C0D3c0D3c0d30015") {
-			log.Debug("MMDBG-HC before evm.run", "hcFlag", evm.hc.HcFlag, "addr", addr, "typ", typ, "depth", depth, "input", input)
+			log.Debug("MMDBG-HC before evm.run", "hcState", evm.hc.State, "addr", addr, "typ", typ, "depth", depth, "input", input)
 		}
 		ret, err = run(evm, contract, input, readOnly)
-		if evm.hc != nil  && addr != libcommon.HexToAddress("0x4200000000000000000000000000000000000015") && addr != libcommon.HexToAddress("0xc0d3C0D3C0D3c0D3C0D3C0d3C0D3c0D3c0d30015"){
-			log.Debug("MMDBG-HC after evm.run", "hcFlag", evm.hc.HcFlag, "err", err, "ret", ret, "addr", addr, "typ", typ, "depth", depth, "ret", ret)
+		if evm.hc != nil && addr != libcommon.HexToAddress("0x4200000000000000000000000000000000000015") && addr != libcommon.HexToAddress("0xc0d3C0D3C0D3c0D3C0D3C0d3C0D3c0D3c0d30015") {
+			log.Debug("MMDBG-HC after evm.run", "hcState", evm.hc.State, "err", err, "ret", ret, "addr", addr, "typ", typ, "depth", depth, "ret", ret)
 		}
 		if addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") && CheckTrigger(evm.hc, input, ret, err) {
 			log.Debug("MMDBG-HC evm.Call method triggered", "prefix", hexutil.Bytes(input[:4]), "addr", addr, "caller", caller.Address(), "ret", hexutil.Bytes(ret))
 			evm.hc.Caller = caller.Address()
-			evm.hc.HcFlag = 1
-			evm.hc.Request = make([]byte,len(input))
+			evm.hc.State = 1
+			evm.hc.Request = make([]byte, len(input))
 			copy(evm.hc.Request, input)
 		}
 		gas = contract.Gas
@@ -313,7 +311,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr libcommon.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
 	ret, leftOverGas, err = evm.call(CALL, caller, addr, input, gas, value, bailout)
-	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.HcFlag == 1 {
+	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.State == 1 {
 		// If previously triggered, pass ErrHCReverted up each level of the call stack
 		log.Debug("MMDBG-HC evm.Call setting ErrHCReverted", "prefix", input[:4], "addr", addr, "caller", caller.Address())
 		err = ErrHCReverted

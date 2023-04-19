@@ -41,14 +41,14 @@ var (
 	ErrReturnStackExceeded      = errors.New("return stack limit reached")
 	ErrInvalidCode              = errors.New("invalid code")
 	ErrNonceUintOverflow        = errors.New("nonce uint64 overflow")
-	
+
 	// Hybrid Compute errors. The first indicates that a request was
 	// triggered and the Tx should be retried after supplying offchain data
-	ErrHCReverted               = errors.New("hybridcompute reverted")
+	ErrHCReverted = errors.New("hybridcompute reverted")
 	// This error means that the Tx failed somehow and cannot be retried
 	// as HC. If resubmitted it should generate a normal ErrExecutionReverted
 	// from the Helper contract.
-	ErrHCFailed                 = errors.New("hybridcompute failed")
+	ErrHCFailed = errors.New("hybridcompute failed")
 
 	// errStopToken is an internal token indicating interpreter loop termination,
 	// never returned to outside callers.

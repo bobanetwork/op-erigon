@@ -36,9 +36,9 @@ import (
 	//"github.com/ledgerwatch/erigon/common/u256"
 	"bytes"
 	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
+	types2 "github.com/ledgerwatch/erigon-lib/types"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
-	types2 "github.com/ledgerwatch/erigon-lib/types"
 )
 
 // OffchainTransaction is the transaction data of regular Ethereum transactions.
@@ -109,7 +109,7 @@ func (tx OffchainTransaction) EncodingSize() int {
 	var bb bytes.Buffer
 	tx.EncodeRLP(&bb)
 	log.Debug("MMDBG tx.EncodingSize", "tx", tx, "len", bb.Len())
-	
+
 	return bb.Len()
 }
 
@@ -378,8 +378,8 @@ func NewOffchainTx(data []byte) *OffchainTransaction {
 	hcFrom := libcommon.HexToAddress("0xdEAddEadDeaDDEaDDeadDeAddeadDEaddeaD9901")
 	hcHelper := libcommon.HexToAddress("0x42000000000000000000000000000000000000Fd")
 	var hcHash libcommon.Hash
-	
-	var TMP []byte = []byte{ 1 } // FIXME - decide how to construct a SourceHash
+
+	var TMP []byte = []byte{1} // FIXME - decide how to construct a SourceHash
 	hcHash, _ = common.HashData(TMP)
 
 	ret := &OffchainTransaction{
