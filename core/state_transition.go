@@ -466,7 +466,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	if refunds {
 
 		// if deposit: skip refunds, skip tipping coinbase
-		if st.msg.Nonce() == types.DepositsNonce {
+		if st.msg.IsDepositTx() {
 			// Record deposits as using all their gas (matches the gas pool)
 			// System Transactions are special & are not recorded as using any gas (anywhere)
 			gasUsed := st.msg.Gas()
