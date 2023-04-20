@@ -26,7 +26,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/gballet/go-verkle"
 	common2 "github.com/ledgerwatch/erigon-lib/common"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -36,6 +35,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/length"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcfg"
+	"github.com/ledgerwatch/erigon/ethdb/cbor"
 	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/common"
@@ -982,8 +982,8 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 	if len(data) == 0 {
 		return nil
 	}
-	var receipts types.Receipts
-	if err := cbor.Unmarshal(data, &receipts); err != nil {
+	var receipts types.ReceiptsEncodable
+	if err := cbor.Unmarshal(&receipts, bytes.NewReader(data)); err != nil {
 		log.Error("receipt unmarshal failed", "err", err)
 		return nil
 	}
@@ -1003,7 +1003,7 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 			return nil
 		}
 		var logs types.Logs
-		if err := cbor.Unmarshal(v, &logs); err != nil {
+		if err := cbor.Unmarshal(&logs, bytes.NewReader(v)); err != nil {
 			err = fmt.Errorf("receipt unmarshal failed:  %w", err)
 			log.Error("logs fetching failed", "err", err)
 			return nil
@@ -1017,7 +1017,7 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 		}
 	}
 
-	return receipts
+	return receipts.ToReceipts()
 }
 
 // ReadReceipts retrieves all the transaction receipts belonging to a block, including
@@ -1033,7 +1033,9 @@ func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) typ
 	}
 	// We're deriving many fields from the block body, retrieve beside the receipt
 	receipts := ReadRawReceipts(db, block.NumberU64())
-	fmt.Println("BC - ReadReceipts", receipts[0])
+	if len(receipts) == 1 {
+		fmt.Println("BC - read raw receipts: ", receipts[0])
+	}
 	if receipts == nil {
 		return nil
 	}
@@ -1044,7 +1046,9 @@ func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) typ
 		log.Error("Failed to derive block receipts fields", "hash", block.Hash(), "number", block.NumberU64(), "err", err, "stack", dbg.Stack())
 		return nil
 	}
-	fmt.Println("BC - final ReadReceipts", receipts[0])
+	if len(receipts) == 1 {
+		fmt.Println("BC - read receipts: ", receipts[0])
+	}
 	return receipts
 }
 
@@ -1073,27 +1077,30 @@ func ReadReceiptsByHash(db kv.Tx, hash libcommon.Hash) (types.Receipts, error) {
 
 // WriteReceipts stores all the transaction receipts belonging to a block.
 func WriteReceipts(tx kv.Putter, number uint64, receipts types.Receipts) error {
+	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	for txId, r := range receipts {
 		if len(r.Logs) == 0 {
 			continue
 		}
 
-		buf, err := cbor.Marshal(r.Logs)
+		buf.Reset()
+		err := cbor.Marshal(buf, r.Logs)
 		if err != nil {
 			return fmt.Errorf("encode block logs for block %d: %w", number, err)
 		}
 
-		if err = tx.Put(kv.Log, dbutils.LogKey(number, uint32(txId)), buf); err != nil {
+		if err = tx.Put(kv.Log, dbutils.LogKey(number, uint32(txId)), buf.Bytes()); err != nil {
 			return fmt.Errorf("writing logs for block %d: %w", number, err)
 		}
 	}
 
-	buf, err := cbor.Marshal(receipts)
+	buf.Reset()
+	err := cbor.Marshal(buf, receipts.ToReceiptsEncodable())
 	if err != nil {
 		return fmt.Errorf("encode block receipts for block %d: %w", number, err)
 	}
 
-	if err = tx.Put(kv.Receipts, hexutility.EncodeTs(number), buf); err != nil {
+	if err = tx.Put(kv.Receipts, hexutility.EncodeTs(number), buf.Bytes()); err != nil {
 		return fmt.Errorf("writing receipts for block %d: %w", number, err)
 	}
 	return nil
@@ -1101,27 +1108,31 @@ func WriteReceipts(tx kv.Putter, number uint64, receipts types.Receipts) error {
 
 // AppendReceipts stores all the transaction receipts belonging to a block.
 func AppendReceipts(tx kv.StatelessWriteTx, blockNumber uint64, receipts types.Receipts) error {
+	buf := bytes.NewBuffer(make([]byte, 0, 1024))
+
 	for txId, r := range receipts {
 		if len(r.Logs) == 0 {
 			continue
 		}
 
-		buf, err := cbor.Marshal(r.Logs)
+		buf.Reset()
+		err := cbor.Marshal(buf, r.Logs)
 		if err != nil {
 			return fmt.Errorf("encode block receipts for block %d: %w", blockNumber, err)
 		}
 
-		if err = tx.Append(kv.Log, dbutils.LogKey(blockNumber, uint32(txId)), buf); err != nil {
+		if err = tx.Append(kv.Log, dbutils.LogKey(blockNumber, uint32(txId)), buf.Bytes()); err != nil {
 			return fmt.Errorf("writing receipts for block %d: %w", blockNumber, err)
 		}
 	}
 
-	buf, err := cbor.Marshal(receipts)
+	buf.Reset()
+	err := cbor.Marshal(buf, receipts.ToReceiptsEncodable())
 	if err != nil {
 		return fmt.Errorf("encode block receipts for block %d: %w", blockNumber, err)
 	}
 
-	if err = tx.Append(kv.Receipts, hexutility.EncodeTs(blockNumber), buf); err != nil {
+	if err = tx.Append(kv.Receipts, hexutility.EncodeTs(blockNumber), buf.Bytes()); err != nil {
 		return fmt.Errorf("writing receipts for block %d: %w", blockNumber, err)
 	}
 	return nil

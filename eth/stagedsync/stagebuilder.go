@@ -7,6 +7,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
+
 	//	"github.com/ledgerwatch/erigon/ethdb/privateapi"
 	//	"github.com/ledgerwatch/erigon/turbo/shards"
 	"github.com/ledgerwatch/log/v3"
@@ -61,7 +62,7 @@ func MiningStages(
 			ID:          stages.IntermediateHashes,
 			Description: "Generate intermediate hashes and computing state root",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx, quiet bool) error {
-				stateRoot, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, quiet)
+				stateRoot, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, quiet, finish.chainConfig)
 				if err != nil {
 					return err
 				}

@@ -159,7 +159,7 @@ func rollupDataGas(tx binMarshalable) uint64 {
 
 func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 	kind, size, err := s.Kind()
-	log.Debug("MMDBG transaction.go DecodeTransaction", "kind", kind, "size", size, "err", err)
+	// log.Debug("MMDBG transaction.go DecodeTransaction", "kind", kind, "size", size, "err", err)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func DecodeTransaction(s *rlp.Stream) (Transaction, error) {
 		return nil, fmt.Errorf("%w, got %d bytes", rlp.ErrWrongTxTypePrefix, len(b))
 	}
 	var tx Transaction
-	log.Debug("MMDBG Transaction Decoding", "b[0]", b[0], "s", s)
+	// log.Debug("MMDBG Transaction Decoding", "b[0]", b[0], "s", s)
 	switch b[0] {
 	case AccessListTxType:
 		t := &AccessListTx{}

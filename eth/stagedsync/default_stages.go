@@ -130,7 +130,7 @@ func DefaultStages(ctx context.Context, snapshots SnapshotsCfg, headers HeadersC
 					_, err := SpawnVerkleTrie(s, u, tx, trieCfg, ctx)
 					return err
 				}
-				_, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, quiet)
+				_, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, quiet, bodies.chanConfig)
 				return err
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx) error {
@@ -296,7 +296,7 @@ func StateStages(ctx context.Context, headers HeadersCfg, bodies BodiesCfg, bloc
 			ID:          stages.IntermediateHashes,
 			Description: "Generate intermediate hashes and computing state root",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx, quiet bool) error {
-				_, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, quiet)
+				_, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, quiet, bodies.chanConfig)
 				return err
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx) error {

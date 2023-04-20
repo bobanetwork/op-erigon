@@ -546,27 +546,28 @@ func (h *Header) SetExcessDataGas(v *big.Int) {
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
 func (h *Header) Hash() libcommon.Hash {
-	// if h.Number.Cmp(big.NewInt(0)) == 0 {
-	// 	return libcommon.HexToHash("0xde36bac664c1215f9a7d87cddd3745594b351d3464e8a624e322eddd59ccacf3")
-	// }
-	legacyHeader := &LegacyHeader{
-		ParentHash:  h.ParentHash,
-		UncleHash:   h.UncleHash,
-		Coinbase:    h.Coinbase,
-		Root:        h.Root,
-		TxHash:      h.TxHash,
-		ReceiptHash: h.ReceiptHash,
-		Bloom:       h.Bloom,
-		Difficulty:  h.Difficulty,
-		Number:      h.Number,
-		GasLimit:    h.GasLimit,
-		GasUsed:     h.GasUsed,
-		Time:        h.Time,
-		Extra:       h.Extra,
-		MixDigest:   h.MixDigest,
-		Nonce:       h.Nonce,
+	// The difficult of legacy blocks is 1 or 2
+	if h.Difficulty.Cmp(libcommon.Big1) == 0 || h.Difficulty.Cmp(libcommon.Big2) == 0 {
+		legacyHeader := &LegacyHeader{
+			ParentHash:  h.ParentHash,
+			UncleHash:   h.UncleHash,
+			Coinbase:    h.Coinbase,
+			Root:        h.Root,
+			TxHash:      h.TxHash,
+			ReceiptHash: h.ReceiptHash,
+			Bloom:       h.Bloom,
+			Difficulty:  h.Difficulty,
+			Number:      h.Number,
+			GasLimit:    h.GasLimit,
+			GasUsed:     h.GasUsed,
+			Time:        h.Time,
+			Extra:       h.Extra,
+			MixDigest:   h.MixDigest,
+			Nonce:       h.Nonce,
+		}
+		return rlpHash(legacyHeader)
 	}
-	return rlpHash(legacyHeader)
+	return rlpHash(h)
 }
 
 var headerSize = common.StorageSize(reflect.TypeOf(Header{}).Size())

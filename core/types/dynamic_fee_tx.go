@@ -464,13 +464,7 @@ func (tx *DynamicFeeTransaction) Sender(signer Signer) (libcommon.Address, error
 	return addr, nil
 }
 
-func (tx *DynamicFeeTransaction) IsLegacyDepositTx() bool {
-	V, R, S := tx.RawSignatureValues()
-	if *tx.To == MessengerAddress && V == uint256.NewInt(0) && R == uint256.NewInt(0) && S == uint256.NewInt(0) && S == uint256.NewInt(0) {
-		return true
-	}
-	return false
-}
+func (tx *DynamicFeeTransaction) IsLegacyDepositTx() bool { return false }
 
 // NewTransaction creates an unsigned eip1559 transaction.
 // NewEIP1559Transaction creates an unsigned eip1559 transaction.

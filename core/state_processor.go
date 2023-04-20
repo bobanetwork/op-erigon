@@ -41,7 +41,6 @@ import (
 func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, evm vm.VMInterface, cfg vm.Config, historicalRPCService *rpc.Client) (*types.Receipt, []byte, error) {
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64()), header.BaseFee, rules)
-	fmt.Println("BC - applyTransaction: ", "msg", msg, "err", err)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -73,7 +72,6 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	}
 	*usedGas += result.UsedGas
 
-	// fmt.Println("BC - Called ApplyTransaction", "historicalRPCService: ", historicalRPCService)
 	var (
 		legacyReceipt     *types.LegacyReceipt
 		isBobaLegacyBlock bool
@@ -88,7 +86,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 			return nil, nil, err
 		}
 		*usedGas = uint64(legacyReceipt.GasUsed)
-	} else {
+	} else if isBobaLegacyBlock {
 		// the legacy block must be handled by the historicalRPCService
 		return nil, nil, fmt.Errorf("legacy block must be handled by the historicalRPCService")
 	}

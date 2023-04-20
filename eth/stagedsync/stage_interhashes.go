@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math/big"
 	"math/bits"
 	"sync/atomic"
 
+	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/common/length"
@@ -59,7 +61,7 @@ func StageTrieCfg(db kv.RwDB, checkRoot, saveNewHashesToDB, badBlockHalt bool, t
 	}
 }
 
-func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg TrieCfg, ctx context.Context, quiet bool) (libcommon.Hash, error) {
+func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg TrieCfg, ctx context.Context, quiet bool, chanConfig chain.Config) (libcommon.Hash, error) {
 	quit := ctx.Done()
 	useExternalTx := tx != nil
 	if !useExternalTx {
@@ -83,7 +85,7 @@ func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg Tri
 	}
 
 	var expectedRootHash libcommon.Hash
-	// var headerHash libcommon.Hash
+	var headerHash libcommon.Hash
 	var syncHeadHeader *types.Header
 	if cfg.checkRoot {
 		syncHeadHeader, err = cfg.blockReader.HeaderByNumber(ctx, tx, to)
@@ -94,7 +96,7 @@ func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg Tri
 			return trie.EmptyRoot, fmt.Errorf("no header found with number %d", to)
 		}
 		expectedRootHash = syncHeadHeader.Root
-		// headerHash = syncHeadHeader.Hash()
+		headerHash = syncHeadHeader.Hash()
 	}
 	logPrefix := s.LogPrefix()
 	if !quiet && to > s.BlockNumber+16 {
@@ -121,23 +123,25 @@ func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg Tri
 		}
 	}
 
-	fmt.Println("BC - ignore trie root check")
-	// if cfg.checkRoot && root != expectedRootHash {
-	// 	log.Error(fmt.Sprintf("[%s] Wrong trie root of block %d: %x, expected (from header): %x. Block hash: %x", logPrefix, to, root, expectedRootHash, headerHash))
-	// 	if cfg.badBlockHalt {
-	// 		return trie.EmptyRoot, fmt.Errorf("wrong trie root")
-	// 	}
-	// 	if cfg.hd != nil {
-	// 		cfg.hd.ReportBadHeaderPoS(headerHash, syncHeadHeader.ParentHash)
-	// 	}
-	// 	if to > s.BlockNumber {
-	// 		unwindTo := (to + s.BlockNumber) / 2 // Binary search for the correct block, biased to the lower numbers
-	// 		log.Warn("Unwinding due to incorrect root hash", "to", unwindTo)
-	// 		u.UnwindTo(unwindTo, headerHash)
-	// 	}
-	// } else if err = s.Update(tx, to); err != nil {
-	// 	return trie.EmptyRoot, err
-	// }
+	// Skip state root check for blocks before boba bedrock hard fork
+	if !chanConfig.IsBobaLegacyBlock(big.NewInt(int64(s.BlockNumber))) {
+		if cfg.checkRoot && root != expectedRootHash {
+			log.Error(fmt.Sprintf("[%s] Wrong trie root of block %d: %x, expected (from header): %x. Block hash: %x", logPrefix, to, root, expectedRootHash, headerHash))
+			if cfg.badBlockHalt {
+				return trie.EmptyRoot, fmt.Errorf("wrong trie root")
+			}
+			if cfg.hd != nil {
+				cfg.hd.ReportBadHeaderPoS(headerHash, syncHeadHeader.ParentHash)
+			}
+			if to > s.BlockNumber {
+				unwindTo := (to + s.BlockNumber) / 2 // Binary search for the correct block, biased to the lower numbers
+				log.Warn("Unwinding due to incorrect root hash", "to", unwindTo)
+				u.UnwindTo(unwindTo, headerHash)
+			}
+		} else if err = s.Update(tx, to); err != nil {
+			return trie.EmptyRoot, err
+		}
+	}
 
 	if err = s.Update(tx, to); err != nil {
 		return trie.EmptyRoot, err

@@ -359,10 +359,4 @@ func (tx *DepositTransaction) SetSender(addr libcommon.Address) {
 	// NOP - FIXME? ct.from.Store(addr)
 }
 
-func (tx *DepositTransaction) IsLegacyDepositTx() bool {
-	V, R, S := tx.RawSignatureValues()
-	if *tx.To == MessengerAddress && V == uint256.NewInt(0) && R == uint256.NewInt(0) && S == uint256.NewInt(0) && S == uint256.NewInt(0) {
-		return true
-	}
-	return false
-}
+func (tx *DepositTransaction) IsLegacyDepositTx() bool { return false }
