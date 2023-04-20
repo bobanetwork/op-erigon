@@ -752,10 +752,22 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"contractAddress":   nil,
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
+		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
 	}
 	if receipt.L1Fee != nil {
 		// simulate 'omitEmpty'
 		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
+	}
+/* op-geth has the following, but currently FeeScalar can be nil here in Erigon:
+	if chainConfig.Optimism != nil && !txn.IsDepositTx() {
+		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
+		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
+		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
+			fields["l1FeeScalar"] = receipt.FeeScalar.String()
+	}
+*/
+	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositNonce != nil {
+		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
 	}
 
 	if !chainConfig.IsLondon(header.Number.Uint64()) {

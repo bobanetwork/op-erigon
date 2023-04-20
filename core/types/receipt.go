@@ -28,7 +28,6 @@ import (
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/rlp"
-	"github.com/ledgerwatch/log/v3"
 )
 
 //go:generate gencodec -type Receipt -field-override receiptMarshaling -out gen_receipt_json.go
@@ -60,9 +59,14 @@ type Receipt struct {
 
 	// Implementation fields: These fields are added by geth when processing a transaction.
 	// They are stored in the chain database.
-	TxHash          libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
-	ContractAddress libcommon.Address `json:"contractAddress" codec:"-"`
-	GasUsed         uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
+	TxHash            libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
+	ContractAddress   libcommon.Address `json:"contractAddress" codec:"-"`
+	GasUsed           uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
+	EffectiveGasPrice *big.Int          `json:"effectiveGasPrice"`
+
+	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions
+	// The state transition process ensures this is only set for Regolith deposit transactions.
+	DepositNonce *uint64 `json:"depositNonce,omitempty"`
 
 	// Inclusion information: These fields provide information about the inclusion of the
 	// transaction corresponding to this receipt.
@@ -96,11 +100,24 @@ type receiptRLP struct {
 	Logs              []*Log
 }
 
+type depositReceiptRlp struct {
+	PostStateOrStatus []byte
+	CumulativeGasUsed uint64
+	Bloom             Bloom
+	Logs              []*Log
+	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions.
+	// Must be nil for any transactions prior to Regolith or that aren't deposit transactions.
+	DepositNonce *uint64 `rlp:"optional"`
+}
+
 // storedReceiptRLP is the storage encoding of a receipt.
 type storedReceiptRLP struct {
 	PostStateOrStatus []byte
 	CumulativeGasUsed uint64
 	Logs              []*LogForStorage
+	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions.
+	// Must be nil for any transactions prior to Regolith or that aren't deposit transactions.
+	DepositNonce *uint64 `rlp:"optional"`
 }
 
 // v4StoredReceiptRLP is the storage encoding of a receipt used in database version 4.
@@ -154,6 +171,17 @@ func (r Receipt) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, buf.Bytes())
 }
 
+// encodeTyped writes the canonical encoding of a typed receipt to w.
+func (r *Receipt) encodeTyped(data *receiptRLP, w *bytes.Buffer) error {
+	w.WriteByte(r.Type)
+	switch r.Type {
+	case DepositTxType:
+		withNonce := depositReceiptRlp{data.PostStateOrStatus, data.CumulativeGasUsed, data.Bloom, data.Logs, r.DepositNonce}
+		return rlp.Encode(w, withNonce)
+	default:
+		return rlp.Encode(w, data)
+	}
+}
 func (r *Receipt) decodePayload(s *rlp.Stream) error {
 	_, err := s.List()
 	if err != nil {
@@ -254,13 +282,10 @@ func (r *Receipt) DecodeRLP(s *rlp.Stream) error {
 		}
 		r.Type = b[0]
 		switch r.Type {
-		case AccessListTxType, DynamicFeeTxType:
+		case AccessListTxType, DynamicFeeTxType, DepositTxType:
 			if err := r.decodePayload(s); err != nil {
 				return err
 			}
-		case DepositTxType:
-			log.Debug("MMDBG receipt DepositTxType handler")
-			return ErrTxTypeNotSupported
 		default:
 			return ErrTxTypeNotSupported
 		}
@@ -327,6 +352,7 @@ func (r *Receipt) Copy() *Receipt {
 		BlockHash:         blockHash,
 		BlockNumber:       blockNumber,
 		TransactionIndex:  r.TransactionIndex,
+		DepositNonce:      r.DepositNonce,
 	}
 }
 
@@ -343,6 +369,7 @@ func (r *ReceiptForStorage) EncodeRLP(w io.Writer) error {
 		PostStateOrStatus: (*Receipt)(r).statusEncoding(),
 		CumulativeGasUsed: r.CumulativeGasUsed,
 		Logs:              make([]*LogForStorage, len(r.Logs)),
+		DepositNonce:      r.DepositNonce,
 	}
 	for i, log := range r.Logs {
 		enc.Logs[i] = (*LogForStorage)(log)
@@ -450,6 +477,11 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		}
 	case DynamicFeeTxType:
 		w.WriteByte(DynamicFeeTxType)
+		if err := rlp.Encode(w, data); err != nil {
+			panic(err)
+		}
+	case DepositTxType:
+		w.WriteByte(DepositTxType)
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}

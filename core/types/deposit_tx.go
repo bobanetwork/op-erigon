@@ -339,9 +339,15 @@ func (tx DepositTransaction) GetValue() *uint256.Int {
 	return tx.Value
 }
 
+
 func (tx DepositTransaction) IsContractDeploy() bool {
-	return false
+	return tx.GetTo() == nil
 }
+
+func (tx DepositTransaction) IsDepositTx() bool {
+	return true
+}
+
 func (tx DepositTransaction) IsStarkNet() bool {
 	return false
 }

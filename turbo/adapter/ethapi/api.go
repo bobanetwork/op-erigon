@@ -714,6 +714,17 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, ha
 		"logs":              receipt.Logs,
 		"logsBloom":         receipt.Bloom,
 		"type":              hexutil.Uint(tx.Type()),
+		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
+	}
+
+	if s.b.ChainConfig().Optimism != nil && !tx.IsDepositTx() {
+		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
+		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
+		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
+		fields["l1FeeScalar"] = receipt.FeeScalar.String()
+	}
+	if s.b.ChainConfig().Optimism != nil && tx.IsDepositTx() && receipt.DepositNonce != nil {
+		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
 	}
 
 	// Assign receipt status or post state.
