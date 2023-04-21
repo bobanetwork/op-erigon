@@ -467,6 +467,10 @@ func (stx *SignedBlobTx) IsContractDeploy() bool {
 	return stx.GetTo() == nil
 }
 
+func (stx *SignedBlobTx) IsDepositTx() bool {
+	return false
+}
+
 func (stx *SignedBlobTx) Unwrap() Transaction {
 	return stx
 }

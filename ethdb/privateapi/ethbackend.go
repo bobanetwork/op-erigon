@@ -751,8 +751,9 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	s.payloadId++
 	param.PayloadId = s.payloadId
 	s.lastParameters = &param
-	
-	s.builders[s.payloadId] = builder.NewBlockBuilder(s.builderFunc, &param)
+
+	bldr := builder.NewBlockBuilder(s.builderFunc, &param)
+	s.builders[s.payloadId] = bldr
 	log.Info("[ForkChoiceUpdated] BlockBuilder added", "payload", s.payloadId)
 
 	log.Debug("MMDBG waiting before EngineForkChoiceUpdatedReply", "param", param, "builder", s.builders[s.payloadId])

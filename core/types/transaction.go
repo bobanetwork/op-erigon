@@ -512,6 +512,7 @@ type Message struct {
 	accessList       types2.AccessList
 	checkNonce       bool
 	isFree           bool
+	dataHashes       []libcommon.Hash
 	isSystemTx       bool
 	rollupDataGas    uint64
 }

@@ -495,7 +495,7 @@ Loop:
 			defer getHashFnMute.Unlock()
 			return f(n)
 		}
-		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil /*excessDataGas*/, nil /*FIXME (this is definitely wrong)*/))
+		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil /*excessDataGas*/, nil /*FIXME (this is definitely wrong)*/)
 
 		if parallel {
 			select {
