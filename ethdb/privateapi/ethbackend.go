@@ -751,9 +751,9 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	s.payloadId++
 	param.PayloadId = s.payloadId
 	s.lastParameters = &param
-
-	bldr := builder.NewBlockBuilder(s.builderFunc, &param)
-	s.builders[s.payloadId] = bldr
+	
+	s.builders[s.payloadId] = builder.NewBlockBuilder(s.builderFunc, &param)
+	log.Info("[ForkChoiceUpdated] BlockBuilder added", "payload", s.payloadId)
 
 	log.Debug("MMDBG waiting before EngineForkChoiceUpdatedReply", "param", param, "builder", s.builders[s.payloadId])
 	if s.config.Optimism != nil {
@@ -770,7 +770,6 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 		block := blockAndReceipts.Block
 		log.Debug("MMDBG Optimism BlockBuilder added", "payload", s.payloadId, "blockHash", block.Hash(), "blockNum", block.NumberU64(), "txes", len(block.Transactions()))
 	}
-
 	return &remote.EngineForkChoiceUpdatedResponse{
 		PayloadStatus: &remote.EnginePayloadStatus{
 			Status:          remote.EngineStatus_VALID,
