@@ -292,31 +292,38 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 // returned. When fullTx is true the returned block contains full transaction details, otherwise it will only contain
 // transaction hashes.
 func RPCMarshalBlockDeprecated(block *types.Block, inclTx bool, fullTx bool) (map[string]interface{}, error) {
-	return RPCMarshalBlockExDeprecated(block, inclTx, fullTx, nil, libcommon.Hash{})
+	return RPCMarshalBlockExDeprecated(block, inclTx, fullTx, nil, libcommon.Hash{}, nil)
 }
 
-func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, borTx types.Transaction, borTxHash libcommon.Hash) (map[string]interface{}, error) {
+func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, borTx types.Transaction, borTxHash libcommon.Hash, receipts types.Receipts) (map[string]interface{}, error) {
 	fields := RPCMarshalHeader(block.Header())
 	fields["size"] = hexutil.Uint64(block.Size())
 	if _, ok := fields["transactions"]; !ok {
 		fields["transactions"] = make([]interface{}, 0)
 	}
-	log.Debug("MMDBG RPCMarshalBlockEx", "inclTx", inclTx, "fullTx", fullTx)
 
 	if inclTx {
-		formatTx := func(tx types.Transaction, index int) (interface{}, error) {
+		formatTx := func(tx types.Transaction, index int, dn *uint64) (interface{}, error) {
 			return tx.Hash(), nil
 		}
 		if fullTx {
-			formatTx = func(tx types.Transaction, index int) (interface{}, error) {
-				return newRPCTransactionFromBlockAndTxGivenIndex(block, tx, uint64(index)), nil
+			formatTx = func(tx types.Transaction, index int, dn *uint64) (interface{}, error) {
+				rpcTx := newRPCTransactionFromBlockAndTxGivenIndex(block, tx, uint64(index))
+				if dn != nil {
+					rpcTx.Nonce = hexutil.Uint64(*dn)
+				}
+				return rpcTx, nil
 			}
 		}
 		txs := block.Transactions()
 		transactions := make([]interface{}, len(txs), len(txs)+1)
 		var err error
 		for i, tx := range txs {
-			if transactions[i], err = formatTx(tx, i); err != nil {
+			var dn *uint64
+			if tx.Type() == types.DepositTxType && receipts != nil {
+				dn = receipts[i].DepositNonce
+			}
+			if transactions[i], err = formatTx(tx, i, dn); err != nil {
 				return nil, err
 			}
 		}
@@ -449,7 +456,6 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 			result.GasPrice = nil
 		}
 	case *types.DepositTransaction:
-		log.Debug("MMDBG newRPCTransaction as DepositTransaction")
 		result.SourceHash = t.SourceHash
 		result.IsSystemTx = t.IsSystemTx
 		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
@@ -516,7 +522,6 @@ func newRPCTransactionFromBlockIndex(b *types.Block, index uint64) *RPCTransacti
 
 // newRPCTransactionFromBlockAndTxGivenIndex returns a transaction that will serialize to the RPC representation.
 func newRPCTransactionFromBlockAndTxGivenIndex(b *types.Block, tx types.Transaction, index uint64) *RPCTransaction {
-	log.Debug("MMDBG newRPCTransactionFromBlockAndTxGivenIndex")
 	return newRPCTransaction(tx, b.Hash(), b.NumberU64(), index, b.BaseFee())
 }
 
