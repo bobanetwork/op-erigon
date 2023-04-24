@@ -339,7 +339,6 @@ func (tx DepositTransaction) GetValue() *uint256.Int {
 	return tx.Value
 }
 
-
 func (tx DepositTransaction) IsContractDeploy() bool {
 	return tx.GetTo() == nil
 }

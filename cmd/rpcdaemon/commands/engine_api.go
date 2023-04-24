@@ -63,7 +63,7 @@ type PayloadAttributes struct {
 	PrevRandao            common.Hash         `json:"prevRandao"            gencodec:"required"`
 	SuggestedFeeRecipient common.Address      `json:"suggestedFeeRecipient" gencodec:"required"`
 	Withdrawals           []*types.Withdrawal `json:"withdrawals"           gencodec:"optional"`
-	Transactions          []hexutility.Bytes     `json:"transactions"          gencodec:"optional"`
+	Transactions          []hexutility.Bytes  `json:"transactions"          gencodec:"optional"`
 	NoTxPool              bool                `json:"noTxPool"              gencodec:"optional"`
 	GasLimit              *hexutil.Uint64     `json:"gasLimit"              gencodec:"optional"`
 }

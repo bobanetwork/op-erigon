@@ -496,7 +496,7 @@ func (t *TransactionsFixedOrder) Pop() {
 
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
-	txType        byte
+	txType           byte
 	sourceHash       *libcommon.Hash
 	to               *libcommon.Address
 	from             libcommon.Address
