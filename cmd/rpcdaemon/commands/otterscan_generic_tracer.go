@@ -82,6 +82,7 @@ func (api *OtterscanAPIImpl) genericTracer(dbtx kv.Tx, ctx context.Context, bloc
 	}
 
 	header := block.Header()
+	excessDataGas := header.ParentExcessDataGas(getHeader)
 	rules := chainConfig.Rules(block.NumberU64(), header.Time)
 	for idx, tx := range block.Transactions() {
 		ibs.Prepare(tx.Hash(), block.Hash(), idx)
@@ -89,7 +90,7 @@ func (api *OtterscanAPIImpl) genericTracer(dbtx kv.Tx, ctx context.Context, bloc
 		msg, _ := tx.AsMessage(*signer, header.BaseFee, rules)
 
 		l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
-		BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, nil /*excessDataGas*/, l1CostFunc)
+		BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, excessDataGas, l1CostFunc)
 		TxContext := core.NewEVMTxContext(msg)
 
 		vmenv := vm.NewEVM(BlockContext, TxContext, ibs, chainConfig, vm.Config{Debug: true, Tracer: tracer})

@@ -17,6 +17,7 @@
 package params
 
 import (
+	"math"
 	"math/big"
 	"reflect"
 	"testing"
@@ -96,5 +97,24 @@ func TestCheckCompatible(t *testing.T) {
 		if !reflect.DeepEqual(err, test.wantErr) {
 			t.Errorf("error mismatch:\nstored: %v\nnew: %v\nhead: %v\nerr: %v\nwant: %v", test.stored, test.new, test.head, err, test.wantErr)
 		}
+	}
+}
+
+func TestConfigRulesRegolith(t *testing.T) {
+	c := &chain.Config{
+		RegolithTime: big.NewInt(500),
+		Optimism:     &chain.OptimismConfig{},
+	}
+	var stamp uint64
+	if r := c.Rules(0, stamp); r.IsOptimismRegolith {
+		t.Errorf("expected %v to not be regolith", stamp)
+	}
+	stamp = 500
+	if r := c.Rules(0, stamp); !r.IsOptimismRegolith {
+		t.Errorf("expected %v to be regolith", stamp)
+	}
+	stamp = math.MaxInt64
+	if r := c.Rules(0, stamp); !r.IsOptimismRegolith {
+		t.Errorf("expected %v to be regolith", stamp)
 	}
 }

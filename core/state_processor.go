@@ -62,6 +62,11 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	// Update the evm with the new transaction context.
 	evm.Reset(txContext, ibs)
 
+	nonce := tx.GetNonce()
+	if msg.IsDepositTx() && config.IsOptimismRegolith(evm.Context().Time) {
+		nonce = ibs.GetNonce(msg.From())
+	}
+
 	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
 	if err != nil {
 		return nil, nil, err
@@ -103,6 +108,12 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		}
 		receipt.TxHash = tx.Hash()
 		receipt.GasUsed = result.UsedGas
+
+		if msg.IsDepositTx() && config.IsOptimismRegolith(evm.Context().Time) {
+			// The actual nonce for deposit transactions is only recorded from Regolith onwards.
+			// Before the Regolith fork the DepositNonce must remain nil
+			receipt.DepositNonce = &nonce
+		}
 
 		// if the transaction created a contract, store the creation address in the receipt.
 		if msg.To() == nil {
