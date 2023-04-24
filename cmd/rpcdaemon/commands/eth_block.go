@@ -232,7 +232,13 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 		}
 	}
 
-	response, err := ethapi.RPCMarshalBlockEx(b, true, fullTx, borTx, borTxHash, additionalFields)
+	// Optimism Deposit transactions need to access DepositNonce from their receipt.
+	// A possible optimization would be to filter by Tx type and only populate the entries for the Deposits
+	receipts, err := api.getReceipts(ctx, tx, chainConfig, b, b.Body().SendersFromTxs())
+	if err != nil {
+		return nil, fmt.Errorf("getReceipts error: %w", err)
+	}
+	response, err := ethapi.RPCMarshalBlockEx(b, true, fullTx, borTx, borTxHash, additionalFields, receipts)
 	if err == nil && number == rpc.PendingBlockNumber {
 		// Pending blocks need to nil out a few fields
 		for _, field := range []string{"hash", "nonce", "miner"} {
@@ -294,7 +300,13 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 		}
 	}
 
-	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, borTx, borTxHash, additionalFields)
+	// Optimism Deposit transactions need to access DepositNonce from their receipt.
+	// A possible optimization would be to filter by Tx type and only populate the entries for the Deposits
+	receipts, err := api.getReceipts(ctx, tx, chainConfig, block, block.Body().SendersFromTxs())
+	if err != nil {
+		return nil, fmt.Errorf("getReceipts error: %w", err)
+	}
+	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, borTx, borTxHash, additionalFields, receipts)
 
 	if chainConfig.Bor != nil {
 		response["miner"], _ = ecrecover(block.Header(), chainConfig.Bor)

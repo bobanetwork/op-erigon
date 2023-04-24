@@ -64,12 +64,14 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 			yy2arr2 := z.EncBasicHandle().StructToArray
 			_ = yy2arr2
 			const yyr2 bool = false // struct tag has 'toArray'
-			var yyn7 bool = x.L1GasPrice == nil
-			var yyn8 bool = x.L1GasUsed == nil
-			var yyn9 bool = x.L1Fee == nil
-			var yyn10 bool = x.FeeScalar == nil
-			var yyn11 bool = x.L2BobaFee == nil
-			z.EncWriteArrayStart(9)
+			var yyn7 bool = x.EffectiveGasPrice == nil
+			var yyn8 bool = x.DepositNonce == nil
+			var yyn9 bool = x.L1GasPrice == nil
+			var yyn10 bool = x.L1GasUsed == nil
+			var yyn11 bool = x.L1Fee == nil
+			var yyn12 bool = x.FeeScalar == nil
+			var yyn13 bool = x.L2BobaFee == nil
+			z.EncWriteArrayStart(11)
 			z.EncWriteArrayElem()
 			r.EncodeUint(uint64(x.Type))
 			z.EncWriteArrayElem()
@@ -88,12 +90,31 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 			} else {
 				z.EncWriteArrayElem()
 				if !z.EncBinary() && z.IsJSONHandle() {
+					z.EncJSONMarshal(x.EffectiveGasPrice)
+				} else {
+					z.EncFallback(x.EffectiveGasPrice)
+				}
+			}
+			if yyn8 {
+				z.EncWriteArrayElem()
+				r.EncodeNil()
+			} else {
+				z.EncWriteArrayElem()
+				yy19 := *x.DepositNonce
+				r.EncodeUint(uint64(yy19))
+			}
+			if yyn9 {
+				z.EncWriteArrayElem()
+				r.EncodeNil()
+			} else {
+				z.EncWriteArrayElem()
+				if !z.EncBinary() && z.IsJSONHandle() {
 					z.EncJSONMarshal(x.L1GasPrice)
 				} else {
 					z.EncFallback(x.L1GasPrice)
 				}
 			}
-			if yyn8 {
+			if yyn10 {
 				z.EncWriteArrayElem()
 				r.EncodeNil()
 			} else {
@@ -104,7 +125,7 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 					z.EncFallback(x.L1GasUsed)
 				}
 			}
-			if yyn9 {
+			if yyn11 {
 				z.EncWriteArrayElem()
 				r.EncodeNil()
 			} else {
@@ -115,7 +136,7 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 					z.EncFallback(x.L1Fee)
 				}
 			}
-			if yyn10 {
+			if yyn12 {
 				z.EncWriteArrayElem()
 				r.EncodeNil()
 			} else {
@@ -126,7 +147,7 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 					z.EncFallback(x.FeeScalar)
 				}
 			}
-			if yyn11 {
+			if yyn13 {
 				z.EncWriteArrayElem()
 				r.EncodeNil()
 			} else {
@@ -198,6 +219,32 @@ func (x *Receipt) codecDecodeSelfFromMap(l int, d *codec1978.Decoder) {
 			x.Status = (uint64)(r.DecodeUint64())
 		case "3":
 			x.CumulativeGasUsed = (uint64)(r.DecodeUint64())
+		case "EffectiveGasPrice":
+			if r.TryNil() {
+				if x.EffectiveGasPrice != nil { // remove the if-true
+					x.EffectiveGasPrice = nil
+				}
+			} else {
+				if x.EffectiveGasPrice == nil {
+					x.EffectiveGasPrice = new(pkg2_big.Int)
+				}
+				if !z.DecBinary() && z.IsJSONHandle() {
+					z.DecJSONUnmarshal(x.EffectiveGasPrice)
+				} else {
+					z.DecFallback(x.EffectiveGasPrice, false)
+				}
+			}
+		case "DepositNonce":
+			if r.TryNil() {
+				if x.DepositNonce != nil { // remove the if-true
+					x.DepositNonce = nil
+				}
+			} else {
+				if x.DepositNonce == nil {
+					x.DepositNonce = new(uint64)
+				}
+				*x.DepositNonce = (uint64)(r.DecodeUint64())
+			}
 		case "L1GasPrice":
 			if r.TryNil() {
 				if x.L1GasPrice != nil { // remove the if-true
@@ -283,64 +330,110 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 	var h codecSelfer2
 	z, r := codec1978.GenHelperDecoder(d)
 	_, _, _ = h, z, r
-	var yyj19 int
-	var yyb19 bool
-	var yyhl19 bool = l >= 0
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	var yyj23 int
+	var yyb23 bool
+	var yyhl23 bool = l >= 0
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.Type = (uint8)(z.C.UintV(r.DecodeUint64(), 8))
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.PostState = r.DecodeBytes(([]byte)(x.PostState), false)
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.Status = (uint64)(r.DecodeUint64())
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.CumulativeGasUsed = (uint64)(r.DecodeUint64())
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
+		z.DecReadArrayEnd()
+		return
+	}
+	z.DecReadArrayElem()
+	if r.TryNil() {
+		if x.EffectiveGasPrice != nil { // remove the if-true
+			x.EffectiveGasPrice = nil
+		}
+	} else {
+		if x.EffectiveGasPrice == nil {
+			x.EffectiveGasPrice = new(pkg2_big.Int)
+		}
+		if !z.DecBinary() && z.IsJSONHandle() {
+			z.DecJSONUnmarshal(x.EffectiveGasPrice)
+		} else {
+			z.DecFallback(x.EffectiveGasPrice, false)
+		}
+	}
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
+	} else {
+		yyb23 = z.DecCheckBreak()
+	}
+	if yyb23 {
+		z.DecReadArrayEnd()
+		return
+	}
+	z.DecReadArrayElem()
+	if r.TryNil() {
+		if x.DepositNonce != nil { // remove the if-true
+			x.DepositNonce = nil
+		}
+	} else {
+		if x.DepositNonce == nil {
+			x.DepositNonce = new(uint64)
+		}
+		*x.DepositNonce = (uint64)(r.DecodeUint64())
+	}
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
+	} else {
+		yyb23 = z.DecCheckBreak()
+	}
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -359,13 +452,13 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.L1GasPrice, false)
 		}
 	}
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -384,13 +477,13 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.L1GasUsed, false)
 		}
 	}
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -409,13 +502,13 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.L1Fee, false)
 		}
 	}
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -434,13 +527,13 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.FeeScalar, false)
 		}
 	}
-	yyj19++
-	if yyhl19 {
-		yyb19 = yyj19 > l
+	yyj23++
+	if yyhl23 {
+		yyb23 = yyj23 > l
 	} else {
-		yyb19 = z.DecCheckBreak()
+		yyb23 = z.DecCheckBreak()
 	}
-	if yyb19 {
+	if yyb23 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -460,17 +553,17 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 		}
 	}
 	for {
-		yyj19++
-		if yyhl19 {
-			yyb19 = yyj19 > l
+		yyj23++
+		if yyhl23 {
+			yyb23 = yyj23 > l
 		} else {
-			yyb19 = z.DecCheckBreak()
+			yyb23 = z.DecCheckBreak()
 		}
-		if yyb19 {
+		if yyb23 {
 			break
 		}
 		z.DecReadArrayElem()
-		z.DecStructFieldNotFound(yyj19-1, "")
+		z.DecStructFieldNotFound(yyj23-1, "")
 	}
 }
 

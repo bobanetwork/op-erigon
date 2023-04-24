@@ -62,7 +62,7 @@ func (n BlockNonce) Uint64() uint64 {
 
 // MarshalText encodes n as a hex string with 0x prefix.
 func (n BlockNonce) MarshalText() ([]byte, error) {
-	return hexutil.Bytes(n[:]).MarshalText()
+	return hexutility.Bytes(n[:]).MarshalText()
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler.
@@ -525,19 +525,19 @@ type headerMarshaling struct {
 	GasLimit      hexutil.Uint64
 	GasUsed       hexutil.Uint64
 	Time          hexutil.Uint64
-	Extra         hexutil.Bytes
+	Extra         hexutility.Bytes
 	BaseFee       *hexutil.Big
 	ExcessDataGas *hexutil.Big
 	Hash          libcommon.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
 }
 
 type LegacyHeaderMarshaling struct {
-	GasLimit    hexutil.Big    `json:"gasLimit"`
-	GasUsed     hexutil.Big    `json:"gasUsed"`
-	Difficulty  hexutil.Big    `json:"difficulty"`
-	Root        libcommon.Hash `json:"stateRoot"`
-	Extra       hexutil.Bytes  `json:"extraData"`
-	ReceiptHash libcommon.Hash `json:"receiptsRoot"`
+	GasLimit    hexutil.Big      `json:"gasLimit"`
+	GasUsed     hexutil.Big      `json:"gasUsed"`
+	Difficulty  hexutil.Big      `json:"difficulty"`
+	Root        libcommon.Hash   `json:"stateRoot"`
+	Extra       hexutility.Bytes `json:"extraData"`
+	ReceiptHash libcommon.Hash   `json:"receiptsRoot"`
 }
 
 // SetExcessDataGas sets the excess_data_gas field in the header
