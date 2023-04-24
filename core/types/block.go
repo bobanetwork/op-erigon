@@ -532,12 +532,12 @@ type headerMarshaling struct {
 }
 
 type LegacyHeaderMarshaling struct {
-	GasLimit    hexutil.Big    `json:"gasLimit"`
-	GasUsed     hexutil.Big    `json:"gasUsed"`
-	Difficulty  hexutil.Big    `json:"difficulty"`
-	Root        libcommon.Hash `json:"stateRoot"`
-	Extra       hexutil.Bytes  `json:"extraData"`
-	ReceiptHash libcommon.Hash `json:"receiptsRoot"`
+	GasLimit    hexutil.Big      `json:"gasLimit"`
+	GasUsed     hexutil.Big      `json:"gasUsed"`
+	Difficulty  hexutil.Big      `json:"difficulty"`
+	Root        libcommon.Hash   `json:"stateRoot"`
+	Extra       hexutility.Bytes `json:"extraData"`
+	ReceiptHash libcommon.Hash   `json:"receiptsRoot"`
 }
 
 // SetExcessDataGas sets the excess_data_gas field in the header

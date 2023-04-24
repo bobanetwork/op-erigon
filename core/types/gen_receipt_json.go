@@ -19,7 +19,7 @@ var _ = (*receiptMarshaling)(nil)
 func (r Receipt) MarshalJSON() ([]byte, error) {
 	type Receipt struct {
 		Type              hexutil.Uint64    `json:"type,omitempty"`
-		PostState         hexutil.Bytes  `json:"root"`
+		PostState         hexutility.Bytes  `json:"root"`
 		Status            hexutil.Uint64    `json:"status"`
 		CumulativeGasUsed hexutil.Uint64    `json:"cumulativeGasUsed" gencodec:"required"`
 		Bloom             Bloom             `json:"logsBloom"         gencodec:"required"`
@@ -32,7 +32,7 @@ func (r Receipt) MarshalJSON() ([]byte, error) {
 		TransactionIndex  hexutil.Uint      `json:"transactionIndex"`
 		L1GasPrice        *big.Int          `json:"l1GasPrice,omitempty"`
 		L1GasUsed         *big.Int          `json:"l1GasUsed,omitempty"`
-		L1Fee             *hexutil.Big      `json:"l1Fee,omitempty"`
+		L1Fee             *big.Int          `json:"l1Fee,omitempty"`
 		FeeScalar         *big.Float        `json:"l1FeeScalar,omitempty"`
 		L2BobaFee         *big.Int          `json:"L2BobaFee,omitempty"`
 	}
@@ -74,7 +74,7 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 		TransactionIndex  *hexutil.Uint      `json:"transactionIndex"`
 		L1GasPrice        *big.Int           `json:"l1GasPrice,omitempty"`
 		L1GasUsed         *big.Int           `json:"l1GasUsed,omitempty"`
-		L1Fee             *hexutil.Big       `json:"l1Fee,omitempty"`
+		L1Fee             *big.Int           `json:"l1Fee,omitempty"`
 		FeeScalar         *big.Float         `json:"l1FeeScalar,omitempty"`
 		L2BobaFee  				*big.Int   				 `json:"L2BobaFee,omitempty"`
 	}

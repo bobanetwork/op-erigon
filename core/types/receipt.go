@@ -119,7 +119,7 @@ type ReceiptEncodable struct {
 }
 
 type LegacyReceipt struct {
-	PostState         hexutil.Bytes      `json:"root"`
+	PostState         hexutility.Bytes   `json:"root"`
 	Status            hexutil.Uint64     `json:"status"`
 	CumulativeGasUsed hexutil.Uint64     `json:"cumulativeGasUsed" gencodec:"required"`
 	Bloom             Bloom              `json:"logsBloom"         gencodec:"required"`
