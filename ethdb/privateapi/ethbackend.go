@@ -711,8 +711,6 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	}
 	log.Debug("MMDBG continuing EngineForkChoiceUpdated", "headNumber", *headNumber, "headHash", headHash)
 
-	log.Debug("BC EngineForkChoiceUpdated Payload", "headNumber", headNumber, "active", s.config.IsBobaLegacyBlock(big.NewInt(int64(*headNumber))))
-	log.Debug("BC EngineForkChoiceUpdated Payload", "headHeader.Time", headHeader.Time, "payloadAttributes.Timestamp", payloadAttributes.Timestamp)
 	if s.config.IsBobaLegacyBlock(big.NewInt(int64(*headNumber))) {
 		if headHeader.Time > payloadAttributes.Timestamp {
 			return nil, &InvalidPayloadAttributesErr
@@ -764,7 +762,6 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 
 	bldr := builder.NewBlockBuilder(s.builderFunc, &param)
 	s.builders[s.payloadId] = bldr
-	log.Info("[ForkChoiceUpdated] BlockBuilder added", "payload", s.payloadId)
 
 	log.Debug("MMDBG waiting before EngineForkChoiceUpdatedReply", "param", param, "builder", s.builders[s.payloadId])
 	if s.config.Optimism != nil {
