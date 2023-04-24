@@ -318,7 +318,14 @@ func OpenDatabase(config *nodecfg.Config, label kv.Label) (kv.RwDB, error) {
 			opts = opts.Exclusive()
 		}
 		if label == kv.ChainDB {
-			opts = opts.PageSize(config.MdbxPageSize.Bytes()).MapSize(config.MdbxDBSizeLimit)
+			if config.MdbxDBSizeLimit == 0 {
+				// Workaround - an "init" on a devnet doesn't use the config option.
+				// see https://github.com/ledgerwatch/erigon/commit/69a3396433f957e699cea17fb512474cd591c877
+				log.Warn("Invalid config.MdbxDBSizeLimit, using previous default")
+				opts = opts.PageSize(config.MdbxPageSize.Bytes()).MapSize(8 * datasize.TB)
+			} else {
+				opts = opts.PageSize(config.MdbxPageSize.Bytes()).MapSize(config.MdbxDBSizeLimit)
+			}
 		} else {
 			opts = opts.GrowthStep(16 * datasize.MB)
 		}
