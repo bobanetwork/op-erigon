@@ -491,6 +491,7 @@ func txnExecutor(tx kv.TemporalTx, chainConfig *chain.Config, engine consensus.E
 	stateReader.SetTx(tx)
 
 	ie := &intraBlockExec{
+		tx:          tx,
 		engine:      engine,
 		chainConfig: chainConfig,
 		br:          br,

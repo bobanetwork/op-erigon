@@ -27,7 +27,6 @@ import (
 	"strings"
 
 	"github.com/c2h5oh/datasize"
-	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/cmp"
 	"github.com/ledgerwatch/erigon-lib/common/datadir"
@@ -129,7 +128,7 @@ var (
 	}
 	SnapshotFlag = cli.BoolFlag{
 		Name:  "snapshots",
-		Usage: `Default: use snapshots "true" for BSC, Mainnet and Goerli. use snapshots "false" in all other cases`,
+		Usage: `Default: use snapshots "true" for Mainnet, Goerli, Gnosis Chain and Chiado. use snapshots "false" in all other cases`,
 		Value: true,
 	}
 	ExternalConsensusFlag = cli.BoolFlag{
@@ -715,6 +714,10 @@ var (
 		Usage: "set mdbx pagesize on db creation: must be power of 2 and '256b <= pagesize <= 64kb'. default: equal to OperationSystem's pageSize",
 		Value: datasize.ByteSize(kv.DefaultPageSize()).String(),
 	}
+	DbSizeLimitFlag = cli.StringFlag{
+		Name:  "db.size.limit",
+		Value: (8 * datasize.TB).String(),
+	}
 
 	HealthCheckFlag = cli.BoolFlag{
 		Name:  "healthcheck",
@@ -1149,9 +1152,16 @@ func setDataDir(ctx *cli.Context, cfg *nodecfg.Config) {
 	if err := cfg.MdbxPageSize.UnmarshalText([]byte(ctx.String(DbPageSizeFlag.Name))); err != nil {
 		panic(err)
 	}
+	if err := cfg.MdbxDBSizeLimit.UnmarshalText([]byte(ctx.String(DbSizeLimitFlag.Name))); err != nil {
+		panic(err)
+	}
 	sz := cfg.MdbxPageSize.Bytes()
 	if !isPowerOfTwo(sz) || sz < 256 || sz > 64*1024 {
 		panic(fmt.Errorf("invalid --db.pagesize: %s=%d, see: %s", ctx.String(DbPageSizeFlag.Name), sz, DbPageSizeFlag.Usage))
+	}
+	szLimit := cfg.MdbxDBSizeLimit.Bytes()
+	if !isPowerOfTwo(szLimit) || szLimit < 256 {
+		panic(fmt.Errorf("invalid --db.size.limit: %s=%d, see: %s", ctx.String(DbSizeLimitFlag.Name), sz, DbSizeLimitFlag.Usage))
 	}
 }
 
@@ -1342,14 +1352,6 @@ func setClique(ctx *cli.Context, cfg *params.ConsensusSnapshotConfig, datadir st
 	}
 }
 
-func setAuRa(ctx *cli.Context, cfg *chain.AuRaConfig, datadir string) {
-	cfg.DBPath = filepath.Join(datadir, "aura")
-}
-
-func setParlia(ctx *cli.Context, cfg *chain.ParliaConfig, datadir string) {
-	cfg.DBPath = filepath.Join(datadir, "parlia")
-}
-
 func setBorConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 	cfg.HeimdallURL = ctx.String(HeimdallURLFlag.Name)
 	cfg.WithoutHeimdall = ctx.Bool(WithoutHeimdallFlag.Name)
@@ -1504,8 +1506,6 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 
 	setEthash(ctx, nodeConfig.Dirs.DataDir, cfg)
 	setClique(ctx, &cfg.Clique, nodeConfig.Dirs.DataDir)
-	setAuRa(ctx, &cfg.Aura, nodeConfig.Dirs.DataDir)
-	setParlia(ctx, &cfg.Parlia, nodeConfig.Dirs.DataDir)
 	setMiner(ctx, &cfg.Miner)
 	setWhitelist(ctx, cfg)
 	setBorConfig(ctx, cfg)

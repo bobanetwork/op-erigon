@@ -22,11 +22,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common"
 )
 
-// GasLimitBoundDivisor it can be changed by BSC
-var (
-	GasLimitBoundDivisor uint64 = 1024 // The bound divisor of the gas limit, used in update calculations.
-)
-
 var (
 	// The base fee portion of the transaction fee accumulates at this predeploy
 	OptimismBaseFeeRecipient = common.HexToAddress("0x4200000000000000000000000000000000000019")
@@ -35,9 +30,10 @@ var (
 )
 
 const (
-	MinGasLimit     uint64 = 5000               // Minimum the gas limit may ever be.
-	MaxGasLimit     uint64 = 0x7fffffffffffffff // Maximum the gas limit may ever be.
-	GenesisGasLimit uint64 = 4712388            // Gas limit of the Genesis block.
+	GasLimitBoundDivisor uint64 = 1024               // The bound divisor of the gas limit, used in update calculations.
+	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
+	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit may ever be.
+	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
 
 	MaximumExtraDataSize  uint64 = 32    // Maximum size extra data may be after Genesis.
 	CallValueTransferGas  uint64 = 9000  // Paid for CALL when the value transfer is non-zero.
@@ -200,7 +196,3 @@ var (
 	MinimumDifficulty      = big.NewInt(131072) // The minimum that the difficulty may ever be.
 	DurationLimit          = big.NewInt(13)     // The decision boundary on the blocktime duration used to determine whether difficulty should go up or not.
 )
-
-func ApplyBinanceSmartChainParams() {
-	GasLimitBoundDivisor = 256
-}
