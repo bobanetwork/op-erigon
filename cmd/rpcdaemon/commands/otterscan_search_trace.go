@@ -77,6 +77,7 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.Tx, ctx context.Context, blockNu
 
 	blockReceipts := rawdb.ReadReceipts(dbtx, block, senders)
 	header := block.Header()
+	excessDataGas := header.ParentExcessDataGas(getHeader)
 	rules := chainConfig.Rules(block.NumberU64(), header.Time)
 	found := false
 	for idx, tx := range block.Transactions() {
@@ -86,7 +87,7 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.Tx, ctx context.Context, blockNu
 
 		tracer := NewTouchTracer(searchAddr)
 		l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
-		BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, nil /*excessDataGas*/, l1CostFunc)
+		BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, excessDataGas, l1CostFunc)
 		TxContext := core.NewEVMTxContext(msg)
 
 		vmenv := vm.NewEVM(BlockContext, TxContext, ibs, chainConfig, vm.Config{Debug: true, Tracer: tracer})

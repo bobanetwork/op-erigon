@@ -18,6 +18,7 @@ import (
 	//	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	//	"github.com/ledgerwatch/erigon/crypto"
 	//	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon/accounts/abi"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/rpc"
@@ -55,7 +56,7 @@ func HCKey(addr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
 	// hasher.Write(bNonce.Bytes()) // FIXME
 	hasher.Write(data)
 	key := libcommon.BytesToHash(hasher.Sum(nil))
-	log.Debug("MMDBG-HC HCKey", "key", key, "addr", addr, "nonce", nonce, "data", hexutil.Bytes(data))
+	log.Debug("MMDBG-HC HCKey", "key", key, "addr", addr, "nonce", nonce, "data", hexutility.Bytes(data))
 
 	return key
 }
@@ -132,16 +133,16 @@ func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
 	hasher := sha3.NewLegacyKeccak256()
 
 	hasher.Write(req[32:36]) // Version as a uint32
-	log.Debug("MMDBG-HC hWrite", "ver32", hexutil.Bytes(req[32:36]))
+	log.Debug("MMDBG-HC hWrite", "ver32", hexutility.Bytes(req[32:36]))
 	hasher.Write(reqMethod.Bytes())
-	log.Debug("MMDBG-HC hWrite", "reqMethod", hexutil.Bytes(reqMethod.Bytes()))
+	log.Debug("MMDBG-HC hWrite", "reqMethod", hexutility.Bytes(reqMethod.Bytes()))
 	hasher.Write([]byte(reqUrl))
-	log.Debug("MMDBG-HC hWrite", "url", hexutil.Bytes([]byte(reqUrl)))
+	log.Debug("MMDBG-HC hWrite", "url", hexutility.Bytes([]byte(reqUrl)))
 	hasher.Write(reqPayload)
-	log.Debug("MMDBG-HC hWrite", "payload", hexutil.Bytes(reqPayload))
+	log.Debug("MMDBG-HC hWrite", "payload", hexutility.Bytes(reqPayload))
 	reqKey := libcommon.BytesToHash(hasher.Sum(nil))
 
-	encPayload := hexutil.Bytes(reqPayload)
+	encPayload := hexutility.Bytes(reqPayload)
 	log.Debug("MMDBG-HC Request", "ver", version.Uint64(), "reqKey", reqKey, "reqUrl", reqUrl, "reqMethod", reqMethod, "encPayload", encPayload)
 
 	var responseBytes []byte
@@ -189,7 +190,7 @@ func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
 	}
 
 	hcData = append(hcData, resp...)
-	log.Debug("MMDBG-HC Response", "hcData", hexutil.Bytes(hcData))
+	log.Debug("MMDBG-HC Response", "hcData", hexutility.Bytes(hcData))
 
 	return hcData, nil
 }
@@ -230,6 +231,6 @@ func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 		trigger := []byte("GetResponse: Missing cache entry")
 		return bytes.Equal(ret[68:68+len(trigger)], trigger)
 	}
-	log.Debug("MMDBG-HC CheckTrigger reverted without trigger string", "ret", hexutil.Bytes(ret))
+	log.Debug("MMDBG-HC CheckTrigger reverted without trigger string", "ret", hexutility.Bytes(ret))
 	return false
 }

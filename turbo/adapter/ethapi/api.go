@@ -45,7 +45,7 @@ type CallArgs struct {
 	MaxFeePerGas         *hexutil.Big       `json:"maxFeePerGas"`
 	Value                *hexutil.Big       `json:"value"`
 	Nonce                *hexutil.Uint64    `json:"nonce"`
-	Data                 *hexutil.Bytes     `json:"data"`
+	Data                 *hexutility.Bytes  `json:"data"`
 	AccessList           *types2.AccessList `json:"accessList"`
 	ChainID              *hexutil.Big       `json:"chainId,omitempty"`
 }
@@ -157,7 +157,7 @@ func (args *CallArgs) ToMessage(globalGasCap uint64, baseFee *uint256.Int) (type
 // message.
 type Account struct {
 	Nonce     *hexutil.Uint64                 `json:"nonce"`
-	Code      *hexutil.Bytes                  `json:"code"`
+	Code      *hexutility.Bytes               `json:"code"`
 	Balance   **hexutil.Big                   `json:"balance"`
 	State     *map[libcommon.Hash]uint256.Int `json:"state"`
 	StateDiff *map[libcommon.Hash]uint256.Int `json:"stateDiff"`
@@ -267,7 +267,7 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 		"stateRoot":        head.Root,
 		"miner":            head.Coinbase,
 		"difficulty":       (*hexutil.Big)(head.Difficulty),
-		"extraData":        hexutil.Bytes(head.Extra),
+		"extraData":        hexutility.Bytes(head.Extra),
 		"size":             hexutil.Uint64(head.Size()),
 		"gasLimit":         hexutil.Uint64(head.GasLimit),
 		"gasUsed":          hexutil.Uint64(head.GasUsed),
@@ -292,31 +292,38 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 // returned. When fullTx is true the returned block contains full transaction details, otherwise it will only contain
 // transaction hashes.
 func RPCMarshalBlockDeprecated(block *types.Block, inclTx bool, fullTx bool) (map[string]interface{}, error) {
-	return RPCMarshalBlockExDeprecated(block, inclTx, fullTx, nil, libcommon.Hash{})
+	return RPCMarshalBlockExDeprecated(block, inclTx, fullTx, nil, libcommon.Hash{}, nil)
 }
 
-func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, borTx types.Transaction, borTxHash libcommon.Hash) (map[string]interface{}, error) {
+func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, borTx types.Transaction, borTxHash libcommon.Hash, receipts types.Receipts) (map[string]interface{}, error) {
 	fields := RPCMarshalHeader(block.Header())
 	fields["size"] = hexutil.Uint64(block.Size())
 	if _, ok := fields["transactions"]; !ok {
 		fields["transactions"] = make([]interface{}, 0)
 	}
-	log.Debug("MMDBG RPCMarshalBlockEx", "inclTx", inclTx, "fullTx", fullTx)
 
 	if inclTx {
-		formatTx := func(tx types.Transaction, index int) (interface{}, error) {
+		formatTx := func(tx types.Transaction, index int, dn *uint64) (interface{}, error) {
 			return tx.Hash(), nil
 		}
 		if fullTx {
-			formatTx = func(tx types.Transaction, index int) (interface{}, error) {
-				return newRPCTransactionFromBlockAndTxGivenIndex(block, tx, uint64(index)), nil
+			formatTx = func(tx types.Transaction, index int, dn *uint64) (interface{}, error) {
+				rpcTx := newRPCTransactionFromBlockAndTxGivenIndex(block, tx, uint64(index))
+				if dn != nil {
+					rpcTx.Nonce = hexutil.Uint64(*dn)
+				}
+				return rpcTx, nil
 			}
 		}
 		txs := block.Transactions()
 		transactions := make([]interface{}, len(txs), len(txs)+1)
 		var err error
 		for i, tx := range txs {
-			if transactions[i], err = formatTx(tx, i); err != nil {
+			var dn *uint64
+			if tx.Type() == types.DepositTxType && receipts != nil {
+				dn = receipts[i].DepositNonce
+			}
+			if transactions[i], err = formatTx(tx, i, dn); err != nil {
 				return nil, err
 			}
 		}
@@ -379,7 +386,7 @@ type RPCTransaction struct {
 	Tip              *hexutil.Big       `json:"maxPriorityFeePerGas,omitempty"`
 	FeeCap           *hexutil.Big       `json:"maxFeePerGas,omitempty"`
 	Hash             libcommon.Hash     `json:"hash"`
-	Input            hexutil.Bytes      `json:"input"`
+	Input            hexutility.Bytes   `json:"input"`
 	Nonce            hexutil.Uint64     `json:"nonce"`
 	To               *libcommon.Address `json:"to"`
 	TransactionIndex *hexutil.Uint64    `json:"transactionIndex"`
@@ -407,7 +414,7 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		Type:  hexutil.Uint64(tx.Type()),
 		Gas:   hexutil.Uint64(tx.GetGas()),
 		Hash:  tx.Hash(),
-		Input: hexutil.Bytes(tx.GetData()),
+		Input: hexutility.Bytes(tx.GetData()),
 		Nonce: hexutil.Uint64(tx.GetNonce()),
 		To:    tx.GetTo(),
 		Value: (*hexutil.Big)(tx.GetValue().ToBig()),
@@ -449,7 +456,6 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 			result.GasPrice = nil
 		}
 	case *types.DepositTransaction:
-		log.Debug("MMDBG newRPCTransaction as DepositTransaction")
 		result.SourceHash = t.SourceHash
 		result.IsSystemTx = t.IsSystemTx
 		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
@@ -485,7 +491,7 @@ func newRPCBorTransaction(opaqueTx types.Transaction, txHash libcommon.Hash, blo
 		GasPrice: (*hexutil.Big)(tx.GasPrice.ToBig()),
 		Gas:      hexutil.Uint64(tx.GetGas()),
 		Hash:     txHash,
-		Input:    hexutil.Bytes(tx.GetData()),
+		Input:    hexutility.Bytes(tx.GetData()),
 		Nonce:    hexutil.Uint64(tx.GetNonce()),
 		From:     libcommon.Address{},
 		To:       tx.GetTo(),
@@ -522,7 +528,6 @@ func newRPCTransactionFromBlockIndex(b *types.Block, index uint64) *RPCTransacti
 
 // newRPCTransactionFromBlockAndTxGivenIndex returns a transaction that will serialize to the RPC representation.
 func newRPCTransactionFromBlockAndTxGivenIndex(b *types.Block, tx types.Transaction, index uint64) *RPCTransaction {
-	log.Debug("MMDBG newRPCTransactionFromBlockAndTxGivenIndex")
 	return newRPCTransaction(tx, b.Hash(), b.NumberU64(), index, b.BaseFee())
 }
 
@@ -720,6 +725,17 @@ func (s *PublicTransactionPoolAPI) GetTransactionReceipt(ctx context.Context, ha
 		"logs":              receipt.Logs,
 		"logsBloom":         receipt.Bloom,
 		"type":              hexutil.Uint(tx.Type()),
+		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
+	}
+
+	if s.b.ChainConfig().Optimism != nil && !tx.IsDepositTx() {
+		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
+		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
+		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
+		fields["l1FeeScalar"] = receipt.FeeScalar.String()
+	}
+	if s.b.ChainConfig().Optimism != nil && tx.IsDepositTx() && receipt.DepositNonce != nil {
+		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
 	}
 
 	// Assign receipt status or post state.

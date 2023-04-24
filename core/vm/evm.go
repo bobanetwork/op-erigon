@@ -25,7 +25,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
-	"github.com/ledgerwatch/erigon/common/hexutil"
+	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -40,18 +40,10 @@ var emptyCodeHash = crypto.Keccak256Hash(nil)
 func (evm *EVM) precompile(addr libcommon.Address) (PrecompiledContract, bool) {
 	var precompiles map[libcommon.Address]PrecompiledContract
 	switch {
-	case evm.chainRules.IsMoran:
-		precompiles = PrecompiledContractsIsMoran
-	case evm.chainRules.IsNano:
-		precompiles = PrecompiledContractsNano
 	case evm.chainRules.IsBerlin:
 		precompiles = PrecompiledContractsBerlin
 	case evm.chainRules.IsIstanbul:
-		if evm.chainRules.IsParlia {
-			precompiles = PrecompiledContractsIstanbulForBSC
-		} else {
-			precompiles = PrecompiledContractsIstanbul
-		}
+		precompiles = PrecompiledContractsIstanbul
 	case evm.chainRules.IsByzantium:
 		precompiles = PrecompiledContractsByzantium
 	default:
@@ -282,7 +274,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 			log.Debug("MMDBG-HC after evm.run", "hcState", evm.hc.State, "err", err, "ret", ret, "addr", addr, "typ", typ, "depth", depth, "ret", ret)
 		}
 		if addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") && CheckTrigger(evm.hc, input, ret, err) {
-			log.Debug("MMDBG-HC evm.Call method triggered", "prefix", hexutil.Bytes(input[:4]), "addr", addr, "caller", caller.Address(), "ret", hexutil.Bytes(ret))
+			log.Debug("MMDBG-HC evm.Call method triggered", "prefix", hexutility.Bytes(input[:4]), "addr", addr, "caller", caller.Address(), "ret", hexutility.Bytes(ret))
 			evm.hc.Caller = caller.Address()
 			evm.hc.State = 1
 			evm.hc.Request = make([]byte, len(input))

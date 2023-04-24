@@ -362,6 +362,11 @@ func (tx OffchainTransaction) GetValue() *uint256.Int {
 func (tx OffchainTransaction) IsContractDeploy() bool {
 	return false
 }
+
+func (tx OffchainTransaction) IsDepositTx() bool {
+	return false
+}
+
 func (tx OffchainTransaction) IsStarkNet() bool {
 	return false
 }

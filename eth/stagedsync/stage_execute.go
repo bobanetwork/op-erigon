@@ -165,13 +165,10 @@ func executeBlock(
 	var receipts types.Receipts
 	var stateSyncReceipt *types.Receipt
 	var execRs *core.EphemeralExecResult
-	_, isPoSa := cfg.engine.(consensus.PoSA)
 	isBor := cfg.chainConfig.Bor != nil
 	getHashFn := core.GetHashFn(block.Header(), getHeader)
 
-	if isPoSa {
-		execRs, err = core.ExecuteBlockEphemerallyForBSC(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
-	} else if isBor {
+	if isBor {
 		execRs, err = core.ExecuteBlockEphemerallyBor(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
 	} else {
 		execRs, err = core.ExecuteBlockEphemerally(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
@@ -281,10 +278,10 @@ func ExecBlockV3(s *StageState, u Unwinder, tx kv.RwTx, toBlock uint64, ctx cont
 	if to > s.BlockNumber+16 {
 		log.Info(fmt.Sprintf("[%s] Blocks execution", logPrefix), "from", s.BlockNumber, "to", to)
 	}
-	rs := state.NewStateV3(cfg.dirs.Tmp)
+	//	rs := state.NewStateV3(cfg.dirs.Tmp)
 	parallel := initialCycle && tx == nil
-	if err := ExecV3(ctx, s, u, workersCount, cfg, tx, parallel, rs, logPrefix,
-		log.New(), to); err != nil {
+	if err := ExecV3(ctx, s, u, workersCount, cfg, tx, parallel, logPrefix,
+		to); err != nil {
 		return fmt.Errorf("ExecV3: %w", err)
 	}
 	return nil

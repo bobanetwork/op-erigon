@@ -44,7 +44,6 @@ type DepositTransaction struct {
 	TransactionMisc
 
 	SourceHash *libcommon.Hash
-//	Nonce      uint64
 	From       *libcommon.Address
 	To         *libcommon.Address
 	Mint       *uint256.Int
@@ -99,7 +98,6 @@ func (tx DepositTransaction) EncodingSize() int {
 func (tx DepositTransaction) copy() *DepositTransaction {
 	cpy := &DepositTransaction{
 		SourceHash: tx.SourceHash,
-//		Nonce:      tx.Nonce,
 		From:       tx.From,
 		To:         tx.To,
 		Mint:       tx.Mint,
@@ -220,11 +218,9 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 
 // AsMessage returns the transaction as a core.Message.
 func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
-	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
 		txType:        DepositTxType,
 		sourceHash:    tx.SourceHash,
-//		nonce:         tx.Nonce,
 		from:          *tx.From,
 		gasLimit:      tx.GasLimit,
 		to:            tx.To,
@@ -344,8 +340,13 @@ func (tx DepositTransaction) GetValue() *uint256.Int {
 }
 
 func (tx DepositTransaction) IsContractDeploy() bool {
-	return false
+	return tx.GetTo() == nil
 }
+
+func (tx DepositTransaction) IsDepositTx() bool {
+	return true
+}
+
 func (tx DepositTransaction) IsStarkNet() bool {
 	return false
 }

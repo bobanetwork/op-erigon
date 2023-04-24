@@ -3,6 +3,7 @@ package transactions
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/holiman/uint256"
@@ -109,7 +110,15 @@ func DoCall(
 }
 
 func NewEVMBlockContext(engine consensus.EngineReader, header *types.Header, requireCanonical bool, tx kv.Tx, headerReader services.HeaderReader, l1CostFunc types.L1CostFunc) evmtypes.BlockContext {
-	return core.NewEVMBlockContext(header, MakeHeaderGetter(requireCanonical, tx, headerReader), engine, nil /* author */, nil /*excessDataGas*/, l1CostFunc)
+	var excessDataGas *big.Int
+	parentHeader, err := headerReader.HeaderByHash(context.Background(), tx, header.ParentHash)
+	if err != nil {
+		// TODO(eip-4844): Do we need to propagate this error?
+		log.Error("Can't get parent block's header:", err)
+	} else if parentHeader != nil {
+		excessDataGas = parentHeader.ExcessDataGas
+	}
+	return core.NewEVMBlockContext(header, MakeHeaderGetter(requireCanonical, tx, headerReader), engine, nil /* author */, excessDataGas, l1CostFunc)
 }
 
 func MakeHeaderGetter(requireCanonical bool, tx kv.Tx, headerReader services.HeaderReader) func(uint64) libcommon.Hash {

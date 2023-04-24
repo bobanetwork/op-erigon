@@ -284,7 +284,7 @@ func (n *Node) DataDir() string {
 	return n.config.Dirs.DataDir
 }
 
-func OpenDatabase(config *nodecfg.Config, logger log.Logger, label kv.Label) (kv.RwDB, error) {
+func OpenDatabase(config *nodecfg.Config, label kv.Label) (kv.RwDB, error) {
 	var name string
 	switch label {
 	case kv.ChainDB:
@@ -311,14 +311,21 @@ func OpenDatabase(config *nodecfg.Config, logger log.Logger, label kv.Label) (kv
 			roTxLimit = int64(config.Http.DBReadConcurrency)
 		}
 		roTxsLimiter := semaphore.NewWeighted(roTxLimit) // 1 less than max to allow unlocking to happen
-		opts := mdbx.NewMDBX(logger).
+		opts := mdbx.NewMDBX(log.Root()).
 			Path(dbPath).Label(label).
 			DBVerbosity(config.DatabaseVerbosity).RoTxsLimiter(roTxsLimiter)
 		if exclusive {
 			opts = opts.Exclusive()
 		}
 		if label == kv.ChainDB {
-			opts = opts.PageSize(config.MdbxPageSize.Bytes()).MapSize(8 * datasize.TB)
+			if config.MdbxDBSizeLimit == 0 {
+				// Workaround - an "init" on a devnet doesn't use the config option.
+				// see https://github.com/ledgerwatch/erigon/commit/69a3396433f957e699cea17fb512474cd591c877
+				log.Warn("Invalid config.MdbxDBSizeLimit, using previous default")
+				opts = opts.PageSize(config.MdbxPageSize.Bytes()).MapSize(8 * datasize.TB)
+			} else {
+				opts = opts.PageSize(config.MdbxPageSize.Bytes()).MapSize(config.MdbxDBSizeLimit)
+			}
 		} else {
 			opts = opts.GrowthStep(16 * datasize.MB)
 		}

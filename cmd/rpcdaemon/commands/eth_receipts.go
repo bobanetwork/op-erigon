@@ -67,10 +67,12 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 		}
 		return h
 	}
+	header := block.Header()
+	excessDataGas := header.ParentExcessDataGas(getHeader)
 	for i, txn := range block.Transactions() {
 		ibs.Prepare(txn.Hash(), block.Hash(), i)
 		header := block.Header()
-		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, vm.Config{}, nil /*excessDataGas*/)
+		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, vm.Config{}, excessDataGas)
 		log.Info("MMDBG computed receipt for tx", "txhash", txn.Hash(), "l1Fee", receipt.L1Fee)
 		if err != nil {
 			return nil, err
@@ -489,6 +491,7 @@ func txnExecutor(tx kv.TemporalTx, chainConfig *chain.Config, engine consensus.E
 	stateReader.SetTx(tx)
 
 	ie := &intraBlockExec{
+		tx:          tx,
 		engine:      engine,
 		chainConfig: chainConfig,
 		br:          br,
@@ -752,10 +755,22 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"contractAddress":   nil,
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
+		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
 	}
 	if receipt.L1Fee != nil {
 		// simulate 'omitEmpty'
 		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
+	}
+	/* op-geth has the following, but currently FeeScalar can be nil here in Erigon:
+	if chainConfig.Optimism != nil && !txn.IsDepositTx() {
+		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
+		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
+		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
+			fields["l1FeeScalar"] = receipt.FeeScalar.String()
+	}
+	*/
+	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositNonce != nil {
+		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
 	}
 
 	if !chainConfig.IsLondon(header.Number.Uint64()) {

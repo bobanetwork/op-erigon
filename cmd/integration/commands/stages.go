@@ -825,7 +825,7 @@ func stageTrie(db kv.RwDB, ctx context.Context) error {
 
 	log.Info("StageExec", "progress", execStage.BlockNumber)
 	log.Info("StageTrie", "progress", s.BlockNumber)
-	cfg := stagedsync.StageTrieCfg(db, true, true, false, dirs.Tmp, getBlockReader(db), nil, historyV3, agg)
+	cfg := stagedsync.StageTrieCfg(db, true /* checkRoot */, true /* saveHashesToDb */, false /* badBlockHalt */, dirs.Tmp, getBlockReader(db), nil /* hd */, historyV3, agg)
 	if unwind > 0 {
 		u := sync.NewUnwindState(stages.IntermediateHashes, s.BlockNumber-unwind, s.BlockNumber)
 		if err := stagedsync.UnwindIntermediateHashesStage(u, s, tx, cfg, ctx); err != nil {
@@ -1292,11 +1292,6 @@ func newDomains(ctx context.Context, db kv.RwDB, stepSize uint64, mode libstate.
 	}
 	//log.Info("Initialised chain configuration", "config", chainConfig)
 
-	// Apply special hacks for BSC params
-	if chainConfig.Parlia != nil {
-		params.ApplyBinanceSmartChainParams()
-	}
-
 	var batchSize datasize.ByteSize
 	must(batchSize.UnmarshalText([]byte(batchSizeStr)))
 
@@ -1331,11 +1326,6 @@ func newSync(ctx context.Context, db kv.RwDB, miningConfig *params.MiningConfig)
 		panic(genesisErr)
 	}
 	//log.Info("Initialised chain configuration", "config", chainConfig)
-
-	// Apply special hacks for BSC params
-	if chainConfig.Parlia != nil {
-		params.ApplyBinanceSmartChainParams()
-	}
 
 	var batchSize datasize.ByteSize
 	must(batchSize.UnmarshalText([]byte(batchSizeStr)))
@@ -1435,7 +1425,6 @@ func overrideStorageMode(db kv.RwDB) error {
 }
 
 func initConsensusEngine(cc *chain2.Config, datadir string, db kv.RwDB) (engine consensus.Engine) {
-	l := log.New()
 	snapshots, _ := allSnapshots(context.Background(), db)
 	config := ethconfig.Defaults
 
@@ -1444,14 +1433,11 @@ func initConsensusEngine(cc *chain2.Config, datadir string, db kv.RwDB) (engine 
 	if cc.Clique != nil {
 		consensusConfig = params.CliqueSnapshot
 	} else if cc.Aura != nil {
-		config.Aura.Etherbase = config.Miner.Etherbase
 		consensusConfig = &config.Aura
-	} else if cc.Parlia != nil {
-		consensusConfig = &config.Parlia
 	} else if cc.Bor != nil {
 		consensusConfig = &config.Bor
 	} else {
 		consensusConfig = &config.Ethash
 	}
-	return ethconsensusconfig.CreateConsensusEngine(cc, l, consensusConfig, config.Miner.Notify, config.Miner.Noverify, HeimdallgRPCAddress, HeimdallURL, config.WithoutHeimdall, datadir, snapshots, db.ReadOnly(), db)
+	return ethconsensusconfig.CreateConsensusEngine(cc, consensusConfig, config.Miner.Notify, config.Miner.Noverify, HeimdallgRPCAddress, HeimdallURL, config.WithoutHeimdall, datadir, snapshots, db.ReadOnly(), db)
 }

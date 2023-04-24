@@ -31,6 +31,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 	"github.com/ledgerwatch/log/v3"
+	"github.com/protolambda/ztyp/codec"
 
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/math"
@@ -94,6 +95,7 @@ type Transaction interface {
 	GetSender() (libcommon.Address, bool)
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
+	IsDepositTx() bool
 }
 
 // TransactionMisc is collection of miscelaneous fields for transaction that is supposed to be embedded into concrete
@@ -502,23 +504,25 @@ func (t *TransactionsFixedOrder) Pop() {
 
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
-	txType        byte
-	sourceHash    *libcommon.Hash
-	to            *libcommon.Address
-	from          libcommon.Address
-	nonce         uint64
-	mint          uint256.Int
-	amount        uint256.Int
-	gasLimit      uint64
-	gasPrice      uint256.Int
-	feeCap        uint256.Int
-	tip           uint256.Int
-	data          []byte
-	accessList    types2.AccessList
-	checkNonce    bool
-	isFree        bool
-	isSystemTx    bool
-	rollupDataGas uint64
+	txType           byte
+	sourceHash       *libcommon.Hash
+	to               *libcommon.Address
+	from             libcommon.Address
+	nonce            uint64
+	mint             uint256.Int
+	amount           uint256.Int
+	gasLimit         uint64
+	gasPrice         uint256.Int
+	feeCap           uint256.Int
+	tip              uint256.Int
+	maxFeePerDataGas uint256.Int
+	data             []byte
+	accessList       types2.AccessList
+	checkNonce       bool
+	isFree           bool
+	dataHashes       []libcommon.Hash
+	isSystemTx       bool
+	rollupDataGas    uint64
 }
 
 func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64, gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList types2.AccessList, checkNonce bool, isFree bool, rollupDataGas uint64) Message {
@@ -584,4 +588,25 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 
 	m.gasLimit = gas
 }
+
 func (m Message) IsSystemTx() bool { return m.isSystemTx }
+
+func (m Message) DataHashes() []libcommon.Hash { return m.dataHashes }
+
+func DecodeSSZ(data []byte, dest codec.Deserializable) error {
+	err := dest.Deserialize(codec.NewDecodingReader(bytes.NewReader(data), uint64(len(data))))
+	return err
+}
+
+func EncodeSSZ(w io.Writer, obj codec.Serializable) error {
+	return obj.Serialize(codec.NewEncodingWriter(w))
+}
+
+// copyAddressPtr copies an address.
+func copyAddressPtr(a *libcommon.Address) *libcommon.Address {
+	if a == nil {
+		return nil
+	}
+	cpy := *a
+	return &cpy
+}
