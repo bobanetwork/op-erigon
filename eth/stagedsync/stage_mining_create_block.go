@@ -188,13 +188,13 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	}
 
 	header.Coinbase = coinbase
-	fmt.Println("BC - extraData: ", cfg.miner.MiningConfig.ExtraData)
 	header.Extra = cfg.miner.MiningConfig.ExtraData
 
 	log.Info(fmt.Sprintf("[%s] Start mine", logPrefix), "block", executionAt+1, "baseFee", header.BaseFee, "gasLimit", header.GasLimit)
 
 	stateReader := state.NewPlainStateReader(tx)
 	ibs := state.New(stateReader)
+	isBobaLegacyBlock := cfg.chainConfig.IsBobaLegacyBlock(big.NewInt(int64(blockNum)))
 
 	if err = cfg.engine.Prepare(chain, header, ibs); err != nil {
 		log.Error("Failed to prepare header for mining",
@@ -210,18 +210,20 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 
 	log.Info("MMDBG JKY cfg.blockBuilderParamters", "params", cfg.blockBuilderParameters)
 	if cfg.blockBuilderParameters != nil {
-		fmt.Println("Return in cfg.blockBuilderParameters != nil")
 		header.MixDigest = cfg.blockBuilderParameters.PrevRandao
 
 		current.Header = header
-		fmt.Println("BC - override header")
-		current.Header.Coinbase = libcommon.HexToAddress("0x0000000000000000000000000000000000000000")
-		current.Header.GasLimit = 11000000
 		current.Uncles = nil
 		current.Withdrawals = cfg.blockBuilderParameters.Withdrawals
 
 		current.Deposits = cfg.blockBuilderParameters.Deposits
 		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
+
+		if isBobaLegacyBlock {
+			current.Header.GasLimit = uint64(cfg.chainConfig.GetBobaGenesisGasLimit())
+			current.Header.Coinbase = libcommon.HexToAddress(cfg.chainConfig.GetBobaGenesisCoinbase())
+		}
+
 		return nil
 	}
 
@@ -308,9 +310,12 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	current.Header = header
 	current.Uncles = makeUncles(env.uncles)
 	current.Withdrawals = nil
-	fmt.Println("BC - current.Header.Coinbase", current.Header.Coinbase.String())
-	fmt.Println("BC - overrideCoinbase", libcommon.HexToAddress("0x0000000000000000000000000000000000000000").String())
-	current.Header.Coinbase = libcommon.HexToAddress("0x0000000000000000000000000000000000000000")
+
+	if isBobaLegacyBlock {
+		current.Header.GasLimit = uint64(cfg.chainConfig.GetBobaGenesisGasLimit())
+		current.Header.Coinbase = libcommon.HexToAddress(cfg.chainConfig.GetBobaGenesisCoinbase())
+	}
+
 	return nil
 }
 

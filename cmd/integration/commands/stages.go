@@ -828,7 +828,7 @@ func stageTrie(db kv.RwDB, ctx context.Context) error {
 	cfg := stagedsync.StageTrieCfg(db, true, true, false, dirs.Tmp, getBlockReader(db), nil, historyV3, agg)
 	if unwind > 0 {
 		u := sync.NewUnwindState(stages.IntermediateHashes, s.BlockNumber-unwind, s.BlockNumber)
-		if err := stagedsync.UnwindIntermediateHashesStage(u, s, tx, cfg, ctx); err != nil {
+		if err := stagedsync.UnwindIntermediateHashesStage(u, s, tx, cfg, ctx, chain2.Config{}); err != nil {
 			return err
 		}
 	} else if pruneTo > 0 {

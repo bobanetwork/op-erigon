@@ -453,13 +453,10 @@ func (s *EthBackendServer) getQuickPayloadStatusIfPossible(blockHash libcommon.H
 		return nil, err
 	}
 
-	fmt.Println("BC - TTD check?")
 	if td != nil && td.Cmp(s.config.TerminalTotalDifficulty) < 0 {
 		log.Warn(fmt.Sprintf("[%s] Beacon Chain request before TTD", prefix), "hash", blockHash)
 		return &engineapi.PayloadStatus{Status: remote.EngineStatus_INVALID, LatestValidHash: libcommon.Hash{}}, nil
 	}
-
-	fmt.Println("BC - PASS TTD check!")
 
 	if !s.hd.POSSync() {
 		log.Info(fmt.Sprintf("[%s] Still in PoW sync", prefix), "hash", blockHash)
@@ -672,8 +669,6 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	if !s.proposing {
 		return nil, fmt.Errorf("execution layer not running as a proposer. enable proposer by taking out the --proposer.disable flag on startup")
 	}
-
-	log.Debug("MMDBG continuing EngineForkChoiceUpdated")
 
 	tx2, err := s.db.BeginRo(ctx)
 	if err != nil {

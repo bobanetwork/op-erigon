@@ -438,7 +438,6 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 			return nil, err
 		}
 
-		log.Debug("BC - addTransactionsToMiningBlock - logs", "logs", receipt.Logs)
 		current.Txs = append(current.Txs, txn)
 		current.Receipts = append(current.Receipts, receipt)
 		return receipt.Logs, nil
@@ -491,14 +490,8 @@ LOOP:
 			err  error
 		)
 		// We use the eip155 signer regardless of the env hf.
-		if chainConfig.IsBobaLegacyBlock(header.Number) {
-			fmt.Println("Boba pre bedrock activated")
-			fmt.Println("txn.IsLegacyDepositTx(): ", txn.IsLegacyDepositTx(), err == nil)
-			if txn.IsLegacyDepositTx() {
-				from = types.ZeroAddress
-			} else {
-				from, err = txn.Sender(*signer)
-			}
+		if chainConfig.IsBobaLegacyBlock(header.Number) && txn.IsLegacyDepositTx() {
+			from = types.ZeroAddress
 		} else {
 			from, err = txn.Sender(*signer)
 		}

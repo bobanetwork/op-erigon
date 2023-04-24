@@ -1033,9 +1033,6 @@ func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) typ
 	}
 	// We're deriving many fields from the block body, retrieve beside the receipt
 	receipts := ReadRawReceipts(db, block.NumberU64())
-	if len(receipts) == 1 {
-		fmt.Println("BC - read raw receipts: ", receipts[0])
-	}
 	if receipts == nil {
 		return nil
 	}
@@ -1045,9 +1042,6 @@ func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) typ
 	if err := receipts.DeriveFields(block.Hash(), block.NumberU64(), block.Transactions(), senders); err != nil {
 		log.Error("Failed to derive block receipts fields", "hash", block.Hash(), "number", block.NumberU64(), "err", err, "stack", dbg.Stack())
 		return nil
-	}
-	if len(receipts) == 1 {
-		fmt.Println("BC - read receipts: ", receipts[0])
 	}
 	return receipts
 }

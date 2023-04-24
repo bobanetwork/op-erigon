@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
-	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/log/v3"
 
@@ -51,16 +50,7 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 	//	continue
 	//}
 
-	type legacyHeader struct {
-		GasLimit    hexutil.Big   `json:"gasLimit"         gencodec:"required"`
-		GasUsed     hexutil.Big   `json:"gasUsed"         gencodec:"required"`
-		Difficulty  hexutil.Big   `json:"difficulty"       gencodec:"required"`
-		Root        common.Hash   `json:"stateRoot" gencodec:"required"`
-		Extra       hexutil.Bytes `json:"extraData"`
-		ReceiptHash common.Hash   `json:"receiptsRoot"`
-	}
-
-	var r legacyHeader
+	var r types.LegacyHeaderMarshaling
 	err := cfg.historicalRPC.CallContext(context.Background(), &r, "eth_getBlockByNumber", hexutil.EncodeBig(current.Header.Number), false)
 	if err != nil {
 		return err
@@ -70,8 +60,6 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 	current.Header.Difficulty = r.Difficulty.ToInt()
 	current.Header.Root = r.Root
 	current.Header.Extra = r.Extra
-
-	fmt.Println("BC - in state_miner.go SpawnMiningFinishStage() - after types.NewBlock() - extra: ", current.Header.Extra)
 
 	block := types.NewBlock(current.Header, current.Txs, current.Uncles, current.Receipts, current.Withdrawals)
 	blockWithReceipts := &types.BlockWithReceipts{Block: block, Receipts: current.Receipts}

@@ -137,7 +137,7 @@ func DefaultStages(ctx context.Context, snapshots SnapshotsCfg, headers HeadersC
 				if exec.chainConfig.IsPrague(0) {
 					return UnwindVerkleTrie(u, s, tx, trieCfg, ctx)
 				}
-				return UnwindIntermediateHashesStage(u, s, tx, trieCfg, ctx)
+				return UnwindIntermediateHashesStage(u, s, tx, trieCfg, ctx, bodies.chanConfig)
 			},
 			Prune: func(firstCycle bool, p *PruneState, tx kv.RwTx) error {
 				return PruneIntermediateHashesStage(p, tx, trieCfg, ctx)
@@ -300,7 +300,7 @@ func StateStages(ctx context.Context, headers HeadersCfg, bodies BodiesCfg, bloc
 				return err
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx) error {
-				return UnwindIntermediateHashesStage(u, s, tx, trieCfg, ctx)
+				return UnwindIntermediateHashesStage(u, s, tx, trieCfg, ctx, bodies.chanConfig)
 			},
 		},
 	}

@@ -629,7 +629,7 @@ func incrementIntermediateHashes(logPrefix string, s *StageState, db kv.RwTx, to
 	return hash, nil
 }
 
-func UnwindIntermediateHashesStage(u *UnwindState, s *StageState, tx kv.RwTx, cfg TrieCfg, ctx context.Context) (err error) {
+func UnwindIntermediateHashesStage(u *UnwindState, s *StageState, tx kv.RwTx, cfg TrieCfg, ctx context.Context, chainConfig chain.Config) (err error) {
 	quit := ctx.Done()
 	useExternalTx := tx != nil
 	if !useExternalTx {
@@ -650,7 +650,7 @@ func UnwindIntermediateHashesStage(u *UnwindState, s *StageState, tx kv.RwTx, cf
 	expectedRootHash := syncHeadHeader.Root
 
 	logPrefix := s.LogPrefix()
-	if err := unwindIntermediateHashesStageImpl(logPrefix, u, s, tx, cfg, expectedRootHash, quit); err != nil {
+	if err := unwindIntermediateHashesStageImpl(logPrefix, u, s, tx, cfg, expectedRootHash, quit, chainConfig); err != nil {
 		return err
 	}
 	if err := u.Done(tx); err != nil {
@@ -693,7 +693,7 @@ func UnwindIntermediateHashesForTrieLoader(logPrefix string, rl *trie.RetainList
 	return trie.NewFlatDBTrieLoader(logPrefix, rl, accTrieCollectorFunc, stTrieCollectorFunc, false), nil
 }
 
-func unwindIntermediateHashesStageImpl(logPrefix string, u *UnwindState, s *StageState, db kv.RwTx, cfg TrieCfg, expectedRootHash libcommon.Hash, quit <-chan struct{}) error {
+func unwindIntermediateHashesStageImpl(logPrefix string, u *UnwindState, s *StageState, db kv.RwTx, cfg TrieCfg, expectedRootHash libcommon.Hash, quit <-chan struct{}, chainConfig chain.Config) error {
 	accTrieCollector := etl.NewCollector(logPrefix, cfg.tmpDir, etl.NewSortableBuffer(etl.BufferOptimalSize))
 	defer accTrieCollector.Close()
 	accTrieCollectorFunc := accountTrieCollector(accTrieCollector)
@@ -713,10 +713,9 @@ func unwindIntermediateHashesStageImpl(logPrefix string, u *UnwindState, s *Stag
 	if err != nil {
 		return err
 	}
-	log.Debug("BC - disbale hash root check!")
-	// if hash != expectedRootHash {
-	// 	return fmt.Errorf("wrong trie root: %x, expected (from header): %x", hash, expectedRootHash)
-	// }
+	if hash != expectedRootHash && !chainConfig.IsBobaLegacyBlock(big.NewInt(int64(s.BlockNumber))) {
+		return fmt.Errorf("wrong trie root: %x, expected (from header): %x", hash, expectedRootHash)
+	}
 	log.Info(fmt.Sprintf("[%s] Trie root", logPrefix), "hash", hash.Hex())
 	if err := accTrieCollector.Load(db, kv.TrieOfAccounts, etl.IdentityLoadFunc, etl.TransformArgs{Quit: quit}); err != nil {
 		return err
