@@ -459,25 +459,26 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 	_ = g.Alloc //nil-check
 
 	isBobaLegacyBlock := false
-	if g.Config.ChainID.Cmp(chain.BobaGoerliChainId) == 0 {
+	if g.Config.IsBobaLegacyBlock(libcommon.Big0) {
 		isBobaLegacyBlock = true
 	}
 
 	// Override the default configurations of the genesis block.
 	head := &types.Header{
-		Number:     new(big.Int).SetUint64(g.Number),
-		Nonce:      types.EncodeNonce(g.Nonce),
-		Time:       g.Timestamp,
-		ParentHash: g.ParentHash,
-		Extra:      g.ExtraData,
-		GasLimit:   g.GasLimit,
-		GasUsed:    g.GasUsed,
-		Difficulty: g.Difficulty,
-		MixDigest:  g.Mixhash,
-		Coinbase:   g.Coinbase,
-		BaseFee:    g.BaseFee,
-		AuRaStep:   g.AuRaStep,
-		AuRaSeal:   g.AuRaSeal,
+		Number:        new(big.Int).SetUint64(g.Number),
+		Nonce:         types.EncodeNonce(g.Nonce),
+		Time:          g.Timestamp,
+		ParentHash:    g.ParentHash,
+		Extra:         g.ExtraData,
+		GasLimit:      g.GasLimit,
+		GasUsed:       g.GasUsed,
+		Difficulty:    g.Difficulty,
+		MixDigest:     g.Mixhash,
+		Coinbase:      g.Coinbase,
+		BaseFee:       g.BaseFee,
+		ExcessDataGas: g.ExcessDataGas,
+		AuRaStep:      g.AuRaStep,
+		AuRaSeal:      g.AuRaSeal,
 	}
 	if g.GasLimit == 0 {
 		head.GasLimit = params.GenesisGasLimit

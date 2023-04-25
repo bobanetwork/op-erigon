@@ -438,8 +438,18 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		gasSnap := gasPool.Gas()
 		snap := ibs.Snapshot()
 		log.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
-		receipt, _, err := core.ApplyBobaLegacyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, parentHeader.ExcessDataGas,
-			historicalRPCService)
+		var (
+			receipt *types.Receipt
+			err     error
+		)
+		if chainConfig.IsBobaLegacyBlock(header.Number) {
+			receipt, _, err = core.ApplyBobaLegacyTransaction(&chainConfig, core.GetHashFn(header, getHeader),
+				engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, parentHeader.ExcessDataGas,
+				historicalRPCService)
+		} else {
+			receipt, _, err = core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader),
+				engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, parentHeader.ExcessDataGas)
+		}
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap) // restore gasPool as well as ibs
@@ -499,7 +509,7 @@ LOOP:
 		)
 		// We use the eip155 signer regardless of the env hf.
 		if chainConfig.IsBobaLegacyBlock(header.Number) && txn.IsLegacyDepositTx() {
-			from = types.ZeroAddress
+			from = libcommon.Address{}
 		} else {
 			from, err = txn.Sender(*signer)
 		}

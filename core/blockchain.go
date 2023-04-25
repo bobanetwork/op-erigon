@@ -129,7 +129,15 @@ func ExecuteBlockEphemerally(
 			writeTrace = true
 		}
 
-		receipt, _, err := ApplyBobaLegacyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, excessDataGas, historicalRPCService)
+		var (
+			receipt *types.Receipt
+			err     error
+		)
+		if chainConfig.IsBobaLegacyBlock(block.Number()) {
+			receipt, _, err = ApplyBobaLegacyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, excessDataGas, historicalRPCService)
+		} else {
+			receipt, _, err = ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, excessDataGas)
+		}
 		if writeTrace {
 			if ftracer, ok := vmConfig.Tracer.(vm.FlushableTracer); ok {
 				ftracer.Flush(tx)

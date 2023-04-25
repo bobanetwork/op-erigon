@@ -95,7 +95,6 @@ type Transaction interface {
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
 	IsDepositTx() bool
-	// Legacy deposit tx
 	IsLegacyDepositTx() bool
 }
 

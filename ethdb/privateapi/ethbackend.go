@@ -306,7 +306,6 @@ func (s *EthBackendServer) EngineGetBlobsBundleV1(ctx context.Context, in *remot
 
 // EngineNewPayload validates and possibly executes payload
 func (s *EthBackendServer) EngineNewPayload(ctx context.Context, req *types2.ExecutionPayload) (*remote.EnginePayloadStatus, error) {
-	fmt.Println("BC - override EngineNewPayload - Difficulty")
 	header := types.Header{
 		ParentHash: gointerfaces.ConvertH256ToHash(req.ParentHash),
 		Coinbase:   gointerfaces.ConvertH160toAddress(req.Coinbase),

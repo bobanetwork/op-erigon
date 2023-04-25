@@ -85,15 +85,17 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		isBobaLegacyBlock = true
 	}
 
-	if isBobaLegacyBlock && historicalRPCService != nil {
-		err = historicalRPCService.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
-		if err != nil {
-			return nil, nil, err
+	if isBobaLegacyBlock {
+		if historicalRPCService != nil {
+			err = historicalRPCService.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+			if err != nil {
+				return nil, nil, err
+			}
+			*usedGas = uint64(legacyReceipt.GasUsed)
+		} else {
+			// the legacy block must be handled by the historicalRPCService
+			return nil, nil, fmt.Errorf("legacy block must be handled by the historicalRPCService")
 		}
-		*usedGas = uint64(legacyReceipt.GasUsed)
-	} else if isBobaLegacyBlock {
-		// the legacy block must be handled by the historicalRPCService
-		return nil, nil, fmt.Errorf("legacy block must be handled by the historicalRPCService")
 	}
 
 	// Set the receipt logs and create the bloom filter.

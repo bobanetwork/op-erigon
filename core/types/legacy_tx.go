@@ -34,7 +34,6 @@ import (
 )
 
 var (
-	ZeroAddress      = libcommon.HexToAddress("0x0000000000000000000000000000000000000000")
 	MessengerAddress = libcommon.HexToAddress("0x4200000000000000000000000000000000000007")
 )
 
@@ -385,7 +384,7 @@ func (tx LegacyTx) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, err
 	}
 
 	if tx.IsLegacyDepositTx() {
-		msg.from = ZeroAddress
+		msg.from = libcommon.Address{}
 		return msg, nil
 	}
 
@@ -485,9 +484,9 @@ func (tx *LegacyTx) IsLegacyDepositTx() bool {
 	if tx.To == nil {
 		return false
 	}
-	if *tx.To == MessengerAddress && *V == *uint256.NewInt(0) &&
-		*R == *uint256.NewInt(0) && *S == *uint256.NewInt(0) &&
-		*S == *uint256.NewInt(0) && tx.Time().Unix() < int64(chain.BobaGoerliBedrockTime) {
+	if *tx.To == MessengerAddress && *V == (uint256.Int{}) &&
+		*R == (uint256.Int{}) && *S == (uint256.Int{}) &&
+		*S == (uint256.Int{}) && tx.Time().Unix() < int64(chain.BobaGoerliBedrockTime) {
 		return true
 	}
 	return false

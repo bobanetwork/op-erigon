@@ -778,13 +778,13 @@ var (
 	RollupSequencerHTTPFlag = cli.StringFlag{
 		Name:    "rollup.sequencerhttp",
 		Usage:   "HTTP endpoint for the sequencer mempool",
-		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP"},
+		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP_ENDPOINT"},
 	}
 
 	RollupHistoricalRPCFlag = cli.StringFlag{
 		Name:    "rollup.historicalrpc",
 		Usage:   "RPC endpoint for historical data.",
-		EnvVars: []string{"HISTORICAL_RPC_ENDPOINT"},
+		EnvVars: []string{"ROLLUP_HISTORICAL_RPC_ENDPOINT"},
 	}
 
 	RollupHistoricalRPCTimeoutFlag = cli.StringFlag{

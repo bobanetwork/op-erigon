@@ -61,7 +61,7 @@ func StageTrieCfg(db kv.RwDB, checkRoot, saveNewHashesToDB, badBlockHalt bool, t
 	}
 }
 
-func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg TrieCfg, ctx context.Context, quiet bool, chanConfig chain.Config) (libcommon.Hash, error) {
+func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg TrieCfg, ctx context.Context, quiet bool, chainConfig chain.Config) (libcommon.Hash, error) {
 	quit := ctx.Done()
 	useExternalTx := tx != nil
 	if !useExternalTx {
@@ -124,7 +124,7 @@ func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg Tri
 	}
 
 	// Skip state root check for blocks before boba bedrock hard fork
-	if !chanConfig.IsBobaLegacyBlock(big.NewInt(int64(s.BlockNumber))) {
+	if !chainConfig.IsBobaLegacyBlock(big.NewInt(int64(s.BlockNumber))) {
 		if cfg.checkRoot && root != expectedRootHash {
 			log.Error(fmt.Sprintf("[%s] Wrong trie root of block %d: %x, expected (from header): %x. Block hash: %x", logPrefix, to, root, expectedRootHash, headerHash))
 			if cfg.badBlockHalt {
