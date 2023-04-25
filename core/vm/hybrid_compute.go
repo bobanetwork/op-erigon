@@ -177,12 +177,14 @@ func HCRequest(req []byte, caller libcommon.Address) ([]byte, error) {
 		}
 	}
 
-	var hcData []byte = []byte{223, 201, 138, 232}
+	var hcData []byte = []byte{0x11, 0xed, 0xaa, 0xe0} // PutResponse(bytes32,uint32,bytes)
 
 	p1, _ := abi.NewType("bytes32", "", nil)
-	p2, _ := abi.NewType("bytes", "", nil)
+	p2, _ := abi.NewType("uint32", "", nil)
+	p3, _ := abi.NewType("bytes", "", nil)
+	var responseCode uint32 // success
 
-	resp, err := (abi.Arguments{{Type: p1}, {Type: p2}}).Pack([32]byte(reqKey), responseBytes[:])
+	resp, err := (abi.Arguments{{Type: p1}, {Type: p2}, {Type: p3}}).Pack([32]byte(reqKey), responseCode, responseBytes[:])
 
 	if err != nil {
 		log.Warn("MMDBG-HC Response encode failed", "err", err)
