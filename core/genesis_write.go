@@ -502,8 +502,8 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 	if isBobaLegacyBlock {
 		head.Time = 0
 		head.Difficulty = big.NewInt(1)
-		head.Extra = common.Hex2Bytes(chain.BobaGoerliGenesisExtraData)
-		head.Coinbase = libcommon.HexToAddress(chain.BobaGoerliGenesisCoinbase)
+		head.Extra = common.Hex2Bytes(g.Config.GetBobaGenesisExtraData())
+		head.Coinbase = libcommon.HexToAddress(g.Config.GetBobaGenesisCoinbase())
 	}
 
 	var root libcommon.Hash
