@@ -65,8 +65,9 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	}
 
 	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
-
-	log.Debug("MMDBG-HC ApplyMessage", "err", err, "result", result, "msg", msg)
+	if err != nil {
+		log.Debug("MMDBG-HC ApplyMessage", "err", err, "result", result, "msg", msg)
+	}
 
 	if err != nil {
 		return nil, nil, err

@@ -116,7 +116,7 @@ func ExecuteBlockEphemerally(
 	noop := state.NewNoopWriter()
 	//fmt.Printf("====txs processing start: %d====\n", block.NumberU64())
 	for i, tx := range block.Transactions() {
-		log.Debug("MMDBG-HC ExecuteBlockEphemerally loop", "BN", block.NumberU64(), "i", i, "tx", tx)
+		//log.Debug("MMDBG-HC ExecuteBlockEphemerally loop", "BN", block.NumberU64(), "i", i, "tx", tx)
 		ibs.Prepare(tx.Hash(), block.Hash(), i)
 		writeTrace := false
 		if vmConfig.Debug && vmConfig.Tracer == nil {

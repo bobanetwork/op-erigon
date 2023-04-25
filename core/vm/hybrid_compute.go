@@ -56,7 +56,7 @@ func HCKey(addr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
 	// hasher.Write(bNonce.Bytes()) // FIXME
 	hasher.Write(data)
 	key := libcommon.BytesToHash(hasher.Sum(nil))
-	log.Debug("MMDBG-HC HCKey", "key", key, "addr", addr, "nonce", nonce, "data", hexutility.Bytes(data))
+	//log.Debug("MMDBG-HC HCKey", "key", key, "addr", addr, "nonce", nonce, "dataPrefix", hexutility.Bytes(data[:4]))
 
 	return key
 }

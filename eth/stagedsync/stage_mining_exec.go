@@ -442,7 +442,10 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		snap := ibs.Snapshot()
 		log.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
 		receipt, _, err := core.ApplyTransactionMM(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, *vmConfig, parentHeader.ExcessDataGas, hc)
-		log.Debug("MMDBG-HC miningCommitTx", "err", err, "receipt", receipt, "hc", hc)
+
+		if err != nil || (hc != nil && hc.State > 0) {
+			log.Debug("MMDBG-HC miningCommitTx", "err", err, "receipt", receipt, "hc", hc)
+		}
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap) // restore gasPool as well as ibs
@@ -451,7 +454,9 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 
 		current.Txs = append(current.Txs, txn)
 		current.Receipts = append(current.Receipts, receipt)
-		log.Debug("MMDBG-HC mCT final", "txn", txn, "current", current)
+		if hc != nil && hc.State > 0 {
+			log.Debug("MMDBG-HC mCT final", "txn", txn, "current", current)
+		}
 		return receipt.Logs, nil
 	}
 
@@ -534,10 +539,10 @@ LOOP:
 		// Check for pending Hybrid Compute
 		txnFrom, _ := txn.GetSender()
 		mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
-		log.Debug("MMDBG-HC Checking HCActive", "mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
+		//log.Debug("MMDBG-HC Checking HCActive", "mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
 
 		if vm.HCActive[mh] != nil {
-			log.Debug("MMDBG-HC Skipping HCActive", "txn", txn)
+			log.Debug("MMDBG-HC Skipping HCActive"," mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
 			txs.Pop()
 			continue
 		}
@@ -546,7 +551,7 @@ LOOP:
 		// an OffchainTx into the queue ahead of it to populate the on-chain helper
 
 		hc = vm.HCResponseCache[mh]
-		log.Debug("MMDBG-HC Transaction Peek", "txn", txn, "mh", mh, "hc", hc)
+		//log.Debug("MMDBG-HC Transaction Peek", "txn", txn, "mh", mh, "hc", hc)
 		if hc != nil && hc.State == 2 && len(hc.Response) > 0 {
 			log.Debug("MMDBG-HC Found a prepared", "hc.Response", hc.Response)
 			txn = types.NewOffchainTx(hc.Response)
@@ -611,11 +616,12 @@ LOOP:
 			log.Debug(fmt.Sprintf("[%s] addTransactionsToMiningBlock Successful", logPrefix), "sender", from, "nonce", txn.GetNonce(), "payload", payloadId)
 			coalescedLogs = append(coalescedLogs, logs...)
 			tcount++
-			log.Debug("MMDBG-HC transaction OK", "tcount", tcount, "hcOffchain", hcOffchain)
-			if !hcOffchain {
+			if hcOffchain {
+				log.Debug("MMDBG-HC hcOffchain transaction OK", "tcount", tcount)
+			} else {
 				txnFrom, _ := txn.GetSender()
 				mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
-				log.Debug("MMDBG-HC Remove from cache", "mh", mh)
+				//log.Debug("MMDBG-HC Remove from cache", "mh", mh)
 				delete(vm.HCResponseCache, mh)
 				txs.Shift()
 			}
