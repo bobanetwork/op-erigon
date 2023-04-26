@@ -81,6 +81,7 @@ func ExecuteBlockEphemerally(
 	stateReader state.StateReader, stateWriter state.WriterWithChangeSets,
 	chainReader consensus.ChainHeaderReader, getTracer func(txIndex int, txHash libcommon.Hash) (vm.EVMLogger, error),
 	historicalRPCService *rpc.Client,
+	historicalRPCTimeout *time.Duration,
 ) (*EphemeralExecResult, error) {
 
 	defer BlockExecutionTimer.UpdateDuration(time.Now())
@@ -134,7 +135,7 @@ func ExecuteBlockEphemerally(
 			err     error
 		)
 		if chainConfig.IsBobaLegacyBlock(block.Number()) {
-			receipt, _, err = ApplyBobaLegacyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, excessDataGas, historicalRPCService)
+			receipt, _, err = ApplyBobaLegacyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, excessDataGas, historicalRPCService, historicalRPCTimeout)
 		} else {
 			receipt, _, err = ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, excessDataGas)
 		}

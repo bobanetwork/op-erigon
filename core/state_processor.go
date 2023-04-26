@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -38,7 +39,7 @@ import (
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, evm vm.VMInterface, cfg vm.Config, historicalRPCService *rpc.Client) (*types.Receipt, []byte, error) {
+func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, evm vm.VMInterface, cfg vm.Config, historicalRPCService *rpc.Client, historicalRPCTimeout *time.Duration) (*types.Receipt, []byte, error) {
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64()), header.BaseFee, rules)
 	if err != nil {
@@ -87,7 +88,9 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 
 	if isBobaLegacyBlock {
 		if historicalRPCService != nil {
-			err = historicalRPCService.CallContext(context.Background(), &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+			ctx, cancel := context.WithTimeout(context.Background(), *historicalRPCTimeout)
+			err = historicalRPCService.CallContext(ctx, &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+			cancel()
 			if err != nil {
 				return nil, nil, err
 			}
@@ -157,7 +160,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	return receipt, result.ReturnData, err
 }
 
-func ApplyBobaLegacyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config, excessDataGas *big.Int, historicalRPCService *rpc.Client) (*types.Receipt, []byte, error) {
+func ApplyBobaLegacyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas *uint64, cfg vm.Config, excessDataGas *big.Int, historicalRPCService *rpc.Client, historicalRPCTimeout *time.Duration) (*types.Receipt, []byte, error) {
 	log.Info("MMDBG ApplyBobaLegacyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
 
@@ -169,7 +172,7 @@ func ApplyBobaLegacyTransaction(config *chain.Config, blockHashFunc func(n uint6
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, excessDataGas, l1CostFunc)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
-	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg, historicalRPCService)
+	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg, historicalRPCService, historicalRPCTimeout)
 }
 
 // ApplyTransaction attempts to apply a transaction to the given state database
@@ -188,5 +191,5 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, excessDataGas, l1CostFunc)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
-	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg, nil)
+	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, vmenv, cfg, nil, nil)
 }
