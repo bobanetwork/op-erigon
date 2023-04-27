@@ -582,7 +582,7 @@ LOOP:
 				vm.HCActive[mh] = hc
 				go func(mh libcommon.Hash, hc *vm.HCContext) {
 					log.Debug("MMDBG-HC2 Calling Offchain", "mh", mh)
-					ocErr := vm.DoOffchain(hc)
+					ocErr := vm.HCRequest(hc)
 					log.Debug("MMDBG-HC2 Offchain result", "err", ocErr, "mh", mh)
 					delete(vm.HCActive, mh)
 				}(mh, hc)

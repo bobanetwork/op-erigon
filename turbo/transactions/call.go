@@ -219,7 +219,7 @@ func (r *ReusableCaller) DoCallWithNewGas(
 		if vm.HCResponseCache[mh] == nil {
 			log.Debug("MMDBG-HC call.go Offchain triggered", "mh", mh, "hc", hc, "cache", vm.HCResponseCache[mh])
 
-			err = vm.DoOffchain(hc)
+			err = vm.HCRequest(hc)
 			if err != nil {
 				log.Warn("MMDBG-HC Request failed", "err", err)
 				return nil, vm.ErrHCFailed
