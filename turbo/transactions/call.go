@@ -181,7 +181,7 @@ func (r *ReusableCaller) DoCallWithNewGas(
 		vm.HCResponseCache = make(map[libcommon.Hash]*vm.HCContext)
 	}
 
-	mh := vm.HCKey(r.message.From(), r.message.Nonce(), r.message.Data())
+	mh := vm.HCKey(r.message.From(), *r.message.To(),  r.message.Nonce(), r.message.Data())
 	hc := vm.HCResponseCache[mh]
 	if hc == nil {
 		hc = new(vm.HCContext)

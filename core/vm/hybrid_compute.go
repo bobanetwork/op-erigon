@@ -4,6 +4,7 @@ package vm
 
 import (
 	//	"sync/atomic"
+	"encoding/binary"
 	"bytes"
 	"crypto/rand"
 	"github.com/holiman/uint256"
@@ -50,22 +51,35 @@ type HCContext struct {
 var HCResponseCache map[libcommon.Hash]*HCContext
 var HCActive map[libcommon.Hash]*HCContext
 
-func HCKey(addr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
-	var bNonce big.Int
-	bNonce.SetUint64(nonce)
+// Generate a key which will be used to associate an HCContext to a transaction. We need to keep the
+// same context during each iteration of eth_estimateGas (if any) as well as when the real transaction
+// is submitted. However we do not carry over a context if the user changes the nonce, destination addr,
+// or input data from one call to another.
+// Cache entries are removed when eth_sendRawTransaction finishes or on a periodic cleanup timer for
+// transactions which were abandoned after gas estimation.
+
+func HCKey(fromAddr libcommon.Address, toAddr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
+	bNonce := make([]byte,8)
+	binary.BigEndian.PutUint64(bNonce, nonce)
 
 	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(addr.Bytes())
-	// hasher.Write(bNonce.Bytes()) // FIXME
+	hasher.Write(fromAddr.Bytes())
+	hasher.Write(toAddr.Bytes())
+	hasher.Write(bNonce)
 	hasher.Write(data)
 	key := libcommon.BytesToHash(hasher.Sum(nil))
-	//log.Debug("MMDBG-HC HCKey", "key", key, "addr", addr, "nonce", nonce, "dataPrefix", hexutility.Bytes(data[:4]))
+	log.Debug("MMDBG-HC HCKey", "key", key, "from", fromAddr, "to", toAddr, "nonce", nonce, "dataPrefix", hexutility.Bytes(data[:4]))
 
 	return key
 }
 
+// Copied from our current l2geth. This returns a random number which may be suitable for some applications.
+// Note however that, as with all Hybrid Compute operations, the computation is performed once and then the
+// same result is re-used for any subsequent calls referring to that transaction. Therefore it may be possible
+// for a user to determine the "random" value during an eth_estimateGas() call and only submit a real transaction
+// if the chosen value would represent a favorable outcome.
+ 
 func HCSimpleRandom() ([]byte, error) {
-	// Copied from legacy l2geth
 	// Generate cryptographically strong pseudo-random int between 0 - 2^256 - 1
 	one := big.NewInt(1)
 	two := big.NewInt(2)
@@ -105,7 +119,7 @@ func DoOffchain (reqUrl string, reqMethod libcommon.Address, reqPayload []byte) 
 
 	if err != nil {
 		log.Warn("MMDBG-HC Dial failure", "err", err, "url", reqUrl)
-		return []byte(err.Error()), 1001
+		return []byte(err.Error()), 1001  // FIXME - redefine error codes and merge with legacy Turing errors.
 	}
 
 	var responseStringEnc string
@@ -201,7 +215,6 @@ func HCRequest(hc *HCContext) error {
 
 	hc.Response = []byte{0x11, 0xed, 0xaa, 0xe0} // PutResponse(bytes32,uint32,bytes)
 
-
 	resp, err := (abi.Arguments{{Type: tBytes32}, {Type: tUint32}, {Type: tBytes}}).Pack([32]byte(reqKey), responseCode, responseBytes[:])
 
 	if err != nil {
@@ -216,23 +229,7 @@ func HCRequest(hc *HCContext) error {
 	hc.State = 2
 	return nil
 }
-/*
-func DoOffchain(hc *HCContext) error {
-	time.Sleep(2 * time.Second)
-	log.Debug("MMDBG-HC call.go Sleep done")
 
-	hcData, err := HCRequest(hc.Request, hc.Caller)
-	hc.Response = make([]byte, len(hcData))
-	copy(hc.Response, hcData)
-
-	if err == nil {
-		hc.State = 2
-	} else {
-		hc.State = 4
-	}
-	return err
-}
-*/
 // Called after an EVM run to look for a trigger event
 func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 	if hc == nil || hc.State != 0 {
