@@ -52,7 +52,7 @@ const (
 	LegacyTxType = iota
 	AccessListTxType
 	DynamicFeeTxType
-	BlobTxType    = 5
+	BlobTxType
 	OffchainTxType = 0x7d
 	DepositTxType = 0x7e
 )
@@ -525,7 +525,7 @@ type Message struct {
 	rollupDataGas    uint64
 }
 
-func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64, gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList types2.AccessList, checkNonce bool, isFree bool, rollupDataGas uint64) Message {
+func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64, gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList types2.AccessList, checkNonce bool, isFree bool, maxFeePerDataGas *uint256.Int, rollupDataGas uint64) Message {
 	m := Message{
 		from:          from,
 		to:            to,
@@ -546,6 +546,9 @@ func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amo
 	}
 	if feeCap != nil {
 		m.feeCap.Set(feeCap)
+	}
+	if maxFeePerDataGas != nil {
+		m.maxFeePerDataGas.Set(maxFeePerDataGas)
 	}
 	return m
 }
@@ -587,6 +590,11 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 	}
 
 	m.gasLimit = gas
+}
+
+func (m Message) DataGas() uint64 { return params.DataGasPerBlob * uint64(len(m.dataHashes)) }
+func (m Message) MaxFeePerDataGas() *uint256.Int {
+	return &m.maxFeePerDataGas
 }
 
 func (m Message) IsSystemTx() bool { return m.isSystemTx }

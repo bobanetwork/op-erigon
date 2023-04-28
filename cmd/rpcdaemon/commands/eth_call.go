@@ -390,6 +390,9 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	if err != nil {
 		return nil, err
 	}
+	if a == nil {
+		a = &accounts.Account{}
+	}
 	pr, err := trie.NewProofRetainer(address, a, storageKeys, rl)
 	if err != nil {
 		return nil, err
