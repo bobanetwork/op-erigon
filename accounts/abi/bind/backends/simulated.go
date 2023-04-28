@@ -193,10 +193,8 @@ func (b *SimulatedBackend) emptyPendingBlock() {
 // stateByBlockNumber retrieves a state by a given blocknumber.
 func (b *SimulatedBackend) stateByBlockNumber(db kv.Tx, blockNumber *big.Int) *state.IntraBlockState {
 	if blockNumber == nil || blockNumber.Cmp(b.pendingBlock.Number()) == 0 {
-		//return state.New(state.NewPlainState(db, b.pendingBlock.NumberU64()+1, nil))
 		return state.New(b.m.NewHistoryStateReader(b.pendingBlock.NumberU64()+1, db))
 	}
-	//return state.New(state.NewPlainState(db, blockNumber.Uint64()+1, nil))
 	return state.New(b.m.NewHistoryStateReader(blockNumber.Uint64()+1, db))
 }
 
@@ -815,6 +813,10 @@ func (m callMsg) RollupDataGas() uint64 {
 	log.Warn("MMDBG call_data rollup data gas returning 0")
 	return 0 /* FIXME */
 }
+
+func (m callMsg) DataGas() uint64                { return params.DataGasPerBlob * uint64(len(m.CallMsg.DataHashes)) }
+func (m callMsg) MaxFeePerDataGas() *uint256.Int { return m.CallMsg.MaxFeePerDataGas }
+func (m callMsg) DataHashes() []libcommon.Hash   { return m.CallMsg.DataHashes }
 
 /*
 // filterBackend implements filters.Backend to support filtering for logs without

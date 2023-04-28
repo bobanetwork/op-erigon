@@ -5,11 +5,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
@@ -46,7 +44,7 @@ var supportCommand = cli.Command{
 		&diagnosticsURLFlag,
 		&insecureFlag,
 	},
-	Category: "SUPPORT COMMANDS",
+	//Category: "SUPPORT COMMANDS",
 	Description: `
 The support command connects a running Erigon instances to a diagnostics system specified
 by the URL.`,
@@ -66,24 +64,9 @@ func connectDiagnostics(cliCtx *cli.Context) error {
 
 	diagnosticsUrl := cliCtx.String(diagnosticsURLFlag.Name)
 
-	// Create a pool with the server certificate since it is not signed
-	// by a known CA
-	certPool := x509.NewCertPool()
-	srvCert, err := ioutil.ReadFile("diagnostics.crt")
-	if err != nil {
-		return fmt.Errorf("reading server certificate: %v", err)
-	}
-	caCert, err := ioutil.ReadFile("CA-cert.pem")
-	if err != nil {
-		return fmt.Errorf("reading server certificate: %v", err)
-	}
-	certPool.AppendCertsFromPEM(srvCert)
-	certPool.AppendCertsFromPEM(caCert)
-
 	// Create TLS configuration with the certificate of the server
 	insecure := cliCtx.Bool(insecureFlag.Name)
 	tlsConfig := &tls.Config{
-		RootCAs:            certPool,
 		InsecureSkipVerify: insecure, //nolint:gosec
 	}
 
