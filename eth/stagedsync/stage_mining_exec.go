@@ -538,7 +538,7 @@ LOOP:
 
 		// Check for pending Hybrid Compute
 		txnFrom, _ := txn.GetSender()
-		mh := vm.HCKey(txnFrom, *txn.GetTo(), txn.GetNonce(), txn.GetData())
+		mh := vm.HCKey(txnFrom, txn.GetTo(), txn.GetNonce(), txn.GetData())
 		//log.Debug("MMDBG-HC Checking HCActive", "mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
 
 		if vm.HCActive[mh] != nil {
@@ -620,7 +620,7 @@ LOOP:
 				log.Debug("MMDBG-HC hcOffchain transaction OK", "tcount", tcount)
 			} else {
 				txnFrom, _ := txn.GetSender()
-				mh := vm.HCKey(txnFrom, *txn.GetTo(), txn.GetNonce(), txn.GetData())
+				mh := vm.HCKey(txnFrom, txn.GetTo(), txn.GetNonce(), txn.GetData())
 				//log.Debug("MMDBG-HC Remove from cache", "mh", mh)
 				delete(vm.HCResponseCache, mh)
 				txs.Shift()

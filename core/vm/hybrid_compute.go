@@ -58,18 +58,22 @@ var HCActive map[libcommon.Hash]*HCContext
 // Cache entries are removed when eth_sendRawTransaction finishes or on a periodic cleanup timer for
 // transactions which were abandoned after gas estimation.
 
-func HCKey(fromAddr libcommon.Address, toAddr libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
+func HCKey(fromAddr libcommon.Address, toPtr *libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
 	bNonce := make([]byte,8)
 	binary.BigEndian.PutUint64(bNonce, nonce)
-
+	
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(fromAddr.Bytes())
+	
+	var toAddr libcommon.Address
+	if toPtr != nil {
+		toAddr = *toPtr
+	}
 	hasher.Write(toAddr.Bytes())
 	hasher.Write(bNonce)
 	hasher.Write(data)
 	key := libcommon.BytesToHash(hasher.Sum(nil))
-	log.Debug("MMDBG-HC HCKey", "key", key, "from", fromAddr, "to", toAddr, "nonce", nonce, "dataPrefix", hexutility.Bytes(data[:4]))
-
+	log.Debug("MMDBG-HC HCKey", "key", key, "from", fromAddr, "to", toAddr, "nonce", nonce, "data", hexutility.Bytes(data))
 	return key
 }
 
