@@ -50,7 +50,7 @@ func TestMigrateAlloc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	genesisAlloc, err := ReadAlloc(bytes)
+	genesisAlloc, err := MigrateAlloc(bytes)
 	if err != nil {
 		t.Fatal(err)
 	}
