@@ -3,6 +3,8 @@ package genesis
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
+	"os"
 	"sync"
 
 	"github.com/c2h5oh/datasize"
@@ -19,11 +21,46 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+func NewGenesis(path string) (*types.Genesis, error) {
+	// load genesis config
+	genesisCfgFile, err := os.Open(path)
+	if err != nil {
+		log.Error("failed to open genesis config file", "err", err)
+		return nil, err
+	}
+	defer genesisCfgFile.Close()
+
+	genesis := new(types.Genesis)
+	if err := json.NewDecoder(genesisCfgFile).Decode(genesis); err != nil {
+		log.Error("failed to decode genesis config file", "err", err)
+		return nil, err
+	}
+	return genesis, nil
+}
+
 // This middle layer is used to convert the genesis account format from geth to erigon
 type LegacyGenesisAccount struct {
 	Code    string                 `json:"code,omitempty"`
 	Storage map[common.Hash]string `json:"storage,omitempty"`
 	Nonce   uint64                 `json:"nonce,omitempty"`
+}
+
+func NewAlloc(path string) (*types.GenesisAlloc, error) {
+	// load alloc file
+	file, err := os.Open(path)
+	if err != nil {
+		log.Error("failed to open alloc file", "err", err)
+		return nil, err
+	}
+	defer file.Close()
+
+	bytes, _ := ioutil.ReadAll(file)
+	genesisAlloc, err := MigrateAlloc(bytes)
+	if err != nil {
+		log.Error("failed to migrate alloc", "err", err)
+		return nil, err
+	}
+	return &genesisAlloc, nil
 }
 
 func MigrateAlloc(bytes []byte) (types.GenesisAlloc, error) {

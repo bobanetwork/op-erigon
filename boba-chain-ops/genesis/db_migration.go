@@ -3,162 +3,166 @@ package genesis
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
-	"os"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
-	"github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
+	"github.com/ledgerwatch/erigon/boba-chain-ops/crossdomain"
 	"github.com/ledgerwatch/erigon/consensus/ethash"
 	"github.com/ledgerwatch/erigon/consensus/serenity"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
-	"github.com/ledgerwatch/erigon/node"
-	"github.com/ledgerwatch/erigon/node/nodecfg"
 	"github.com/ledgerwatch/erigon/params"
 )
 
-func MigrateDB(dbPath string, allocPath string, genesisConfigPath string, mdbxDBSize string) error {
-	// for testing purpose
-	// remove dbPath
-	defer os.RemoveAll(dbPath)
+func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, blockHeader *types.Header, migrationData *crossdomain.MigrationData, commit, noCheck bool) error {
+	// Before we do anything else, we need to ensure that all of the input configuration is correct
+	// and nothing is missing. We'll first verify the contract configuration, then we'll verify the
+	// witness data for the migration. We operate under the assumption that the witness data is
+	// untrusted and must be verified explicitly before we can use it.
 
-	// load alloc file
-	file, err := os.Open(allocPath)
+	// Generate and verify the configuration for storage variables to be set on L2.
+	storage, err := NewL2StorageConfig(config, blockHeader)
 	if err != nil {
-		log.Error("failed to open alloc file", "err", err)
-		return err
+		return fmt.Errorf("cannot create storage config: %w", err)
 	}
-	defer file.Close()
 
-	bytes, _ := ioutil.ReadAll(file)
-	genesisAccount, err := MigrateAlloc(bytes)
+	// Generate and verify the configuration for immutable variables to be set on L2.
+	immutable, err := NewL2ImmutableConfig(config, blockHeader)
 	if err != nil {
-		log.Error("failed to migrate alloc", "err", err)
-		return err
+		return fmt.Errorf("cannot create immutable config: %w", err)
 	}
 
-	// load genesis config
-	genesisCfgFile, err := os.Open(genesisConfigPath)
-	if err != nil {
-		log.Error("failed to open genesis config file", "err", err)
-		return err
-	}
-	defer genesisCfgFile.Close()
+	log.Debug("Created L2 configuration", "storage", storage, "immutable", immutable)
 
-	genesis := new(types.Genesis)
-	if err := json.NewDecoder(genesisCfgFile).Decode(genesis); err != nil {
-		log.Error("failed to decode genesis config file", "err", err)
-		return err
-	}
-	genesis.Alloc = genesisAccount
+	// TODO add withdraws
+	// // Convert all input messages into legacy messages. Note that this list is not yet filtered and
+	// // may be missing some messages or have some extra messages.
+	// unfilteredWithdrawals, invalidMessages, err := migrationData.ToWithdrawals()
+	// if err != nil {
+	// 	return nil, fmt.Errorf("cannot serialize withdrawals: %w", err)
+	// }
 
-	// Open and initialise both full and light databases
-	nodeConfig := nodecfg.DefaultConfig
-	if err := nodeConfig.MdbxDBSizeLimit.UnmarshalText([]byte(mdbxDBSize)); err != nil {
-		log.Error("failed to parse mdbx db size limit", "err", err)
-		return err
-	}
-	szLimit := nodeConfig.MdbxDBSizeLimit.Bytes()
-	if szLimit%256 != 0 || szLimit < 256 {
-		log.Error("mdbx db size limit must be a multiple of 256 bytes and at least 256 bytes", "limit", szLimit)
-		return err
-	}
-	nodeConfig.Dirs = datadir.New(dbPath)
+	// log.Info("Read withdrawals from witness data", "unfiltered", len(unfilteredWithdrawals), "invalid", len(invalidMessages))
 
-	stack, err := node.New(&nodeConfig)
-	defer stack.Close()
+	// // We now need to check that we have all of the withdrawals that we expect to have. An error
+	// // will be thrown if there are any missing messages, and any extra messages will be removed.
+	// var filteredWithdrawals crossdomain.SafeFilteredWithdrawals
+	// if !noCheck {
+	// 	log.Info("Checking withdrawals...")
+	// 	filteredWithdrawals, err = crossdomain.PreCheckWithdrawals(db, unfilteredWithdrawals, invalidMessages)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("withdrawals mismatch: %w", err)
+	// 	}
+	// } else {
+	// 	log.Info("Skipping checking withdrawals")
+	// 	filteredWithdrawals = crossdomain.SafeFilteredWithdrawals(unfilteredWithdrawals)
+	// }
 
-	chaindb, err := node.OpenDatabase(stack.Config(), kv.ChainDB)
-	if err != nil {
-		log.Error("failed to open chaindb", "err", err)
-		return err
-	}
-	defer chaindb.Close()
+	// At this point we've fully verified the witness data for the migration, so we can begin the
+	// actual migration process.
 
-	// write genesis to chaindb
-	tx, err := chaindb.BeginRw(context.Background())
-	if err != nil {
-		log.Error("failed to begin write genesis block", "err", err)
-		return err
-	}
-	defer tx.Rollback()
-
-	hash, err := rawdb.ReadCanonicalHash(tx, 0)
-	if err != nil {
-		log.Error("failed to read canonical hash of block #0", "err", err)
-		return err
+	// We need to wipe the storage of every predeployed contract EXCEPT for the GovernanceToken,
+	// WETH9, the DeployerWhitelist, the LegacyMessagePasser, and LegacyERC20ETH. We have verified
+	// that none of the legacy storage (other than the aforementioned contracts) is accessible and
+	// therefore can be safely removed from the database. Storage must be wiped before anything
+	// else or the ERC-1967 proxy storage slots will be removed.
+	if err := WipePredeployStorage(genesis); err != nil {
+		return fmt.Errorf("cannot wipe storage: %w", err)
 	}
 
-	if (hash != common.Hash{}) {
-		log.Error("genesis block already exists")
-		return errors.New("genesis block already exists")
-	}
+	// Next order of business is to convert all predeployed smart contracts into proxies so they
+	// can be easily upgraded later on. In the legacy system, all upgrades to predeployed contracts
+	// required hard forks which was a huge pain. Note that we do NOT put the GovernanceToken or
+	// WETH9 contracts behind proxies because we do not want to make these easily upgradable.
+	// log.Info("Converting predeployed contracts to proxies")
+	// if err := SetL2Proxies(db); err != nil {
+	// 	return nil, fmt.Errorf("cannot set L2Proxies: %w", err)
+	// }
 
-	header, err := CreateHeader(genesis)
-	if err != nil {
-		log.Error("failed to create header from genesis config", "err", err)
-		return err
-	}
+	if commit {
+		// write genesis to chaindb
+		tx, err := chaindb.BeginRw(context.Background())
+		if err != nil {
+			log.Error("failed to begin write genesis block", "err", err)
+			return err
+		}
+		defer tx.Rollback()
 
-	statedb, err := AllocToGenesis(genesis, header)
-	if err != nil {
-		log.Error("failed to create genesis state", "err", err)
-		return err
-	}
+		hash, err := rawdb.ReadCanonicalHash(tx, 0)
+		if err != nil {
+			log.Error("failed to read canonical hash of block #0", "err", err)
+			return err
+		}
 
-	block := types.NewBlock(header, nil, nil, nil, []*types.Withdrawal{})
+		if (hash != common.Hash{}) {
+			log.Error("genesis block already exists")
+			return errors.New("genesis block already exists")
+		}
 
-	var stateWriter state.StateWriter
-	for addr, account := range genesis.Alloc {
-		if len(account.Code) > 0 || len(account.Storage) > 0 {
-			// Special case for weird tests - inaccessible storage
-			var b [8]byte
-			binary.BigEndian.PutUint64(b[:], state.FirstContractIncarnation)
-			if err := tx.Put(kv.IncarnationMap, addr[:], b[:]); err != nil {
-				return err
+		header, err := CreateHeader(genesis)
+		if err != nil {
+			log.Error("failed to create header from genesis config", "err", err)
+			return err
+		}
+
+		statedb, err := AllocToGenesis(genesis, header)
+		if err != nil {
+			log.Error("failed to create genesis state", "err", err)
+			return err
+		}
+
+		block := types.NewBlock(header, nil, nil, nil, []*types.Withdrawal{})
+
+		var stateWriter state.StateWriter
+		for addr, account := range genesis.Alloc {
+			if len(account.Code) > 0 || len(account.Storage) > 0 {
+				// Special case for weird tests - inaccessible storage
+				var b [8]byte
+				binary.BigEndian.PutUint64(b[:], state.FirstContractIncarnation)
+				if err := tx.Put(kv.IncarnationMap, addr[:], b[:]); err != nil {
+					return err
+				}
 			}
 		}
-	}
 
-	stateWriter = state.NewPlainStateWriter(tx, tx, 0)
+		stateWriter = state.NewPlainStateWriter(tx, tx, 0)
 
-	if block.Number().Sign() != 0 {
-		return fmt.Errorf("genesis block number is not 0")
-	}
-
-	if err := statedb.CommitBlock(&chain.Rules{}, stateWriter); err != nil {
-		return fmt.Errorf("cannot commit genesis block: %w", err)
-	}
-	if csw, ok := stateWriter.(state.WriterWithChangeSets); ok {
-		if err := csw.WriteChangeSets(); err != nil {
-			return fmt.Errorf("cannot write changesets: %w", err)
+		if block.Number().Sign() != 0 {
+			return fmt.Errorf("genesis block number is not 0")
 		}
-		if err := csw.WriteHistory(); err != nil {
-			return fmt.Errorf("cannot write history: %w", err)
+
+		if err := statedb.CommitBlock(&chain.Rules{}, stateWriter); err != nil {
+			return fmt.Errorf("cannot commit genesis block: %w", err)
 		}
-	}
+		if csw, ok := stateWriter.(state.WriterWithChangeSets); ok {
+			if err := csw.WriteChangeSets(); err != nil {
+				return fmt.Errorf("cannot write changesets: %w", err)
+			}
+			if err := csw.WriteHistory(); err != nil {
+				return fmt.Errorf("cannot write history: %w", err)
+			}
+		}
 
-	if err := write(tx, genesis, "", block, statedb); err != nil {
-		log.Error("failed to write genesis block", "err", err)
-		return err
-	}
+		if err := write(tx, genesis, "", block, statedb); err != nil {
+			log.Error("failed to write genesis block", "err", err)
+			return err
+		}
 
-	err = tx.Commit()
-	if err != nil {
-		log.Error("failed to commit genesis block", "err", err)
-		return err
+		err = tx.Commit()
+		if err != nil {
+			log.Error("failed to commit genesis block", "err", err)
+			return err
+		}
+		log.Info("Successfully wrote genesis state", "hash", block.Hash())
 	}
-	log.Info("Successfully wrote genesis state", "hash", block.Hash())
 
 	return nil
 }

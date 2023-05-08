@@ -8,8 +8,8 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon/boba-bindings/predeploys"
 	"github.com/ledgerwatch/erigon/boba-chain-ops/crossdomain"
-	"github.com/ledgerwatch/erigon/boba-chain-ops/predeploys"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/stretchr/testify/require"
 )
