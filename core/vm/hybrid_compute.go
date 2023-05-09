@@ -28,7 +28,9 @@ import (
 
 /* Hybrid Compute extension. Used to capture information when an offchain operation is triggered
    and pass that information to the code which generates the offchain transaction to populate the
-   result map in the helper contract. The "State" variable tracks phases of the operation:
+   result map in the helper contract.
+
+   The "State" variable tracks phases of the operation:
      0 - Transaction has not yet invoked Hybrid Compute
      1 - A trigger was detected when an EVM operation reverted
      2 - An offchain result has been obtained and is ready to be applied
@@ -40,12 +42,20 @@ import (
 
 */
 
+const (
+	HC_OP_NONE  = iota
+	HC_OFFCHAIN_V1
+	HC_RANDOM_V1
+	HC_RANDOMSEQ_V1
+)
+
 type HCContext struct {
 	State    int
-	ReqHash  *libcommon.Hash
+	OpType   int
+	Caller   libcommon.Address
+	//ReqHash  *libcommon.Hash
 	Request  []byte
 	Response []byte
-	Caller   libcommon.Address
 }
 
 var HCResponseCache map[libcommon.Hash]*HCContext
@@ -108,7 +118,23 @@ func HCSimpleRandom() ([]byte, error) {
 	return rNum32[:], nil
 }
 
+// Multi-transaction secure RNG, using a commit/reveal approach. Client and server each start by
+// generating a random number and revealing its hash. In the next transaction, client reveals its
+// secret and the server returns a result which is the XOR of its secret and the client secret.
+// Hashes are checked to ensure that the secrets are the same ones generated in the original Tx.
+//
+// Note that a client may still choose to abandon a Tx after an eth_estimateGas() if the result is
+// undesirable. However they cannot undo the first Tx in which the hashes were committed.
+//
+// This operation may fail if the Sequencer node loses its private state between calls (e.g. in the
+// event of database corruption).
+//
+// A future version may be extended to a 3-way XOR including an off-chain endpoint.
+/*
+func HCRandomSequence() ([]byte, error) {
 
+}
+*/
 // This function attempts to perform the offchain JSON-RPC request and to parse the response.
 // Errors here will be passed back to the caller and will not trigger ErrHCFailed.
 // TODO - redirect outgoing requests through an external proxy (squid, socks5, etc).
@@ -239,10 +265,6 @@ func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 	if hc == nil || hc.State != 0 {
 		return false
 	}
-	// Check the selector for GetResponse(uint32,address,string,bytes)
-	if !bytes.Equal(input[:4], []byte{0x8e, 0x5d, 0xc7, 0x65}) {
-		return false
-	}
 	// Check for a revert
 	if err != ErrExecutionReverted {
 		return false
@@ -250,8 +272,21 @@ func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 	// Check for an "Error(string)" selector + the expected trigger string
 	if len(ret) >= 100 && bytes.Equal(ret[:4], []byte{0x08, 0xc3, 0x79, 0xa0}) {
 		trigger := []byte("GetResponse: Missing cache entry")
-		return bytes.Equal(ret[68:68+len(trigger)], trigger)
+		if !bytes.Equal(ret[68:68+len(trigger)], trigger) {
+			log.Debug("MMDBG-HC CheckTrigger reverted without trigger string", "ret", hexutility.Bytes(ret))
+			return false
+		}
 	}
-	log.Debug("MMDBG-HC CheckTrigger reverted without trigger string", "ret", hexutility.Bytes(ret))
-	return false
+	// Check the selector for a recognized method
+	switch {
+		case bytes.Equal(input[:4], []byte{0xe4, 0x01, 0x30, 0x26}): // GetResponseV3(address,string,bytes)
+			hc.OpType = HC_OFFCHAIN_V1
+		case bytes.Equal(input[:4], []byte{0x11, 0x11, 0x11, 0x11}):
+			hc.OpType = HC_RANDOM_V1
+		case bytes.Equal(input[:4], []byte{0x11, 0x11, 0x11, 0x12}):
+			hc.OpType = HC_RANDOMSEQ_V1
+		default:
+			return false
+	}
+	return true
 }
