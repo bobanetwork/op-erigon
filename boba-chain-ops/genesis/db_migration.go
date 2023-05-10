@@ -13,6 +13,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
 	"github.com/ledgerwatch/erigon/boba-chain-ops/crossdomain"
+	"github.com/ledgerwatch/erigon/boba-chain-ops/ether"
 	"github.com/ledgerwatch/erigon/consensus/ethash"
 	"github.com/ledgerwatch/erigon/consensus/serenity"
 	"github.com/ledgerwatch/erigon/core/rawdb"
@@ -38,7 +39,6 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 	if err != nil {
 		return fmt.Errorf("cannot create immutable config: %w", err)
 	}
-
 	log.Debug("Created L2 configuration", "storage", storage, "immutable", immutable)
 
 	// TODO add withdraws
@@ -92,6 +92,33 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 	log.Info("Updating implementations for predeployed contracts")
 	if err := SetImplementations(genesis, storage, immutable); err != nil {
 		return fmt.Errorf("cannot set implementations: %w", err)
+	}
+
+	// We need to update the code for LegacyERC20ETH. This is NOT a standard predeploy because it's
+	// deployed at the 0xdeaddeaddead... address and therefore won't be updated by the previous
+	// function call to SetImplementations.
+	log.Info("Updating code for LegacyERC20ETH")
+	if err := SetLegacyETH(genesis, storage, immutable); err != nil {
+		return fmt.Errorf("cannot set legacy ETH: %w", err)
+	}
+
+	// // Now we migrate legacy withdrawals from the LegacyMessagePasser contract to their new format
+	// // in the Bedrock L2ToL1MessagePasser contract. Note that we do NOT delete the withdrawals from
+	// // the LegacyMessagePasser contract. Here we operate on the list of withdrawals that we
+	// // previously filtered and verified.
+	// log.Info("Starting to migrate withdrawals", "no-check", noCheck)
+	// err = crossdomain.MigrateWithdrawals(filteredWithdrawals, db, &config.L1CrossDomainMessengerProxy, noCheck)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("cannot migrate withdrawals: %w", err)
+	// }
+
+	// Finally we migrate the balances held inside the LegacyERC20ETH contract into the state trie.
+	// We also delete the balances from the LegacyERC20ETH contract. Unlike the steps above, this step
+	// combines the check and mutation steps into one in order to reduce migration time.
+	log.Info("Starting to migrate ERC20 ETH")
+	err = ether.MigrateBalances(genesis, migrationData.Addresses(), migrationData.OvmAllowances, noCheck)
+	if err != nil {
+		return fmt.Errorf("failed to migrate OVM_ETH: %w", err)
 	}
 
 	if commit {

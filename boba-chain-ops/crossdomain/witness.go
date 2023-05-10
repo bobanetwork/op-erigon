@@ -78,7 +78,12 @@ func ReadWitnessData(path string) ([]*SentMessage, OVMETHAddresses, error) {
 				msg = "0x" + msg
 			}
 
-			abi, err := bindings.LegacyMessagePasserMetaData.GetAbi()
+			LegacyMessagePasserMetaData := bindings.MetaData{
+				ABI: bindings.LegacyMessagePasserABI,
+				Bin: bindings.LegacyMessagePasserBin,
+			}
+
+			abi, err := LegacyMessagePasserMetaData.GetAbi()
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to get abi: %w", err)
 			}
@@ -187,4 +192,15 @@ type MigrationData struct {
 	// OvmMessages represents the set of withdrawals through the
 	// L2CrossDomainMessenger from after the evm equivalence upgrade
 	EvmMessages []*SentMessage
+}
+
+func (m *MigrationData) Addresses() []common.Address {
+	addresses := make([]common.Address, 0)
+	for addr := range m.EvmAddresses {
+		addresses = append(addresses, addr)
+	}
+	for addr := range m.OvmAddresses {
+		addresses = append(addresses, addr)
+	}
+	return addresses
 }
