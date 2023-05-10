@@ -134,7 +134,7 @@ func TestNewSimulatedBackend(t *testing.T) {
 	}
 	tx, err1 := sim.DB().BeginRo(context.Background())
 	if err1 != nil {
-		t.Errorf("TestNewSimulatedBackend create tx: %v", err1)
+		t.Errorf("Test create tx: %v", err1)
 	}
 	defer tx.Rollback()
 

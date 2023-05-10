@@ -2,9 +2,13 @@ package genesis
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon/boba-bindings/bindings"
 	"github.com/ledgerwatch/erigon/boba-bindings/predeploys"
+	"github.com/ledgerwatch/erigon/boba-chain-ops/immutables"
+	"github.com/ledgerwatch/erigon/boba-chain-ops/state"
 	"github.com/ledgerwatch/erigon/core/types"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -51,6 +55,14 @@ var (
 	}
 )
 
+// SetL2Proxies will set each of the proxies in the state. It requires
+// a Proxy and ProxyAdmin deployment present so that the Proxy bytecode
+// can be set in state and the ProxyAdmin can be set as the admin of the
+// Proxy.
+func SetL2Proxies(g *types.Genesis) error {
+	return setProxies(g, predeploys.ProxyAdminAddr, bigL2PredeployNamespace, 2048)
+}
+
 // WipePredeployStorage will wipe the storage of all L2 predeploys expect
 // for predeploys that must not have their storage altered.
 func WipePredeployStorage(g *types.Genesis) error {
@@ -76,5 +88,76 @@ func WipePredeployStorage(g *types.Genesis) error {
 		g.Alloc[*addr] = genesisAccount
 	}
 
+	return nil
+}
+
+func setProxies(g *types.Genesis, proxyAdminAddr common.Address, namespace *big.Int, count uint64) error {
+	depBytecode, err := bindings.GetDeployedBytecode("Proxy")
+	if err != nil {
+		return err
+	}
+
+	for i := uint64(0); i <= count; i++ {
+		bigAddr := new(big.Int).Or(namespace, new(big.Int).SetUint64(i))
+		addr := common.BigToAddress(bigAddr)
+
+		if UntouchablePredeploys[addr] {
+			log.Info("Skipping setting proxy", "address", addr)
+			continue
+		}
+
+		genesisAccount := types.GenesisAccount{
+			Constructor: g.Alloc[addr].Constructor,
+			Code:        depBytecode,
+			Storage: map[common.Hash]common.Hash{
+				AdminSlot: proxyAdminAddr.Hash(),
+			},
+			Balance: g.Alloc[addr].Balance,
+			Nonce:   g.Alloc[addr].Nonce,
+		}
+		g.Alloc[addr] = genesisAccount
+		log.Trace("Set proxy", "address", addr, "admin", proxyAdminAddr)
+	}
+
+	return nil
+}
+
+// SetImplementations will set the implementations of the contracts in the state
+// and configure the proxies to point to the implementations. It also sets
+// the appropriate storage values for each contract at the proxy address.
+func SetImplementations(g *types.Genesis, storage state.StorageConfig, immutable immutables.ImmutableConfig) error {
+	deployResults, err := immutables.BuildOptimism(immutable)
+	if err != nil {
+		return err
+	}
+
+	for name, address := range predeploys.Predeploys {
+		if UntouchablePredeploys[*address] {
+			continue
+		}
+
+		if *address == predeploys.LegacyERC20ETHAddr {
+			continue
+		}
+
+		codeAddr, err := AddressToCodeNamespace(*address)
+		if err != nil {
+			return fmt.Errorf("error converting to code namespace: %w", err)
+		}
+
+		if !db.Exist(codeAddr) {
+			db.CreateAccount(codeAddr)
+		}
+
+		db.SetState(*address, ImplementationSlot, codeAddr.Hash())
+
+		if err := setupPredeploy(db, deployResults, storage, name, *address, codeAddr); err != nil {
+			return err
+		}
+		code := db.GetCode(codeAddr)
+		if len(code) == 0 {
+			return fmt.Errorf("code not set for %s", name)
+		}
+	}
 	return nil
 }

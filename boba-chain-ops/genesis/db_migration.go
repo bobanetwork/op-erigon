@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
-	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
 	"github.com/ledgerwatch/erigon/boba-chain-ops/crossdomain"
@@ -82,10 +81,18 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 	// can be easily upgraded later on. In the legacy system, all upgrades to predeployed contracts
 	// required hard forks which was a huge pain. Note that we do NOT put the GovernanceToken or
 	// WETH9 contracts behind proxies because we do not want to make these easily upgradable.
-	// log.Info("Converting predeployed contracts to proxies")
-	// if err := SetL2Proxies(db); err != nil {
-	// 	return nil, fmt.Errorf("cannot set L2Proxies: %w", err)
-	// }
+	log.Info("Converting predeployed contracts to proxies")
+	if err := SetL2Proxies(genesis); err != nil {
+		return fmt.Errorf("cannot set L2Proxies: %w", err)
+	}
+
+	// Here we update the storage of each predeploy with the new storage variables that we want to
+	// set on L2 and update the implementations for all predeployed contracts that are behind
+	// proxies (NOT the GovernanceToken or WETH9).
+	log.Info("Updating implementations for predeployed contracts")
+	if err := SetImplementations(genesis, storage, immutable); err != nil {
+		return fmt.Errorf("cannot set implementations: %w", err)
+	}
 
 	if commit {
 		// write genesis to chaindb
@@ -223,7 +230,7 @@ func write(tx kv.RwTx, g *types.Genesis, tmpDir string, block *types.Block, stat
 	if err := rawdb.WriteTotalIssued(tx, 0, genesisIssuance); err != nil {
 		return err
 	}
-	if err := rawdb.WriteTotalBurnt(tx, 0, libcommon.Big0); err != nil {
+	if err := rawdb.WriteTotalBurnt(tx, 0, common.Big0); err != nil {
 		return err
 	}
 
