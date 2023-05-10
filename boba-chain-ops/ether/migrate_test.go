@@ -47,12 +47,8 @@ func TestSetBalance(t *testing.T) {
 	storageState = map[common.Hash]common.Hash{
 		CalcOVMETHStorageKey(common.Address{2}): {2},
 	}
-	if !reflect.DeepEqual(accountState, g.Alloc[common.Address{1}]) {
-		t.Fatal("expected", accountState, "got", g.Alloc[common.Address{1}])
-	}
-	if !reflect.DeepEqual(storageState, g.Alloc[predeploys.LegacyERC20ETHAddr].Storage) {
-		t.Fatal("expected", storageState, "got", g.Alloc[predeploys.LegacyERC20ETHAddr].Storage)
-	}
+	require.Equal(t, accountState, g.Alloc[common.Address{1}])
+	require.Equal(t, storageState, g.Alloc[predeploys.LegacyERC20ETHAddr].Storage)
 }
 
 func TestSetTotalSupply(t *testing.T) {
@@ -76,9 +72,7 @@ func TestSetTotalSupply(t *testing.T) {
 		CalcOVMETHStorageKey(common.Address{2}):                       {2},
 		CalcAllowanceStorageKey(common.Address{1}, common.Address{2}): {3},
 	}
-	if !reflect.DeepEqual(expectedStorage, g.Alloc[predeploys.LegacyERC20ETHAddr].Storage) {
-		t.Fatal("expected", expectedStorage, "got", g.Alloc[predeploys.LegacyERC20ETHAddr].Storage)
-	}
+	require.Equal(t, expectedStorage, g.Alloc[predeploys.LegacyERC20ETHAddr].Storage)
 }
 
 func TestMigrateBalances(t *testing.T) {

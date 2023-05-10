@@ -156,9 +156,7 @@ func TestSetImplementations(t *testing.T) {
 		require.True(t, ok, "predeploy %s not found in genesis", name)
 		require.NotEqual(t, common.Hash{}, g.Alloc[*address].Storage[ImplementationSlot])
 		codeAddr, err := AddressToCodeNamespace(*address)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		require.NotEqual(t, common.Hash{}, g.Alloc[codeAddr].Code)
 	}
 }
