@@ -24,6 +24,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/rlp"
 
+	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/turbo/services"
 
@@ -542,7 +543,7 @@ LOOP:
 		//log.Debug("MMDBG-HC Checking HCActive", "mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
 
 		if vm.HCActive[mh] != nil {
-			log.Debug("MMDBG-HC Skipping HCActive"," mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
+			log.Debug("MMDBG-HC Skipping HCActive", " mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
 			txs.Pop()
 			continue
 		}
@@ -553,7 +554,7 @@ LOOP:
 		hc = vm.HCResponseCache[mh]
 		//log.Debug("MMDBG-HC Transaction Peek", "txn", txn, "mh", mh, "hc", hc)
 		if hc != nil && hc.State == 2 && len(hc.Response) > 0 {
-			log.Debug("MMDBG-HC Found a prepared", "hc.Response", hc.Response)
+			log.Debug("MMDBG-HC Found a prepared", "hc.Response", hexutility.Bytes(hc.Response))
 			txn = types.NewOffchainTx(hc.Response)
 			log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
 			hc.State = 3 // Ensure that OffchainTx is only inserted once
