@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 	"math/big"
@@ -95,7 +96,7 @@ func HCKey(fromAddr libcommon.Address, toPtr *libcommon.Address, nonce uint64, d
 // for a user to determine the "random" value during an eth_estimateGas() call and only submit a real transaction
 // if the chosen value would represent a favorable outcome.
 
-func HCSimpleRandom() ([]byte, error) {
+func HCGenerateRandom() (*uint256.Int, error) {
 	// Generate cryptographically strong pseudo-random int between 0 - 2^256 - 1
 	one := big.NewInt(1)
 	two := big.NewInt(2)
@@ -113,30 +114,11 @@ func HCSimpleRandom() ([]byte, error) {
 	log.Debug("MMDBG-HC TURING bobaTuringRandom:Random number",
 		"randomBigInt", randomBigInt)
 
-	// rNum32 := uint256.MustFromBig(randomBigInt).Bytes32() // Needs uint256 pkg 1.2.2
-	rNum256, _ := uint256.FromBig(randomBigInt)
-	rNum32 := rNum256.Bytes32()
-
-	return rNum32[:], nil
+	ret256 := uint256.MustFromBig(randomBigInt)
+	return ret256, nil
 }
 
-// Multi-transaction secure RNG, using a commit/reveal approach. Client and server each start by
-// generating a random number and revealing its hash. In the next transaction, client reveals its
-// secret and the server returns a result which is the XOR of its secret and the client secret.
-// Hashes are checked to ensure that the secrets are the same ones generated in the original Tx.
-//
-// Note that a client may still choose to abandon a Tx after an eth_estimateGas() if the result is
-// undesirable. However they cannot undo the first Tx in which the hashes were committed.
-//
-// This operation may fail if the Sequencer node loses its private state between calls (e.g. in the
-// event of database corruption).
-//
-// A future version may be extended to a 3-way XOR including an off-chain endpoint.
-/*
-func HCRandomSequence() ([]byte, error) {
 
-}
-*/
 // This function attempts to perform the offchain JSON-RPC request and to parse the response.
 // Errors here will be passed back to the caller and will not trigger ErrHCFailed.
 // TODO - redirect outgoing requests through an external proxy (squid, socks5, etc).
@@ -174,7 +156,116 @@ func DoOffchain(reqUrl string, reqMethod libcommon.Address, reqPayload []byte) (
 	return responseBytes, 0
 }
 
-func HCRequest(hc *HCContext) error {
+// Multi-transaction secure RNG, using a commit/reveal approach. Client and server each start by
+// generating a random number and revealing its hash. In the next transaction, client reveals its
+// secret and the server returns a result which is the XOR of its secret and the client secret.
+// Hashes are checked to ensure that the secrets are the same ones generated in the original Tx.
+//
+// Note that a client may still choose to abandon a Tx after an eth_estimateGas() if the result is
+// undesirable. However they cannot undo the first Tx in which the hashes were committed.
+//
+// This operation may fail if the Sequencer node loses its private state between calls (e.g. in the
+// event of database corruption).
+//
+// A future version may be extended to a 3-way XOR including an off-chain endpoint.
+
+type RandomCacheEntry struct {
+	expectedHash libcommon.Hash
+	secret	*uint256.Int
+	commitBN uint64
+}
+
+var randomCache map[libcommon.Hash]*RandomCacheEntry;
+
+func DoRandomSeq(caller libcommon.Address, session [32]byte, cNext libcommon.Hash, cNum *uint256.Int, blockNumber uint64) (*libcommon.Hash, *uint256.Int, error) {
+	var err error
+	var found bool
+	var zeroHash libcommon.Hash
+
+	var result uint256.Int
+	var sNext libcommon.Hash
+
+	var thisCE *RandomCacheEntry
+	var nextCE *RandomCacheEntry
+	var nextKey libcommon.Hash
+	var doStore bool
+
+	var commitDepth uint64 = 1 // TODO - could make this configurable somehow, or could hardcode it
+
+	if randomCache == nil {
+		randomCache = make(map[libcommon.Hash]*RandomCacheEntry);
+	}
+
+	if cNext != zeroHash {
+		// Prepare for the next transaction.
+
+		hasher := sha3.NewLegacyKeccak256()
+		hasher.Write(caller.Bytes())
+		hasher.Write(session[:])
+		hasher.Write(cNext.Bytes())
+		nextKey = libcommon.BytesToHash(hasher.Sum(nil))
+
+		nextCE,found = randomCache[nextKey]
+
+		if !found {
+			nextCE = new(RandomCacheEntry)
+			nextCE.secret, err = HCGenerateRandom()
+			nextCE.commitBN = blockNumber
+			// FIXME BlockNumber
+			if err != nil {
+				log.Warn("MMDBG-HC HCGenerateRandom() failed", "err", err)
+				return nil, nil, errors.New("HCGenerateRandom failed")
+			}
+			log.Debug("MMDBG-HC Generated new secret for", "key", nextKey, "blockNumber", blockNumber)
+			doStore = true
+		} else {
+			log.Debug("MMDBG-HC randomCache hit for", "key", nextKey, "commitBN", nextCE.commitBN, "BN", blockNumber)
+			if blockNumber > nextCE.commitBN {
+				nextCE.commitBN = blockNumber
+			}
+		}
+		hasher = sha3.NewLegacyKeccak256()
+		sTmp := nextCE.secret.Bytes32()
+		hasher.Write(sTmp[:])
+		sNext = libcommon.BytesToHash(hasher.Sum(nil))
+	}
+
+	if !cNum.IsZero() {
+		h2 := sha3.NewLegacyKeccak256()
+		cTmp := cNum.Bytes32()
+		h2.Write(cTmp[:])
+		cHash := new(libcommon.Hash)
+		cHash.SetBytes(h2.Sum(nil))
+
+		hasher := sha3.NewLegacyKeccak256()
+		hasher.Write(caller.Bytes())
+		hasher.Write(session[:])
+		hasher.Write(cHash.Bytes())
+		thisKey := libcommon.BytesToHash(hasher.Sum(nil))
+		log.Debug("MMDBG-HC will check randomCache for", "cNum", cNum, "key", thisKey)
+
+		thisCE,found = randomCache[thisKey]
+		if !found {
+			log.Debug("MMDBG-HC Cache entry not found for", "key", thisKey)
+			return nil, nil, errors.New("DoRandomSeq state not found")
+		} else if blockNumber < thisCE.commitBN + commitDepth {
+			log.Debug("MMDBG-HC Invalid block number for DoRandomSeq", "expected", thisCE.commitBN, "actual", blockNumber)
+			return nil, nil, errors.New("DoRandomSeq invalid block number")
+		} else {
+			result.Xor(cNum, thisCE.secret)
+		}
+	}
+
+	if doStore {
+		log.Debug("MMDBG-HC DoRandomSeq storing cache entry", "key", nextKey, "ce", nextCE)
+		randomCache[nextKey] = nextCE
+	}
+
+	log.Debug("MMDBG-HC DoRandomSeq successful", "sNext", sNext, "result", result)
+	return &sNext, &result, nil
+}
+
+func HCRequest(hc *HCContext, blockNumber uint64) error {
 	log.Debug("MMDBG-HC Request", "req", hexutility.Bytes(hc.Request))
 
 	var (
@@ -183,6 +274,7 @@ func HCRequest(hc *HCContext) error {
 		tBytes32, _ = abi.NewType("bytes32", "", nil)
 		tString, _  = abi.NewType("string", "", nil)
 		//tUint32,_  = abi.NewType("uint32", "", nil)
+		tUint256,_  = abi.NewType("uint256", "", nil)
 		tBool, _ = abi.NewType("bool", "", nil)
 	)
 
@@ -190,25 +282,26 @@ func HCRequest(hc *HCContext) error {
 	var responseBytes []byte
 	var reqKey libcommon.Hash
 	var err error
+	hasher := sha3.NewLegacyKeccak256()
 
 	switch hc.OpType {
 	case HC_RANDOM_V1:
 		// SimpleRandom
-		responseBytes, err = HCSimpleRandom()
+		r256, err := HCGenerateRandom()
 		if err != nil {
 			log.Warn("MMDBG-HC SimpleRandom failed", "err", err)
 			hc.State = 4
 			return ErrHCFailed
 		}
-		hasher := sha3.NewLegacyKeccak256()
+		r32 := r256.Bytes32()
+		responseBytes = r32[:]
+
 		hasher.Write([]byte{0xc6, 0xe4, 0xb0, 0xd3})
 		hasher.Write(hc.Caller.Bytes())
-		reqKey = libcommon.BytesToHash(hasher.Sum(nil))
-		log.Debug("MMDBG-HC SimpleRandom", "reqKey", reqKey)
 	case HC_OFFCHAIN_V1:
 		// We now expect to have an ABI-encoded (url_string, payload_bytes)
 		dec, err := (abi.Arguments{{Type: tString}, {Type: tBytes}}).Unpack(hc.Request[4:])
-		log.Debug("MMDBG-HC ABI decode", "dec", dec, "err", err, "hc", hc)
+		log.Debug("MMDBG-HC ABI decode (offchain)", "dec", dec, "err", err, "hc", hc)
 
 		if err != nil {
 			log.Warn("MMDBG-HC Request decode failed", "err", err)
@@ -219,30 +312,61 @@ func HCRequest(hc *HCContext) error {
 		reqMethod := hc.Caller
 		reqPayload := dec[1].([]byte)
 
-		hasher := sha3.NewLegacyKeccak256()
-
 		hasher.Write([]byte{0xc1, 0xfd, 0x7e, 0x46})
-		hasher.Write(reqMethod.Bytes())
-		log.Debug("MMDBG-HC hWrite", "reqMethod", hexutility.Bytes(reqMethod.Bytes()))
+		hasher.Write(hc.Caller.Bytes())
 		hasher.Write([]byte(reqUrl))
-		log.Debug("MMDBG-HC hWrite", "url", hexutility.Bytes([]byte(reqUrl)))
 		hasher.Write(reqPayload)
-		log.Debug("MMDBG-HC hWrite", "payload", hexutility.Bytes(reqPayload))
-		reqKey = libcommon.BytesToHash(hasher.Sum(nil))
 
-		log.Debug("MMDBG-HC Request", "reqKey", reqKey, "reqUrl", reqUrl, "reqMethod", reqMethod)
-
+		log.Debug("MMDBG-HC Request", "reqUrl", reqUrl, "reqMethod", reqMethod)
 		responseBytes, responseCode = DoOffchain(reqUrl, reqMethod, reqPayload)
 		if responseCode != 0 {
 			log.Debug("MMDBG-HC DoOffchain failed", "errCode", responseCode, "response", responseBytes)
 		}
-		log.Debug("MMDBG-HC Request", "reqKey", reqKey, "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
+		log.Debug("MMDBG-HC Request", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
+	case HC_RANDOMSEQ_V1:
+		dec, err := (abi.Arguments{{Type: tBytes32}, {Type: tBytes32}, {Type: tUint256}}).Unpack(hc.Request[4:])
+		if err != nil {
+			log.Warn("MMDBG-HC Request decode failed", "err", err)
+			hc.State = 4
+			return ErrHCFailed
+		}
+		log.Debug("MMDBG-HC ABI decode (randomseq)", "dec", dec, "err", err, "BN", blockNumber, "hc", hc)
 
+		session := dec[0].([32]byte)
+		chBytes := dec[1].([32]byte)
+		clientHash := libcommon.BytesToHash(chBytes[:])
+		var clientNum *uint256.Int
+		clientNum = uint256.MustFromBig(dec[2].(*big.Int))
+
+		log.Debug("MMDBG-HC ABI decode (randomseq)", "session", hexutility.Bytes(session[:]), "clientHash", clientHash, "clientNum", clientNum)
+
+		hasher.Write([]byte{0x32, 0xbe, 0x42, 0x8f})
+		hasher.Write(hc.Caller.Bytes())
+		hasher.Write(session[:])
+		hasher.Write(clientHash.Bytes())
+		cTmp := clientNum.Bytes32()
+		hasher.Write(cTmp[:])
+
+		sNext, resultNum, err := DoRandomSeq(hc.Caller, session, clientHash, clientNum, blockNumber)
+
+		if err == nil {
+			xHash := *sNext;
+			xNum := resultNum.ToBig()
+			responseBytes,err = (abi.Arguments{{Type: tBytes32}, {Type: tUint256}}).Pack([32]byte(xHash), xNum)
+			log.Debug("MMDBG-HC RandomSeq encode", "sNext", xHash, "resultNum", xNum, "err", err, "responseBytes", responseBytes)
+		} else {
+			responseBytes = nil
+			responseCode = 1 // FIXME
+		}
+		log.Debug("MMDBG-HC RandomSeq result", "err", err, "responseBytes", responseBytes)
 	default:
 		log.Debug("MMDBG-HC Unknown opType", "opType", hc.OpType)
 		hc.State = 4
 		return ErrHCFailed
 	}
+
+	reqKey = libcommon.BytesToHash(hasher.Sum(nil))
+	log.Debug("MMDBG-HC Request", "reqKey", reqKey)
 
 	//hc.Response = []byte{0x11, 0xed, 0xaa, 0xe0} // PutResponse(bytes32,uint32,bytes)
 	hc.Response = []byte{0xeb, 0x65, 0x98, 0xb5} // PutResponse(bytes32,bool,bytes)
