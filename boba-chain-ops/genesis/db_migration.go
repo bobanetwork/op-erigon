@@ -41,29 +41,30 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 	}
 	log.Debug("Created L2 configuration", "storage", storage, "immutable", immutable)
 
-	// TODO add withdraws
-	// // Convert all input messages into legacy messages. Note that this list is not yet filtered and
-	// // may be missing some messages or have some extra messages.
-	// unfilteredWithdrawals, invalidMessages, err := migrationData.ToWithdrawals()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("cannot serialize withdrawals: %w", err)
-	// }
+	// Convert all input messages into legacy messages. Note that this list is not yet filtered and
+	// may be missing some messages or have some extra messages.
+	unfilteredWithdrawals, invalidMessages, err := migrationData.ToWithdrawals()
+	if err != nil {
+		return fmt.Errorf("cannot serialize withdrawals: %w", err)
+	}
 
-	// log.Info("Read withdrawals from witness data", "unfiltered", len(unfilteredWithdrawals), "invalid", len(invalidMessages))
+	log.Info("Read withdrawals from witness data", "unfiltered", len(unfilteredWithdrawals), "invalid", len(invalidMessages))
 
-	// // We now need to check that we have all of the withdrawals that we expect to have. An error
-	// // will be thrown if there are any missing messages, and any extra messages will be removed.
-	// var filteredWithdrawals crossdomain.SafeFilteredWithdrawals
-	// if !noCheck {
-	// 	log.Info("Checking withdrawals...")
-	// 	filteredWithdrawals, err = crossdomain.PreCheckWithdrawals(db, unfilteredWithdrawals, invalidMessages)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("withdrawals mismatch: %w", err)
-	// 	}
-	// } else {
-	// 	log.Info("Skipping checking withdrawals")
-	// 	filteredWithdrawals = crossdomain.SafeFilteredWithdrawals(unfilteredWithdrawals)
-	// }
+	// We now need to check that we have all of the withdrawals that we expect to have. An error
+	// will be thrown if there are any missing messages, and any extra messages will be removed.
+	var filteredWithdrawals crossdomain.SafeFilteredWithdrawals
+	if !noCheck {
+		log.Info("Checking withdrawals...")
+		filteredWithdrawals, err = crossdomain.PreCheckWithdrawals(genesis, unfilteredWithdrawals, invalidMessages)
+		if err != nil {
+			return fmt.Errorf("withdrawals mismatch: %w", err)
+		}
+	} else {
+		log.Info("Skipping checking withdrawals")
+		filteredWithdrawals = crossdomain.SafeFilteredWithdrawals(unfilteredWithdrawals)
+	}
+
+	log.Info("Filtered withdrawals", "filtered", len(filteredWithdrawals))
 
 	// At this point we've fully verified the witness data for the migration, so we can begin the
 	// actual migration process.
@@ -102,15 +103,15 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 		return fmt.Errorf("cannot set legacy ETH: %w", err)
 	}
 
-	// // Now we migrate legacy withdrawals from the LegacyMessagePasser contract to their new format
-	// // in the Bedrock L2ToL1MessagePasser contract. Note that we do NOT delete the withdrawals from
-	// // the LegacyMessagePasser contract. Here we operate on the list of withdrawals that we
-	// // previously filtered and verified.
-	// log.Info("Starting to migrate withdrawals", "no-check", noCheck)
-	// err = crossdomain.MigrateWithdrawals(filteredWithdrawals, db, &config.L1CrossDomainMessengerProxy, noCheck)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("cannot migrate withdrawals: %w", err)
-	// }
+	// Now we migrate legacy withdrawals from the LegacyMessagePasser contract to their new format
+	// in the Bedrock L2ToL1MessagePasser contract. Note that we do NOT delete the withdrawals from
+	// the LegacyMessagePasser contract. Here we operate on the list of withdrawals that we
+	// previously filtered and verified.
+	log.Info("Starting to migrate withdrawals", "no-check", noCheck)
+	err = crossdomain.MigrateWithdrawals(filteredWithdrawals, genesis, &config.L1CrossDomainMessengerProxy, noCheck)
+	if err != nil {
+		return fmt.Errorf("cannot migrate withdrawals: %w", err)
+	}
 
 	// Finally we migrate the balances held inside the LegacyERC20ETH contract into the state trie.
 	// We also delete the balances from the LegacyERC20ETH contract. Unlike the steps above, this step
@@ -121,82 +122,86 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 		return fmt.Errorf("failed to migrate OVM_ETH: %w", err)
 	}
 
-	if commit {
-		// write genesis to chaindb
-		tx, err := chaindb.BeginRw(context.Background())
-		if err != nil {
-			log.Error("failed to begin write genesis block", "err", err)
-			return err
-		}
-		defer tx.Rollback()
-
-		hash, err := rawdb.ReadCanonicalHash(tx, 0)
-		if err != nil {
-			log.Error("failed to read canonical hash of block #0", "err", err)
-			return err
-		}
-
-		if (hash != common.Hash{}) {
-			log.Error("genesis block already exists")
-			return errors.New("genesis block already exists")
-		}
-
-		header, err := CreateHeader(genesis)
-		if err != nil {
-			log.Error("failed to create header from genesis config", "err", err)
-			return err
-		}
-
-		statedb, err := AllocToGenesis(genesis, header)
-		if err != nil {
-			log.Error("failed to create genesis state", "err", err)
-			return err
-		}
-
-		block := types.NewBlock(header, nil, nil, nil, []*types.Withdrawal{})
-
-		var stateWriter state.StateWriter
-		for addr, account := range genesis.Alloc {
-			if len(account.Code) > 0 || len(account.Storage) > 0 {
-				// Special case for weird tests - inaccessible storage
-				var b [8]byte
-				binary.BigEndian.PutUint64(b[:], state.FirstContractIncarnation)
-				if err := tx.Put(kv.IncarnationMap, addr[:], b[:]); err != nil {
-					return err
-				}
-			}
-		}
-
-		stateWriter = state.NewPlainStateWriter(tx, tx, 0)
-
-		if block.Number().Sign() != 0 {
-			return fmt.Errorf("genesis block number is not 0")
-		}
-
-		if err := statedb.CommitBlock(&chain.Rules{}, stateWriter); err != nil {
-			return fmt.Errorf("cannot commit genesis block: %w", err)
-		}
-		if csw, ok := stateWriter.(state.WriterWithChangeSets); ok {
-			if err := csw.WriteChangeSets(); err != nil {
-				return fmt.Errorf("cannot write changesets: %w", err)
-			}
-			if err := csw.WriteHistory(); err != nil {
-				return fmt.Errorf("cannot write history: %w", err)
-			}
-		}
-
-		if err := write(tx, genesis, "", block, statedb); err != nil {
-			log.Error("failed to write genesis block", "err", err)
-			return err
-		}
-
-		err = tx.Commit()
-		if err != nil {
-			log.Error("failed to commit genesis block", "err", err)
-			return err
-		}
-		log.Info("Successfully wrote genesis state", "hash", block.Hash())
+	log.Info("commit", "commit", commit)
+	if !commit {
+		log.Info("Dry run complete!")
+		return nil
 	}
+
+	// write genesis to chaindb
+	tx, err := chaindb.BeginRw(context.Background())
+	if err != nil {
+		log.Error("failed to begin write genesis block", "err", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	hash, err := rawdb.ReadCanonicalHash(tx, 0)
+	if err != nil {
+		log.Error("failed to read canonical hash of block #0", "err", err)
+		return err
+	}
+
+	if (hash != common.Hash{}) {
+		log.Error("genesis block already exists")
+		return errors.New("genesis block already exists")
+	}
+
+	header, err := CreateHeader(genesis)
+	if err != nil {
+		log.Error("failed to create header from genesis config", "err", err)
+		return err
+	}
+
+	statedb, err := AllocToGenesis(genesis, header)
+	if err != nil {
+		log.Error("failed to create genesis state", "err", err)
+		return err
+	}
+
+	block := types.NewBlock(header, nil, nil, nil, []*types.Withdrawal{})
+
+	var stateWriter state.StateWriter
+	for addr, account := range genesis.Alloc {
+		if len(account.Code) > 0 || len(account.Storage) > 0 {
+			// Special case for weird tests - inaccessible storage
+			var b [8]byte
+			binary.BigEndian.PutUint64(b[:], state.FirstContractIncarnation)
+			if err := tx.Put(kv.IncarnationMap, addr[:], b[:]); err != nil {
+				return err
+			}
+		}
+	}
+
+	stateWriter = state.NewPlainStateWriter(tx, tx, 0)
+
+	if block.Number().Sign() != 0 {
+		return fmt.Errorf("genesis block number is not 0")
+	}
+
+	if err := statedb.CommitBlock(&chain.Rules{}, stateWriter); err != nil {
+		return fmt.Errorf("cannot commit genesis block: %w", err)
+	}
+	if csw, ok := stateWriter.(state.WriterWithChangeSets); ok {
+		if err := csw.WriteChangeSets(); err != nil {
+			return fmt.Errorf("cannot write changesets: %w", err)
+		}
+		if err := csw.WriteHistory(); err != nil {
+			return fmt.Errorf("cannot write history: %w", err)
+		}
+	}
+
+	if err := write(tx, genesis, "", block, statedb); err != nil {
+		log.Error("failed to write genesis block", "err", err)
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		log.Error("failed to commit genesis block", "err", err)
+		return err
+	}
+	log.Info("Successfully wrote genesis state", "hash", block.Hash())
 
 	return nil
 }

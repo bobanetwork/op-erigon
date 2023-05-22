@@ -401,7 +401,7 @@ func NewL2StorageConfig(config *DeployConfig, blockHeader *types.Header) (state.
 		"number":         blockHeader.Number,
 		"timestamp":      blockHeader.Time,
 		"basefee":        blockHeader.BaseFee,
-		"hash":           blockHeader.Hash,
+		"hash":           blockHeader.Hash(),
 		"sequenceNumber": 0,
 		"batcherHash":    config.BatchSenderAddress.Hash(),
 		"l1FeeOverhead":  config.GasPriceOracleOverhead,

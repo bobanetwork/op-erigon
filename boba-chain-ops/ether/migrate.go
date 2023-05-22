@@ -25,7 +25,7 @@ const (
 
 var (
 	// OVMETHAddress is the address of the OVM ETH predeploy.
-	OVMETHAddress = common.HexToAddress("0xDeadDeAddeAddEAddeadDEaDDEAdDeaDDeAD0000")
+	OVMETHAddress = common.HexToAddress("0x4200000000000000000000000000000000000006")
 
 	ignoredSlots = map[common.Hash]bool{
 		// Total Supply
@@ -36,6 +36,8 @@ var (
 		common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000004"): true,
 		common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000005"): true,
 		common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000006"): true,
+		// To avoid the loop import. The amdin slot is hardcoded here as the same in helpers.go
+		common.HexToHash("0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103"): true,
 	}
 
 	// sequencerEntrypointAddr is the address of the OVM sequencer entrypoint contract.

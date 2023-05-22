@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 
+	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon/boba-chain-ops/crossdomain"
@@ -115,7 +116,7 @@ func main() {
 			log.Root().SetHandler(
 				log.LvlFilterHandler(
 					logLevel,
-					log.StreamHandler(os.Stdout, log.JSONFormat()),
+					log.StreamHandler(os.Stdout, log.TerminalFormat(isatty.IsTerminal(os.Stdout.Fd()))),
 				),
 			)
 
@@ -228,11 +229,6 @@ func main() {
 				log.Error("failed to open chaindb", "err", err)
 				return err
 			}
-			defer chaindb.Close()
-
-			// for testing purpose
-			// remove dbPath
-			defer os.RemoveAll(dbPath)
 
 			// TODO: use hardhat to get the deployment addresses
 			// Read the required deployment addresses from disk if required
@@ -251,8 +247,45 @@ func main() {
 			noCheck := ctx.Bool("no-check")
 
 			if err := genesis.MigrateDB(chaindb, genesisBlock, config, header, &migrationData, !dryRun, noCheck); err != nil {
+				if err.Error() != "genesis block already exists" {
+					log.Error("failed to migrate db", "err", err)
+					return err
+				} else {
+					log.Info("skipping migration, running post migration checks")
+				}
+			}
+
+			// close the database handle
+			chaindb.Close()
+
+			postChaindb, err := node.OpenDatabase(stack.Config(), kv.ChainDB)
+			if err != nil {
+				log.Error("failed to open post chaindb", "err", err)
 				return err
 			}
+			defer postChaindb.Close()
+
+			if err := genesis.PostCheckMigratedDB(
+				postChaindb,
+				genesisBlock,
+				migrationData,
+				&config.L1CrossDomainMessengerProxy,
+				config.L1ChainID,
+				config.FinalSystemOwner,
+				config.ProxyAdminOwner,
+				&genesis.L1BlockInfo{
+					Number:        header.Number.Uint64(),
+					Time:          header.Time,
+					BaseFee:       header.BaseFee,
+					BlockHash:     header.Hash(),
+					BatcherAddr:   config.BatchSenderAddress,
+					L1FeeOverhead: common.BigToHash(new(big.Int).SetUint64(config.GasPriceOracleOverhead)),
+					L1FeeScalar:   common.BigToHash(new(big.Int).SetUint64(config.GasPriceOracleScalar)),
+				},
+			); err != nil {
+				return err
+			}
+
 			return nil
 		},
 	}

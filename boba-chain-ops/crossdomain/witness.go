@@ -118,6 +118,21 @@ func ReadWitnessData(path string) ([]*SentMessage, OVMETHAddresses, error) {
 	return witnesses, addresses, nil
 }
 
+// ToLegacyWithdrawal will convert a SentMessageJSON to a LegacyWithdrawal
+// struct. This is useful because the LegacyWithdrawal struct has helper
+// functions on it that can compute the withdrawal hash and the storage slot.
+func (s *SentMessage) ToLegacyWithdrawal() (*LegacyWithdrawal, error) {
+	data := make([]byte, len(s.Who)+len(s.Msg))
+	copy(data, s.Msg)
+	copy(data[len(s.Msg):], s.Who[:])
+
+	var w LegacyWithdrawal
+	if err := w.Decode(data); err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
 // Allowance represents the allowances that were set in the
 // legacy ERC20 representation of ether
 type Allowance struct {
@@ -192,6 +207,28 @@ type MigrationData struct {
 	// OvmMessages represents the set of withdrawals through the
 	// L2CrossDomainMessenger from after the evm equivalence upgrade
 	EvmMessages []*SentMessage
+}
+
+func (m *MigrationData) ToWithdrawals() (DangerousUnfilteredWithdrawals, []InvalidMessage, error) {
+	messages := make(DangerousUnfilteredWithdrawals, 0)
+	invalidMessages := make([]InvalidMessage, 0)
+	for _, msg := range m.OvmMessages {
+		wd, err := msg.ToLegacyWithdrawal()
+		if err != nil {
+			return nil, nil, fmt.Errorf("error serializing OVM message: %w", err)
+		}
+		messages = append(messages, wd)
+	}
+	for _, msg := range m.EvmMessages {
+		wd, err := msg.ToLegacyWithdrawal()
+		if err != nil {
+			log.Warn("Discovered mal-formed withdrawal", "who", msg.Who, "data", msg.Msg)
+			invalidMessages = append(invalidMessages, InvalidMessage(*msg))
+			continue
+		}
+		messages = append(messages, wd)
+	}
+	return messages, invalidMessages, nil
 }
 
 func (m *MigrationData) Addresses() []common.Address {

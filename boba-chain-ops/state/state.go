@@ -65,7 +65,7 @@ func SetStorage(name string, address common.Address, values StorageValues, g *ty
 		storage[slot.Key] = slot.Value
 		genesisAccount := types.GenesisAccount{
 			Constructor: g.Alloc[address].Constructor,
-			Code:        g.Alloc[address].Constructor,
+			Code:        g.Alloc[address].Code,
 			Storage:     storage,
 			Balance:     g.Alloc[address].Balance,
 			Nonce:       g.Alloc[address].Nonce,

@@ -128,10 +128,19 @@ func AllocToGenesis(g *types.Genesis, head *types.Header) (*state.IntraBlockStat
 			addr := libcommon.BytesToAddress([]byte(key))
 			account := g.Alloc[addr]
 
-			balance, overflow := uint256.FromBig(account.Balance)
-			if overflow {
-				panic("overflow at genesis allocs")
+			var (
+				balance  *uint256.Int
+				overflow bool
+			)
+			if account.Balance == nil {
+				balance = uint256.NewInt(0)
+			} else {
+				balance, overflow = uint256.FromBig(account.Balance)
+				if overflow {
+					panic("overflow at genesis allocs")
+				}
 			}
+
 			statedb.AddBalance(addr, balance)
 			statedb.SetCode(addr, account.Code)
 			statedb.SetNonce(addr, account.Nonce)

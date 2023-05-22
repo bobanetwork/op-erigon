@@ -89,3 +89,19 @@ func newHexBig(in uint64) *hexutil.Big {
 	hb := hexutil.Big(*b)
 	return &hb
 }
+
+// From op-node/rollup/derive/l1_block_info.go
+// L1BlockInfo presents the information stored in a L1Block.setL1BlockValues call
+type L1BlockInfo struct {
+	Number    uint64
+	Time      uint64
+	BaseFee   *big.Int
+	BlockHash common.Hash
+	// Not strictly a piece of L1 information. Represents the number of L2 blocks since the start of the epoch,
+	// i.e. when the actual L1 info was first introduced.
+	SequenceNumber uint64
+	// BatcherHash version 0 is just the address with 0 padding to the left.
+	BatcherAddr   common.Address
+	L1FeeOverhead common.Hash
+	L1FeeScalar   common.Hash
+}

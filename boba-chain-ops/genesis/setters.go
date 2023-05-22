@@ -23,20 +23,23 @@ var (
 	// UntouchablePredeploys are addresses in the predeploy namespace
 	// that should not be touched by the migration process.
 	UntouchablePredeploys = map[common.Address]bool{
-		predeploys.GovernanceTokenAddr: true,
-		predeploys.WETH9Addr:           true,
+		// TODO FIX this
+		// BOBA doesn't have this!!!
+		// predeploys.GovernanceTokenAddr: true,
+		predeploys.WETH9Addr: true,
 	}
 
 	// UntouchableCodeHashes represent the bytecode hashes of contracts
 	// that should not be touched by the migration process.
 	UntouchableCodeHashes = map[common.Address]ChainHashMap{
-		predeploys.GovernanceTokenAddr: {
-			1: common.HexToHash("0x8551d935f4e67ad3c98609f0d9f0f234740c4c4599f82674633b55204393e07f"),
-			5: common.HexToHash("0xc4a213cf5f06418533e5168d8d82f7ccbcc97f27ab90197c2c051af6a4941cf9"),
-		},
+		// This needs to be replaced by BOBA token
+		// predeploys.GovernanceTokenAddr: {
+		// 	1: common.HexToHash("0x8551d935f4e67ad3c98609f0d9f0f234740c4c4599f82674633b55204393e07f"),
+		// 	5: common.HexToHash("0xc4a213cf5f06418533e5168d8d82f7ccbcc97f27ab90197c2c051af6a4941cf9"),
+		// },
 		predeploys.WETH9Addr: {
-			1: common.HexToHash("0x779bbf2a738ef09d961c945116197e2ac764c1b39304b2b4418cd4e42668b173"),
-			5: common.HexToHash("0x779bbf2a738ef09d961c945116197e2ac764c1b39304b2b4418cd4e42668b173"),
+			288:  common.HexToHash("0x5b4b51d84d1f4b5bff7e20e96ed0771857d01c15aee81ff1eb34cf75c25e725e"),
+			2888: common.HexToHash("0x5b4b51d84d1f4b5bff7e20e96ed0771857d01c15aee81ff1eb34cf75c25e725e"),
 		},
 	}
 
@@ -106,16 +109,29 @@ func setProxies(g *types.Genesis, proxyAdminAddr common.Address, namespace *big.
 			continue
 		}
 
-		genesisAccount := types.GenesisAccount{
-			Constructor: g.Alloc[addr].Constructor,
-			Code:        depBytecode,
-			Storage: map[common.Hash]common.Hash{
-				AdminSlot: proxyAdminAddr.Hash(),
-			},
-			Balance: g.Alloc[addr].Balance,
-			Nonce:   g.Alloc[addr].Nonce,
+		var genesisAccount types.GenesisAccount
+		if g.Alloc[addr].Storage == nil {
+			genesisAccount = types.GenesisAccount{
+				Constructor: g.Alloc[addr].Constructor,
+				Code:        depBytecode,
+				Storage: map[common.Hash]common.Hash{
+					AdminSlot: proxyAdminAddr.Hash(),
+				},
+				Balance: g.Alloc[addr].Balance,
+				Nonce:   g.Alloc[addr].Nonce,
+			}
+		} else {
+			g.Alloc[addr].Storage[AdminSlot] = proxyAdminAddr.Hash()
+			genesisAccount = types.GenesisAccount{
+				Constructor: g.Alloc[addr].Constructor,
+				Code:        depBytecode,
+				Storage:     g.Alloc[addr].Storage,
+				Balance:     g.Alloc[addr].Balance,
+				Nonce:       g.Alloc[addr].Nonce,
+			}
 		}
 		g.Alloc[addr] = genesisAccount
+
 		log.Trace("Set proxy", "address", addr, "admin", proxyAdminAddr)
 	}
 
@@ -154,16 +170,20 @@ func SetImplementations(g *types.Genesis, storage state.StorageConfig, immutable
 			return fmt.Errorf("error converting to code namespace: %w", err)
 		}
 
-		genesisAccount := types.GenesisAccount{
-			Constructor: g.Alloc[*address].Constructor,
-			Code:        g.Alloc[*address].Code,
-			Storage: map[common.Hash]common.Hash{
-				ImplementationSlot: codeAddr.Hash(),
-			},
-			Balance: g.Alloc[*address].Balance,
-			Nonce:   g.Alloc[*address].Nonce,
+		if g.Alloc[*address].Storage == nil {
+			genesisAccount := types.GenesisAccount{
+				Constructor: g.Alloc[*address].Constructor,
+				Code:        g.Alloc[*address].Code,
+				Storage: map[common.Hash]common.Hash{
+					ImplementationSlot: codeAddr.Hash(),
+				},
+				Balance: g.Alloc[*address].Balance,
+				Nonce:   g.Alloc[*address].Nonce,
+			}
+			g.Alloc[*address] = genesisAccount
+		} else {
+			g.Alloc[*address].Storage[ImplementationSlot] = codeAddr.Hash()
 		}
-		g.Alloc[*address] = genesisAccount
 
 		if err := setupPredeploy(g, deployResults, storage, name, *address, codeAddr); err != nil {
 			return err
