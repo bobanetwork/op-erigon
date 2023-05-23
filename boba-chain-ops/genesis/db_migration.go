@@ -122,13 +122,20 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 		return fmt.Errorf("failed to migrate OVM_ETH: %w", err)
 	}
 
-	log.Info("commit", "commit", commit)
 	if !commit {
 		log.Info("Dry run complete!")
 		return nil
 	}
 
-	// write genesis to chaindb
+	if err = WriteGenesis(chaindb, genesis); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Write genesis to chaindb
+func WriteGenesis(chaindb kv.RwDB, genesis *types.Genesis) error {
 	tx, err := chaindb.BeginRw(context.Background())
 	if err != nil {
 		log.Error("failed to begin write genesis block", "err", err)
@@ -191,7 +198,7 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 		}
 	}
 
-	if err := write(tx, genesis, "", block, statedb); err != nil {
+	if err := CommitGenesisBlock(tx, genesis, "", block, statedb); err != nil {
 		log.Error("failed to write genesis block", "err", err)
 		return err
 	}
@@ -208,7 +215,7 @@ func MigrateDB(chaindb kv.RwDB, genesis *types.Genesis, config *DeployConfig, bl
 
 // Write writes the block and state of a genesis specification to the database.
 // The block is committed as the canonical head block.
-func write(tx kv.RwTx, g *types.Genesis, tmpDir string, block *types.Block, statedb *state.IntraBlockState) error {
+func CommitGenesisBlock(tx kv.RwTx, g *types.Genesis, tmpDir string, block *types.Block, statedb *state.IntraBlockState) error {
 	config := g.Config
 	if config == nil {
 		config = params.AllProtocolChanges
