@@ -77,7 +77,7 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 	} else {
 		api.logger.Info("Submitted transaction", "hash", txn.Hash().Hex(), "from", from, "nonce", txn.GetNonce(), "recipient", txn.GetTo(), "value", txn.GetValue())
 	}
-	log.Debug("MMDBG SendRawTransaction", "block", *blockNum, "txn", txn)
+	api.logger.Debug("MMDBG SendRawTransaction", "block", *blockNum, "txn", txn)
 
 	return txn.Hash(), nil
 }
