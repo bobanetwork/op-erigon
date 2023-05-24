@@ -96,7 +96,7 @@ func DoCall(
 		evm.Cancel()
 	}()
 
-	gp := new(core.GasPool).AddGas(msg.Gas())
+	gp := new(core.GasPool).AddGas(msg.Gas()).AddDataGas(msg.DataGas())
 	result, err := core.ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
 	if err != nil {
 		return nil, err
@@ -174,14 +174,14 @@ func (r *ReusableCaller) DoCallWithNewGas(
 		timedOut = true
 	}()
 
-	gp := new(core.GasPool).AddGas(r.message.Gas())
+	gp := new(core.GasPool).AddGas(r.message.Gas()).AddDataGas(r.message.DataGas())
 	log.Debug("MMDBG-HC call.go before ApplyMessage", "timeout", r.callTimeout, "msg", r.message)
 
 	if vm.HCResponseCache == nil {
 		vm.HCResponseCache = make(map[libcommon.Hash]*vm.HCContext)
 	}
 
-	mh := vm.HCKey(r.message.From(), r.message.To(),  r.message.Nonce(), r.message.Data())
+	mh := vm.HCKey(r.message.From(), r.message.To(), r.message.Nonce(), r.message.Data())
 	hc := vm.HCResponseCache[mh]
 	if hc == nil {
 		hc = new(vm.HCContext)

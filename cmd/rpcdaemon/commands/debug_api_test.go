@@ -23,6 +23,7 @@ import (
 	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/ledgerwatch/erigon/turbo/adapter/ethapi"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
+	"github.com/ledgerwatch/log/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,10 +54,10 @@ var debugTraceTransactionNoRefundTests = []struct {
 func TestTraceBlockByNumber(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
 	agg := m.HistoryV3Components()
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	baseApi := NewBaseApi(nil, stateCache, br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
-	ethApi := NewEthAPI(baseApi, m.DB, nil, nil, nil, 5000000, 100_000)
+	ethApi := NewEthAPI(baseApi, m.DB, nil, nil, nil, 5000000, 100_000, log.New())
 	api := NewPrivateDebugAPI(baseApi, m.DB, 0)
 	for _, tt := range debugTraceTransactionTests {
 		var buf bytes.Buffer
@@ -102,10 +103,10 @@ func TestTraceBlockByNumber(t *testing.T) {
 func TestTraceBlockByHash(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
 	agg := m.HistoryV3Components()
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	baseApi := NewBaseApi(nil, stateCache, br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
-	ethApi := NewEthAPI(baseApi, m.DB, nil, nil, nil, 5000000, 100_000)
+	ethApi := NewEthAPI(baseApi, m.DB, nil, nil, nil, 5000000, 100_000, log.New())
 	api := NewPrivateDebugAPI(baseApi, m.DB, 0)
 	for _, tt := range debugTraceTransactionTests {
 		var buf bytes.Buffer
@@ -138,7 +139,7 @@ func TestTraceBlockByHash(t *testing.T) {
 func TestTraceTransaction(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
 	agg := m.HistoryV3Components()
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	base := NewBaseApi(nil, stateCache, br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
 	api := NewPrivateDebugAPI(base, m.DB, 0)
@@ -170,7 +171,7 @@ func TestTraceTransaction(t *testing.T) {
 
 func TestTraceTransactionNoRefund(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	agg := m.HistoryV3Components()
 	api := NewPrivateDebugAPI(
 		NewBaseApi(nil, kvcache.New(kvcache.DefaultCoherentConfig), br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs),
@@ -204,7 +205,7 @@ func TestTraceTransactionNoRefund(t *testing.T) {
 
 func TestStorageRangeAt(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	agg := m.HistoryV3Components()
 	api := NewPrivateDebugAPI(
 		NewBaseApi(nil, kvcache.New(kvcache.DefaultCoherentConfig), br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs),
@@ -301,7 +302,7 @@ func TestStorageRangeAt(t *testing.T) {
 
 func TestAccountRange(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	agg := m.HistoryV3Components()
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	base := NewBaseApi(nil, stateCache, br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
@@ -364,7 +365,7 @@ func TestAccountRange(t *testing.T) {
 
 func TestGetModifiedAccountsByNumber(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	agg := m.HistoryV3Components()
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	base := NewBaseApi(nil, stateCache, br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
@@ -428,9 +429,10 @@ func TestMapTxNum2BlockNum(t *testing.T) {
 		}
 	}
 	t.Run("descend", func(t *testing.T) {
-		tx, err := m.DB.(kv.TemporalRoDB).BeginTemporalRo(m.Ctx)
+		dbtx, err := m.DB.BeginRo(m.Ctx)
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer dbtx.Rollback()
+		tx := dbtx.(kv.TemporalTx)
 
 		txNums, err := tx.IndexRange(temporal.LogAddrIdx, addr[:], 1024, -1, order.Desc, kv.Unlim)
 		require.NoError(t, err)
@@ -440,9 +442,10 @@ func TestMapTxNum2BlockNum(t *testing.T) {
 		checkIter(t, expectTxNums, txNumsIter)
 	})
 	t.Run("ascend", func(t *testing.T) {
-		tx, err := m.DB.(kv.TemporalRoDB).BeginTemporalRo(m.Ctx)
+		dbtx, err := m.DB.BeginRo(m.Ctx)
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer dbtx.Rollback()
+		tx := dbtx.(kv.TemporalTx)
 
 		txNums, err := tx.IndexRange(temporal.LogAddrIdx, addr[:], 0, 1024, order.Asc, kv.Unlim)
 		require.NoError(t, err)
@@ -452,9 +455,10 @@ func TestMapTxNum2BlockNum(t *testing.T) {
 		checkIter(t, expectTxNums, txNumsIter)
 	})
 	t.Run("ascend limit", func(t *testing.T) {
-		tx, err := m.DB.(kv.TemporalRoDB).BeginTemporalRo(m.Ctx)
+		dbtx, err := m.DB.BeginRo(m.Ctx)
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer dbtx.Rollback()
+		tx := dbtx.(kv.TemporalTx)
 
 		txNums, err := tx.IndexRange(temporal.LogAddrIdx, addr[:], 0, 1024, order.Asc, 2)
 		require.NoError(t, err)
@@ -468,7 +472,7 @@ func TestMapTxNum2BlockNum(t *testing.T) {
 func TestAccountAt(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
 	agg := m.HistoryV3Components()
-	br := snapshotsync.NewBlockReaderWithSnapshots(m.BlockSnapshots, m.TransactionsV3)
+	br := snapshotsync.NewBlockReader(m.BlockSnapshots, m.TransactionsV3)
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	base := NewBaseApi(nil, stateCache, br, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
 	api := NewPrivateDebugAPI(base, m.DB, 0)

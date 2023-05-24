@@ -85,8 +85,9 @@ type TransitionConfiguration struct {
 
 // BlobsBundleV1 holds the blobs of an execution payload
 type BlobsBundleV1 struct {
-	KZGs  []types.KZGCommitment `json:"kzgs"  gencodec:"required"`
-	Blobs []types.Blob          `json:"blobs" gencodec:"required"`
+	KZGs   []types.KZGCommitment `json:"kzgs"   gencodec:"required"`
+	Blobs  []types.Blob          `json:"blobs"  gencodec:"required"`
+	Proofs []types.KZGProof      `json:"proofs" gencodec:"required"`
 }
 
 type ExecutionPayloadBodyV1 struct {
@@ -98,6 +99,7 @@ type ExecutionPayloadBodyV1 struct {
 type EngineAPI interface {
 	NewPayloadV1(context.Context, *ExecutionPayload) (map[string]interface{}, error)
 	NewPayloadV2(context.Context, *ExecutionPayload) (map[string]interface{}, error)
+	NewPayloadV3(context.Context, *ExecutionPayload) (map[string]interface{}, error)
 	ForkchoiceUpdatedV1(ctx context.Context, forkChoiceState *ForkChoiceState, payloadAttributes *PayloadAttributes) (map[string]interface{}, error)
 	ForkchoiceUpdatedV2(ctx context.Context, forkChoiceState *ForkChoiceState, payloadAttributes *PayloadAttributes) (map[string]interface{}, error)
 	GetPayloadV1(ctx context.Context, payloadID hexutility.Bytes) (*ExecutionPayload, error)
@@ -269,6 +271,12 @@ func (e *EngineImpl) NewPayloadV2(ctx context.Context, payload *ExecutionPayload
 	return e.newPayload(2, ctx, payload)
 }
 
+// NewPayloadV3 processes new payloads (blocks) from the beacon chain with withdrawals & excess data gas.
+// See https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_newpayloadv3
+func (e *EngineImpl) NewPayloadV3(ctx context.Context, payload *ExecutionPayload) (map[string]interface{}, error) {
+	return e.newPayload(3, ctx, payload)
+}
+
 func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *ExecutionPayload) (map[string]interface{}, error) {
 	if e.internalCL {
 		return nil, errEmbedeedConsensus
@@ -405,7 +413,7 @@ func (e *EngineImpl) GetPayloadV2(ctx context.Context, payloadID hexutility.Byte
 }
 
 func (e *EngineImpl) GetPayloadV3(ctx context.Context, payloadID hexutility.Bytes) (*GetPayloadV3Response, error) {
-	if e.internalCL { // TODO: find out what is the way around it
+	if e.internalCL {
 		log.Error("EXTERNAL CONSENSUS LAYER IS NOT ENABLED, PLEASE RESTART WITH FLAG --externalcl")
 		return nil, fmt.Errorf("engine api should not be used, restart with --externalcl")
 	}
@@ -523,8 +531,10 @@ var ourCapabilities = []string{
 	"engine_forkchoiceUpdatedV2",
 	"engine_newPayloadV1",
 	"engine_newPayloadV2",
+	// "engine_newPayloadV3",
 	"engine_getPayloadV1",
 	"engine_getPayloadV2",
+	// "engine_getPayloadV3",
 	"engine_exchangeTransitionConfigurationV1",
 	"engine_getPayloadBodiesByHashV1",
 	"engine_getPayloadBodiesByRangeV1",

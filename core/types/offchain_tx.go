@@ -56,6 +56,7 @@ type OffchainTransaction struct {
 	Data       []byte
 }
 
+func (tx OffchainTransaction) GetDataGas() uint64      { return 0 } // FIXME - do we need this?
 func (tx OffchainTransaction) GetGas() uint64          { return tx.GasLimit }
 func (tx OffchainTransaction) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx OffchainTransaction) GetTip() *uint256.Int    { return uint256.NewInt(0) }
@@ -80,6 +81,7 @@ func (tx OffchainTransaction) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.
 	*/
 	return uint256.NewInt(0)
 }
+func (tx *OffchainTransaction) Unwrap() Transaction { return tx }
 
 func (tx OffchainTransaction) Cost() *uint256.Int {
 	log.Warn("MMDBG dtX Cost")

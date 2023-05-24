@@ -118,7 +118,6 @@ func HCGenerateRandom() (*uint256.Int, error) {
 	return ret256, nil
 }
 
-
 // This function attempts to perform the offchain JSON-RPC request and to parse the response.
 // Errors here will be passed back to the caller and will not trigger ErrHCFailed.
 // TODO - redirect outgoing requests through an external proxy (squid, socks5, etc).
@@ -129,7 +128,7 @@ func DoOffchain(reqUrl string, reqMethod libcommon.Address, reqPayload []byte) (
 	log.Debug("MMDBG-HC Sleep done")
 
 	// Offchain
-	client, err := rpc.Dial(reqUrl)
+	client, err := rpc.Dial(reqUrl, log.New())
 
 	if err != nil {
 		log.Warn("MMDBG-HC Dial failure", "err", err, "url", reqUrl)
@@ -171,11 +170,11 @@ func DoOffchain(reqUrl string, reqMethod libcommon.Address, reqPayload []byte) (
 
 type RandomCacheEntry struct {
 	expectedHash libcommon.Hash
-	secret	*uint256.Int
-	commitBN uint64
+	secret       *uint256.Int
+	commitBN     uint64
 }
 
-var randomCache map[libcommon.Hash]*RandomCacheEntry;
+var randomCache map[libcommon.Hash]*RandomCacheEntry
 
 func DoRandomSeq(caller libcommon.Address, session [32]byte, cNext libcommon.Hash, cNum *uint256.Int, blockNumber uint64) (*libcommon.Hash, *uint256.Int, error) {
 	var err error
@@ -193,7 +192,7 @@ func DoRandomSeq(caller libcommon.Address, session [32]byte, cNext libcommon.Has
 	var commitDepth uint64 = 1 // TODO - could make this configurable somehow, or could hardcode it
 
 	if randomCache == nil {
-		randomCache = make(map[libcommon.Hash]*RandomCacheEntry);
+		randomCache = make(map[libcommon.Hash]*RandomCacheEntry)
 	}
 
 	if cNext != zeroHash {
@@ -205,7 +204,7 @@ func DoRandomSeq(caller libcommon.Address, session [32]byte, cNext libcommon.Has
 		hasher.Write(cNext.Bytes())
 		nextKey = libcommon.BytesToHash(hasher.Sum(nil))
 
-		nextCE,found = randomCache[nextKey]
+		nextCE, found = randomCache[nextKey]
 
 		if !found {
 			nextCE = new(RandomCacheEntry)
@@ -244,11 +243,11 @@ func DoRandomSeq(caller libcommon.Address, session [32]byte, cNext libcommon.Has
 		thisKey := libcommon.BytesToHash(hasher.Sum(nil))
 		log.Debug("MMDBG-HC will check randomCache for", "cNum", cNum, "key", thisKey)
 
-		thisCE,found = randomCache[thisKey]
+		thisCE, found = randomCache[thisKey]
 		if !found {
 			log.Debug("MMDBG-HC Cache entry not found for", "key", thisKey)
 			return nil, nil, errors.New("DoRandomSeq state not found")
-		} else if blockNumber < thisCE.commitBN + commitDepth {
+		} else if blockNumber < thisCE.commitBN+commitDepth {
 			log.Debug("MMDBG-HC Invalid block number for DoRandomSeq", "expected", thisCE.commitBN, "actual", blockNumber)
 			return nil, nil, errors.New("DoRandomSeq invalid block number")
 		} else {
@@ -274,8 +273,8 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		tBytes32, _ = abi.NewType("bytes32", "", nil)
 		tString, _  = abi.NewType("string", "", nil)
 		//tUint32,_  = abi.NewType("uint32", "", nil)
-		tUint256,_  = abi.NewType("uint256", "", nil)
-		tBool, _ = abi.NewType("bool", "", nil)
+		tUint256, _ = abi.NewType("uint256", "", nil)
+		tBool, _    = abi.NewType("bool", "", nil)
 	)
 
 	var responseCode uint32 // 0 = success
@@ -350,9 +349,9 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		sNext, resultNum, err := DoRandomSeq(hc.Caller, session, clientHash, clientNum, blockNumber)
 
 		if err == nil {
-			xHash := *sNext;
+			xHash := *sNext
 			xNum := resultNum.ToBig()
-			responseBytes,err = (abi.Arguments{{Type: tBytes32}, {Type: tUint256}}).Pack([32]byte(xHash), xNum)
+			responseBytes, err = (abi.Arguments{{Type: tBytes32}, {Type: tUint256}}).Pack([32]byte(xHash), xNum)
 			log.Debug("MMDBG-HC RandomSeq encode", "sNext", xHash, "resultNum", xNum, "err", err, "responseBytes", responseBytes)
 		} else {
 			responseBytes = nil
@@ -376,7 +375,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		success = true
 	}
 
-	resp, err := (abi.Arguments{{Type: tBytes32}, {Type: tBool}, {Type: tBytes}}).Pack([32]byte(reqKey), success, responseBytes[:])
+	resp, err := (abi.Arguments{{Type: tBytes32}, {Type: tBool}, {Type: tBytes}}).Pack([32]byte(reqKey), success, responseBytes)
 
 	if err != nil {
 		log.Warn("MMDBG-HC Response encode failed", "err", err)
