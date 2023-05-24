@@ -44,7 +44,7 @@ var migrations = map[kv.Label][]Migration{
 type Callback func(tx kv.RwTx, progress []byte, isDone bool) error
 type Migration struct {
 	Name string
-	Up   func(db kv.RwDB, dirs datadir.Dirs, progress []byte, BeforeCommit Callback) error
+	Up   func(db kv.RwDB, dirs datadir.Dirs, progress []byte, BeforeCommit Callback, logger log.Logger) error
 }
 
 var (
@@ -154,7 +154,7 @@ func (m *Migrator) VerifyVersion(db kv.RwDB) error {
 	return nil
 }
 
-func (m *Migrator) Apply(db kv.RwDB, dataDir string) error {
+func (m *Migrator) Apply(db kv.RwDB, dataDir string, logger log.Logger) error {
 	if len(m.Migrations) == 0 {
 		return nil
 	}
@@ -193,7 +193,7 @@ func (m *Migrator) Apply(db kv.RwDB, dataDir string) error {
 
 		callbackCalled := false // commit function must be called if no error, protection against people's mistake
 
-		log.Info("Apply migration", "name", v.Name)
+		logger.Info("Apply migration", "name", v.Name)
 		var progress []byte
 		if err := db.View(context.Background(), func(tx kv.Tx) (err error) {
 			progress, err = tx.GetOne(kv.Migrations, []byte("_progress_"+v.Name))
@@ -229,14 +229,14 @@ func (m *Migrator) Apply(db kv.RwDB, dataDir string) error {
 			}
 
 			return nil
-		}); err != nil {
+		}, logger); err != nil {
 			return fmt.Errorf("migrator.Apply.Up: %s, %w", v.Name, err)
 		}
 
 		if !callbackCalled {
 			return fmt.Errorf("%w: %s", ErrMigrationCommitNotCalled, v.Name)
 		}
-		log.Info("Applied migration", "name", v.Name)
+		logger.Info("Applied migration", "name", v.Name)
 	}
 	// Write DB schema version
 	var version [12]byte
@@ -251,7 +251,7 @@ func (m *Migrator) Apply(db kv.RwDB, dataDir string) error {
 	}); err != nil {
 		return fmt.Errorf("migrator.Apply: %w", err)
 	}
-	log.Info("Updated DB schema to", "version", fmt.Sprintf("%d.%d.%d", kv.DBSchemaVersion.Major, kv.DBSchemaVersion.Minor, kv.DBSchemaVersion.Patch))
+	logger.Info("Updated DB schema to", "version", fmt.Sprintf("%d.%d.%d", kv.DBSchemaVersion.Major, kv.DBSchemaVersion.Minor, kv.DBSchemaVersion.Patch))
 	return nil
 }
 

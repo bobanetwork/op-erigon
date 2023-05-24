@@ -215,6 +215,25 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 			}
 		}
 	}
+
+	// compute data fee for eip-4844 data blobs if any
+	dgval := new(uint256.Int)
+	var dataGasUsed uint64
+	if st.evm.ChainRules().IsCancun {
+		dataGasUsed = st.dataGasUsed()
+		if st.evm.Context().ExcessDataGas == nil {
+			return fmt.Errorf("%w: sharding is active but ExcessDataGas is nil", ErrInternalFailure)
+		}
+		dataGasPrice, err := misc.GetDataGasPrice(st.evm.Context().ExcessDataGas)
+		if err != nil {
+			return err
+		}
+		_, overflow = dgval.MulOverflow(dataGasPrice, new(uint256.Int).SetUint64(dataGasUsed))
+		if overflow {
+			return fmt.Errorf("%w: overflow converting datagas: %v", ErrInsufficientFunds, dgval)
+		}
+	}
+
 	balanceCheck := mgval
 	if st.gasFeeCap != nil {
 		balanceCheck = st.sharedBuyGasBalance.SetUint64(st.msg.Gas())
@@ -227,10 +246,14 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 			return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 		}
 		if l1Cost != nil {
-			balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, l1Cost)
+			balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, l1Cost) // FIXME - combine with dgval below
 			if overflow {
 				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 			}
+		}
+		balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, dgval)
+		if overflow {
+			return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 		}
 	}
 	var subBalance = false
@@ -247,10 +270,15 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 		}
 	}
 	st.gas += st.msg.Gas()
-
 	st.initialGas = st.msg.Gas()
+
+	if err := st.gp.SubDataGas(dataGasUsed); err != nil {
+		return err
+	}
+
 	if subBalance {
 		st.state.SubBalance(st.msg.From(), mgval)
+		st.state.SubBalance(st.msg.From(), dgval)
 	}
 	return nil
 }
@@ -322,6 +350,19 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 			}
 		}
 	}
+	if st.dataGasUsed() > 0 && st.evm.ChainRules().IsCancun {
+		dataGasPrice, err := misc.GetDataGasPrice(st.evm.Context().ExcessDataGas)
+		if err != nil {
+			return err
+		}
+		maxFeePerDataGas := st.msg.MaxFeePerDataGas()
+		if dataGasPrice.Cmp(maxFeePerDataGas) > 0 {
+			return fmt.Errorf("%w: address %v, maxFeePerDataGas: %v dataGasPrice: %v, excessDataGas: %v",
+				ErrMaxFeePerDataGas,
+				st.msg.From().Hex(), st.msg.MaxFeePerDataGas(), dataGasPrice, st.evm.Context().ExcessDataGas)
+		}
+	}
+
 	return st.buyGas(gasBailout)
 }
 
@@ -368,11 +409,13 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
 func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
+	coinbase := st.evm.Context().Coinbase
+
 	var input1 *uint256.Int
 	var input2 *uint256.Int
 	if st.isBor {
 		input1 = st.state.GetBalance(st.msg.From()).Clone()
-		input2 = st.state.GetBalance(st.evm.Context().Coinbase).Clone()
+		input2 = st.state.GetBalance(coinbase).Clone()
 	}
 
 	// First check this message satisfies all consensus rules before
@@ -426,14 +469,10 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		return nil, fmt.Errorf("%w: code size %v limit %v", ErrMaxInitCodeSizeExceeded, len(st.data), params.MaxInitCodeSize)
 	}
 
-	// Set up the initial access list.
-	if rules.IsBerlin {
-		st.state.PrepareAccessList(msg.From(), msg.To(), vm.ActivePrecompiles(rules), msg.AccessList())
-		// EIP-3651 warm COINBASE
-		if rules.IsShanghai {
-			st.state.AddAddressToAccessList(st.evm.Context().Coinbase)
-		}
-	}
+	// Execute the preparatory steps for state transition which includes:
+	// - prepare accessList(post-berlin)
+	// - reset transient storage(eip 1153)
+	st.state.Prepare(rules, msg.From(), coinbase, msg.To(), vm.ActivePrecompiles(rules), msg.AccessList())
 
 	var (
 		ret   []byte
@@ -485,7 +524,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	}
 	amount := new(uint256.Int).SetUint64(st.gasUsed())
 	amount.Mul(amount, effectiveTip) // gasUsed * effectiveTip = how much goes to the block producer (miner, validator)
-	st.state.AddBalance(st.evm.Context().Coinbase, amount)
+	st.state.AddBalance(coinbase, amount)
 	if !msg.IsFree() && rules.IsLondon && rules.IsEip1559FeeCollector {
 		burntContractAddress := *st.evm.ChainConfig().Eip1559FeeCollector
 		burnAmount := new(uint256.Int).Mul(new(uint256.Int).SetUint64(st.gasUsed()), st.evm.Context().BaseFee)
@@ -500,7 +539,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 			st.state,
 
 			msg.From(),
-			st.evm.Context().Coinbase,
+			coinbase,
 
 			amount,
 			input1,
