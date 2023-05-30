@@ -48,7 +48,12 @@ const (
 	HC_OFFCHAIN_V1
 	HC_RANDOM_V1
 	HC_RANDOMSEQ_V1
+	HC_LEGACY_RANDOM
+	HC_LEGACY_OFFCHAIN
 )
+
+// Maximum length of hex-encoded response string
+const HC_MAX_ENC = 16384
 
 type HCContext struct {
 	State  int
@@ -147,6 +152,12 @@ func DoOffchain(reqUrl string, reqMethod libcommon.Address, reqPayload []byte) (
 		return []byte(err.Error()), 1002
 	}
 	log.Debug("MMDBG-HC ClientCall result", "responseStringEnc", responseStringEnc)
+	
+	if len(responseStringEnc) > HC_MAX_ENC {
+		log.Warn("MMDBG-HC Encoded response too long", "len", len(responseStringEnc))
+		return []byte("Encoded response too long"), 1004
+	}
+	
 	responseBytes, err = hexutil.Decode(responseStringEnc)
 	if err != nil {
 		log.Warn("MMDBG-HC Response decode failed", "err", err)
@@ -210,7 +221,6 @@ func DoRandomSeq(caller libcommon.Address, session [32]byte, cNext libcommon.Has
 			nextCE = new(RandomCacheEntry)
 			nextCE.secret, err = HCGenerateRandom()
 			nextCE.commitBN = blockNumber
-			// FIXME BlockNumber
 			if err != nil {
 				log.Warn("MMDBG-HC HCGenerateRandom() failed", "err", err)
 				return nil, nil, errors.New("HCGenerateRandom failed")
@@ -272,7 +282,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		tBytes, _   = abi.NewType("bytes", "", nil)
 		tBytes32, _ = abi.NewType("bytes32", "", nil)
 		tString, _  = abi.NewType("string", "", nil)
-		//tUint32,_  = abi.NewType("uint32", "", nil)
+		tUint32,_  = abi.NewType("uint32", "", nil)
 		tUint256, _ = abi.NewType("uint256", "", nil)
 		tBool, _    = abi.NewType("bool", "", nil)
 	)
@@ -296,6 +306,19 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		responseBytes = r32[:]
 
 		hasher.Write([]byte{0xc6, 0xe4, 0xb0, 0xd3})
+		hasher.Write(hc.Caller.Bytes())
+	case HC_LEGACY_RANDOM:
+		// SimpleRandom
+		r256, err := HCGenerateRandom()
+		if err != nil {
+			log.Warn("MMDBG-HC LegacyRandom failed", "err", err)
+			hc.State = 4
+			return ErrHCFailed
+		}
+		r32 := r256.Bytes32()
+		responseBytes = r32[:]
+
+		hasher.Write([]byte{0x49, 0x3d, 0x57, 0xd6})
 		hasher.Write(hc.Caller.Bytes())
 	case HC_OFFCHAIN_V1:
 		// We now expect to have an ABI-encoded (url_string, payload_bytes)
@@ -322,6 +345,58 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 			log.Debug("MMDBG-HC DoOffchain failed", "errCode", responseCode, "response", responseBytes)
 		}
 		log.Debug("MMDBG-HC Request", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
+	case HC_LEGACY_OFFCHAIN:
+		dec, err := (abi.Arguments{{Type: tUint32}, {Type: tString}, {Type: tBytes}}).Unpack(hc.Request[4:])
+		log.Debug("MMDBG-HC ABI decode (offchain)", "dec", dec, "err", err, "hc", hc)
+	
+		legacyVersion := dec[0].(uint32)
+		log.Debug("MMDBG-HC Legacy Offchain call", "version", legacyVersion)
+
+		if err != nil {
+			log.Warn("MMDBG-HC Request decode failed", "err", err)
+			hc.State = 4
+			return ErrHCFailed
+		}
+		reqUrl := dec[1].(string)
+		reqMethod := hc.Caller
+		reqPayload := dec[2].([]byte)
+		
+		hasher.Write([]byte{0x7d, 0x93, 0x61, 0x6c})
+		hasher.Write(hc.Caller.Bytes())
+		hasher.Write([]byte(reqUrl))
+		hasher.Write(reqPayload)
+
+		if legacyVersion == 1 {
+			// Originally a Length field was prepended to the offchain request and response.
+			pLen := uint32(len(reqPayload))
+			prefix, err := (abi.Arguments{{Type: tUint32}}).Pack(pLen)
+			if err != nil {
+				log.Warn("MMDBG-HC Legacy-encode failed", "err", err)
+				hc.State = 4
+				return ErrHCFailed
+			}
+			reqPayload = append(prefix, reqPayload...)
+			log.Debug("MMDBG-HC legacyVersion new payload", "reqPayload", reqPayload)
+		}
+
+		log.Debug("MMDBG-HC Legacy Request", "reqUrl", reqUrl, "reqMethod", reqMethod)
+		responseBytes, responseCode = DoOffchain(reqUrl, reqMethod, reqPayload)
+		if responseCode != 0 {
+			log.Debug("MMDBG-HC LegacyOffchain failed", "errCode", responseCode, "response", responseBytes)
+		}
+		log.Debug("MMDBG-HC Legacy Request (1)", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
+		
+		if legacyVersion == 1 {
+			responseLen := new(big.Int).SetBytes(responseBytes[:32])
+			responseBytes = responseBytes[32:]
+			
+			if responseLen.Cmp(big.NewInt(int64(len(responseBytes)))) != 0 {
+				log.Warn("MMDBG-HC Legacy-decode length mismatch", "expected", responseLen, "actual", len(responseBytes))
+				hc.State = 4
+				return ErrHCFailed
+			}
+		}
+		log.Debug("MMDBG-HC Legacy Request (2)", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
 	case HC_RANDOMSEQ_V1:
 		dec, err := (abi.Arguments{{Type: tBytes32}, {Type: tBytes32}, {Type: tUint256}}).Unpack(hc.Request[4:])
 		if err != nil {
@@ -415,9 +490,14 @@ func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 		hc.OpType = HC_RANDOM_V1
 	case bytes.Equal(input[:4], []byte{0x32, 0xbe, 0x42, 0x8f}):
 		hc.OpType = HC_RANDOMSEQ_V1
+	case bytes.Equal(input[:4], []byte{0x49, 0x3d, 0x57, 0xd6}):
+		hc.OpType = HC_LEGACY_RANDOM
+	case bytes.Equal(input[:4], []byte{0x7d, 0x93, 0x61, 0x6c}):
+		hc.OpType = HC_LEGACY_OFFCHAIN
 	default:
 		log.Debug("MMDBG-HC noTrigger", "sel", hexutility.Bytes(input[:4]))
 		return false
 	}
+	log.Debug("MMDBG-HC Triggered with", "OpType", hc.OpType)
 	return true
 }
