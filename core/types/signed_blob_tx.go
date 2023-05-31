@@ -520,6 +520,7 @@ func (stx SignedBlobTx) AsMessage(s Signer, baseFee *big.Int, rules *chain.Rules
 		maxFeePerDataGas: *stx.GetMaxFeePerDataGas(),
 		dataHashes:       stx.GetDataHashes(),
 		checkNonce:       true,
+		rollupDataGas:    rollupDataGas(stx),
 	}
 
 	if baseFee != nil {

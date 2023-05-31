@@ -381,16 +381,17 @@ func (tx *DynamicFeeTransaction) DecodeRLP(s *rlp.Stream) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx DynamicFeeTransaction) AsMessage(s Signer, baseFee *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
-		nonce:      tx.Nonce,
-		gasLimit:   tx.Gas,
-		gasPrice:   *tx.FeeCap,
-		tip:        *tx.Tip,
-		feeCap:     *tx.FeeCap,
-		to:         tx.To,
-		amount:     *tx.Value,
-		data:       tx.Data,
-		accessList: tx.AccessList,
-		checkNonce: true,
+		nonce:         tx.Nonce,
+		gasLimit:      tx.Gas,
+		gasPrice:      *tx.FeeCap,
+		tip:           *tx.Tip,
+		feeCap:        *tx.FeeCap,
+		to:            tx.To,
+		amount:        *tx.Value,
+		data:          tx.Data,
+		accessList:    tx.AccessList,
+		checkNonce:    true,
+		rollupDataGas: rollupDataGas(tx),
 	}
 	if !rules.IsLondon {
 		return msg, errors.New("eip-1559 transactions require London")
