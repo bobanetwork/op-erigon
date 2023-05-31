@@ -232,6 +232,7 @@ func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Me
 		data:       tx.Data,
 		accessList: nil,
 		checkNonce: true,
+		rollupDataGas: rollupDataGas(tx),
 	}
 
 	var err error

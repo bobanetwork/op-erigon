@@ -115,8 +115,10 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 				l1Fee := l1CostFunc(evm.Context().BlockNumber, msg)
 				if l1Fee != nil {
 					receipt.L1Fee = l1Fee.ToBig()
+					log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "txhash", tx.Hash())
+				} else {
+					log.Info("MMDBG Nil L1Fee for receipt", "msg", msg)
 				}
-				log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "txhash", tx.Hash())
 			} else {
 				log.Warn("MMDBG No cost function set in context", "txhash", tx.Hash())
 			}

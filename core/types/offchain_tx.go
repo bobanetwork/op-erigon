@@ -251,6 +251,7 @@ func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (M
 		data:       tx.Data,
 		accessList: nil,
 		checkNonce: true,
+		rollupDataGas: rollupDataGas(tx),
 	}
 
 	var err error

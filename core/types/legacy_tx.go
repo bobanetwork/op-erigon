@@ -384,6 +384,7 @@ func (tx LegacyTx) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, err
 		data:       tx.Data,
 		accessList: nil,
 		checkNonce: true,
+		rollupDataGas: rollupDataGas(tx),
 	}
 
 	var err error

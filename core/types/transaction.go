@@ -131,6 +131,7 @@ func (tm TransactionMisc) From() *atomic.Value {
 
 func rollupDataGas(tx binMarshalable) uint64 {
 	var buf bytes.Buffer
+	log.Info("MMDBG called rollupDataGas", "tx", tx)
 	if err := tx.MarshalBinary(&buf); err != nil {
 		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
 		log.Error("failed to encode tx for L1 cost computation", "err", err)
