@@ -1,8 +1,6 @@
 package state
 
-import (
-	"github.com/ledgerwatch/erigon/cl/cltypes"
-)
+import "github.com/ledgerwatch/erigon/cl/cltypes/solid"
 
 // Below are setters.
 
@@ -14,14 +12,9 @@ func (b *BeaconState) SetSlot(slot uint64) {
 	}
 }
 
-func (b *BeaconState) AddValidator(validator *cltypes.Validator, balance uint64) {
+func (b *BeaconState) AddValidator(validator solid.Validator, balance uint64) {
 	b.BeaconState.AddValidator(validator, balance)
 	b.publicKeyIndicies[validator.PublicKey()] = uint64(b.ValidatorLength()) - 1
 	// change in validator set means cache purging
 	b.totalActiveBalanceCache = nil
-}
-
-func (b *BeaconState) SetBalances(balances []uint64) {
-	b.BeaconState.SetBalances(balances)
-	b._refreshActiveBalances()
 }
