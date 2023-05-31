@@ -582,7 +582,7 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 	}
 
 	if isBobaLegacyBlock {
-		head.Root = libcommon.HexToHash(chain.BobaGoerliGenesisRoot)
+		head.Root = libcommon.HexToHash(g.Config.GetBobaGenesisRoot())
 	} else {
 		head.Root = root
 	}

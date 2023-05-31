@@ -483,9 +483,14 @@ func (tx *LegacyTx) IsLegacyDepositTx() bool {
 	if tx.To == nil {
 		return false
 	}
-	if *tx.To == MessengerAddress && *V == (uint256.Int{}) &&
-		*R == (uint256.Int{}) && *S == (uint256.Int{}) &&
-		*S == (uint256.Int{}) && tx.Time().Unix() < int64(chain.BobaGoerliBedrockTime) {
+	if tx.CommonTx.ChainID == nil {
+		return true
+	}
+	if *tx.To == MessengerAddress &&
+		*V == (uint256.Int{}) &&
+		*R == (uint256.Int{}) &&
+		*S == (uint256.Int{}) &&
+		tx.Time().Unix() < int64(chain.GetBobaBedrockTime(tx.CommonTx.ChainID.ToBig())) {
 		return true
 	}
 	return false
