@@ -100,6 +100,7 @@ type Message interface {
 	IsFree() bool
 	IsSystemTx() bool
 	IsDepositTx() bool
+	GetType() byte
 	RollupDataGas() uint64
 	Mint() *uint256.Int
 }
@@ -326,7 +327,7 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 		}
 		return st.gp.SubGas(st.msg.Gas()) // gas used by deposits may not be used by other txs
 	}
-	if st.msg.Nonce() == 0xffff_ffff_ffff_fffc {
+	if st.msg.GetType() == types2.OffchainTxType {
 		log.Debug("MMDBG preCheck for Offchain txn")
 
 		// Following section copied from Optimism patchset

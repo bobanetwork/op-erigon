@@ -46,7 +46,6 @@ type OffchainTransaction struct {
 	TransactionMisc
 
 	SourceHash *libcommon.Hash
-	Nonce      uint64
 	From       *libcommon.Address
 	To         *libcommon.Address
 	Mint       *uint256.Int
@@ -61,7 +60,7 @@ func (tx OffchainTransaction) GetGas() uint64          { return tx.GasLimit }
 func (tx OffchainTransaction) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx OffchainTransaction) GetTip() *uint256.Int    { return uint256.NewInt(0) }
 func (tx OffchainTransaction) GetFeeCap() *uint256.Int { return uint256.NewInt(0) }
-func (tx OffchainTransaction) GetNonce() uint64        { return tx.Nonce }
+func (tx OffchainTransaction) GetNonce() uint64        { return 0 }
 func (tx OffchainTransaction) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
 	/*
 		if baseFee == nil {
@@ -119,7 +118,6 @@ func (tx OffchainTransaction) EncodingSize() int {
 func (tx OffchainTransaction) copy() *OffchainTransaction {
 	cpy := &OffchainTransaction{
 		SourceHash: tx.SourceHash,
-		Nonce:      tx.Nonce,
 		From:       tx.From,
 		To:         tx.To,
 		Mint:       tx.Mint,
@@ -184,8 +182,6 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 		return fmt.Errorf("list header: %w", err)
 	}
 
-	tx.Nonce = 0xffff_ffff_ffff_fffc
-
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read SourceHash: %w", err)
 	}
@@ -246,7 +242,6 @@ func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (M
 	msg := Message{
 		txType:     OffchainTxType,
 		sourceHash: tx.SourceHash,
-		nonce:      tx.Nonce,
 		from:       *tx.From,
 		gasLimit:   tx.GasLimit,
 		to:         tx.To,
@@ -391,7 +386,6 @@ func NewOffchainTx(data []byte) *OffchainTransaction {
 
 	ret := &OffchainTransaction{
 		SourceHash: &hcHash,
-		Nonce:      0xffff_ffff_ffff_fffc,
 		From:       &hcFrom,
 		To:         &hcHelper,
 		Mint:       uint256.NewInt(0),
