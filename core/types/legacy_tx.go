@@ -475,22 +475,16 @@ func (tx *LegacyTx) Sender(signer Signer) (libcommon.Address, error) {
 	return addr, nil
 }
 
-// The last timestamp check is to ensure that any transaction is not a legacy deposit transaction
-// after the bedrock upgrade.
 func (tx *LegacyTx) IsLegacyDepositTx() bool {
 	V, R, S := tx.RawSignatureValues()
 	// contract creation
 	if tx.To == nil {
 		return false
 	}
-	if tx.CommonTx.ChainID == nil {
-		return true
-	}
 	if *tx.To == MessengerAddress &&
 		*V == (uint256.Int{}) &&
 		*R == (uint256.Int{}) &&
-		*S == (uint256.Int{}) &&
-		tx.Time().Unix() < int64(chain.GetBobaBedrockTime(tx.CommonTx.ChainID.ToBig())) {
+		*S == (uint256.Int{}) {
 		return true
 	}
 	return false
