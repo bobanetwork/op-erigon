@@ -147,7 +147,6 @@ func rollupDataGas(tx binMarshalable) uint64 {
 	zeroesGas := zeroes * params.TxDataZeroGas
 	onesGas := (ones + 68) * params.TxDataNonZeroGasEIP2028
 	total := zeroesGas + onesGas
-	log.Info("MMDBG computing rollupDataGas", "total", total, "tx", tx)
 	return total
 }
 
