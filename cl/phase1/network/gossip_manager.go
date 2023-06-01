@@ -4,6 +4,7 @@ import (
 	"context"
 	"runtime"
 
+	"github.com/VictoriaMetrics/metrics"
 	"github.com/ledgerwatch/erigon/cl/cltypes/solid"
 	"github.com/ledgerwatch/erigon/cl/phase1/forkchoice"
 
@@ -86,6 +87,12 @@ func (g *GossipManager) onRecv(data *sentinel.GossipData, l log.Ctx) error {
 			"numGC", m.NumGC,
 		)
 
+		peers := metrics.GetOrCreateGauge("caplin_peer_count", func() float64 {
+			return float64(count.Amount)
+		})
+
+		peers.Get()
+
 		if err := g.forkChoice.OnBlock(block, true, true); err != nil {
 			// if we are within a quarter of an epoch within chain tip we ban it
 			if currentSlotByTime < g.forkChoice.HighestSeen()+(g.beaconConfig.SlotsPerEpoch/4) {
@@ -94,7 +101,7 @@ func (g *GossipManager) onRecv(data *sentinel.GossipData, l log.Ctx) error {
 			l["at"] = "block process"
 			return err
 		}
-		block.Block.Body.Attestations.ForEach(func(a *solid.Attestation, idx, total int) bool {
+		block.Block.Body.Attestations.Range(func(idx int, a *solid.Attestation, total int) bool {
 			if err = g.forkChoice.OnAttestation(a, true); err != nil {
 				return false
 			}

@@ -265,7 +265,7 @@ type MultiClient struct {
 	networkId                         uint64
 	db                                kv.RwDB
 	Engine                            consensus.Engine
-	blockReader                       services.HeaderAndCanonicalReader
+	blockReader                       services.FullBlockReader
 	logPeerInfo                       bool
 	sendHeaderRequestsToMultiplePeers bool
 
@@ -283,7 +283,7 @@ func NewMultiClient(
 	networkID uint64,
 	sentries []direct.SentryClient,
 	syncCfg ethconfig.Sync,
-	blockReader services.HeaderAndCanonicalReader,
+	blockReader services.FullBlockReader,
 	logPeerInfo bool,
 	forkValidator *engineapi.ForkValidator,
 	dropUselessPeers bool,
@@ -305,7 +305,7 @@ func NewMultiClient(
 	if err := hd.RecoverFromDb(db); err != nil {
 		return nil, fmt.Errorf("recovery from DB failed: %w", err)
 	}
-	bd := bodydownload.NewBodyDownload(engine, int(syncCfg.BodyCacheLimit))
+	bd := bodydownload.NewBodyDownload(engine, int(syncCfg.BodyCacheLimit), blockReader)
 
 	cs := &MultiClient{
 		nodeName:                          nodeName,
@@ -636,7 +636,7 @@ func (cs *MultiClient) getBlockBodies66(ctx context.Context, inreq *proto_sentry
 		return err
 	}
 	defer tx.Rollback()
-	response := eth.AnswerGetBlockBodiesQuery(tx, query.GetBlockBodiesPacket)
+	response := eth.AnswerGetBlockBodiesQuery(tx, query.GetBlockBodiesPacket, cs.blockReader)
 	tx.Rollback()
 	b, err := rlp.EncodeToBytes(&eth.BlockBodiesRLPPacket66{
 		RequestId:            query.RequestId,

@@ -35,7 +35,6 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/params"
-	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
 )
 
 type MiningExecCfg struct {
@@ -54,19 +53,12 @@ type MiningExecCfg struct {
 }
 
 func StageMiningExecCfg(
-	db kv.RwDB,
-	miningState MiningState,
-	notifier ChainEventNotifier,
-	chainConfig chain.Config,
-	engine consensus.Engine,
-	vmConfig *vm.Config,
-	tmpdir string,
-	interrupt *int32,
-	payloadId uint64,
-	txPool2 *txpool.TxPool,
-	txPool2DB kv.RoDB,
-	snapshots *snapshotsync.RoSnapshots,
-	transactionsV3 bool,
+	db kv.RwDB, miningState MiningState,
+	notifier ChainEventNotifier, chainConfig chain.Config,
+	engine consensus.Engine, vmConfig *vm.Config,
+	tmpdir string, interrupt *int32, payloadId uint64,
+	txPool2 *txpool.TxPool, txPool2DB kv.RoDB,
+	blockReader services.FullBlockReader,
 ) MiningExecCfg {
 	return MiningExecCfg{
 		db:          db,
@@ -74,7 +66,7 @@ func StageMiningExecCfg(
 		notifier:    notifier,
 		chainConfig: chainConfig,
 		engine:      engine,
-		blockReader: snapshotsync.NewBlockReader(snapshots, transactionsV3),
+		blockReader: blockReader,
 		vmConfig:    vmConfig,
 		tmpdir:      tmpdir,
 		interrupt:   interrupt,

@@ -10,10 +10,21 @@ import (
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/log/v3"
+	"github.com/valyala/fastjson"
 
 	"github.com/ledgerwatch/erigon/cmd/devnet/models"
-	"github.com/ledgerwatch/erigon/cmd/rpctest/rpctest"
 )
+
+type CallResult struct {
+	Target      string
+	Took        time.Duration
+	RequestID   int
+	Method      string
+	RequestBody string
+	Response    []byte
+	Result      *fastjson.Value
+	Err         error
+}
 
 func post(client *http.Client, url, request string, response interface{}, logger log.Logger) error {
 	start := time.Now()
@@ -52,10 +63,10 @@ type RequestGenerator struct {
 	logger log.Logger
 }
 
-func (req *RequestGenerator) call(target string, method, body string, response interface{}) rpctest.CallResult {
+func (req *RequestGenerator) call(target string, method, body string, response interface{}) CallResult {
 	start := time.Now()
 	err := post(req.client, models.ErigonUrl, body, response, req.logger)
-	return rpctest.CallResult{
+	r := CallResult{
 		RequestBody: body,
 		Target:      target,
 		Took:        time.Since(start),
@@ -63,9 +74,11 @@ func (req *RequestGenerator) call(target string, method, body string, response i
 		Method:      method,
 		Err:         err,
 	}
+	req.reqID++
+	return r
 }
 
-func (req *RequestGenerator) Erigon(method models.RPCMethod, body string, response interface{}) rpctest.CallResult {
+func (req *RequestGenerator) Erigon(method models.RPCMethod, body string, response interface{}) CallResult {
 	return req.call(models.ErigonUrl, string(method), body, response)
 }
 
@@ -119,9 +132,9 @@ func (req *RequestGenerator) GetBlockDetails(blockNum string) string {
 	return fmt.Sprintf(template, models.OTSGetBlockDetails, blockNum, req.reqID)
 }
 
-func (req *RequestGenerator) PingErigonRpc() rpctest.CallResult {
+func (req *RequestGenerator) PingErigonRpc() CallResult {
 	start := time.Now()
-	res := rpctest.CallResult{
+	res := CallResult{
 		RequestID: req.reqID,
 	}
 
@@ -161,19 +174,14 @@ func (req *RequestGenerator) PingErigonRpc() rpctest.CallResult {
 	return res
 }
 
-func initialiseRequestGenerator(reqId int, logger log.Logger) *RequestGenerator {
+func NewRequestGenerator(logger log.Logger) *RequestGenerator {
 	var client = &http.Client{
 		Timeout: time.Second * 600,
 	}
-
 	reqGen := RequestGenerator{
 		client: client,
-		reqID:  reqId,
+		reqID:  1,
 		logger: logger,
 	}
-	if reqGen.reqID == 0 {
-		reqGen.reqID++
-	}
-
 	return &reqGen
 }

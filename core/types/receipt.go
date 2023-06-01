@@ -506,6 +506,8 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 	if len(senders) != len(txs) {
 		return fmt.Errorf("transaction and senders count mismatch, tx count = %d, senders count = %d", len(txs), len(senders))
 	}
+
+	blockNumber := new(big.Int).SetUint64(number)
 	for i := 0; i < len(r); i++ {
 		// The transaction type and hash can be retrieved from the transaction itself
 		r[i].Type = txs[i].Type()
@@ -513,7 +515,7 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 
 		// block location fields
 		r[i].BlockHash = hash
-		r[i].BlockNumber = new(big.Int).SetUint64(number)
+		r[i].BlockNumber = blockNumber
 		r[i].TransactionIndex = uint(i)
 
 		// The contract address can be derived from the transaction itself
@@ -540,8 +542,8 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 		}
 	}
 
-	// The following section is adapted from op-geth
-	if /* config.Optimism != nil && */ len(txs) >= 2 { // need at least an info tx and a non-info tx
+/*	// The following section is adapted from op-geth
+	if / * config.Optimism != nil && * / len(txs) >= 2 { // need at least an info tx and a non-info tx
 		if data := txs[0].Data(); len(data) >= 4+32*8 { // function selector + 8 arguments to setL1BlockValues
 			l1Basefee := new(big.Int).SetBytes(data[4+32*2 : 4+32*3]) // arg index 2
 			overhead := new(big.Int).SetBytes(data[4+32*6 : 4+32*7])  // arg index 6
@@ -562,6 +564,6 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 			return fmt.Errorf("L1 info tx only has %d bytes, cannot read gas price parameters", len(data))
 		}
 	}
-
+*/
 	return nil
 }

@@ -221,17 +221,17 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
 	msg := Message{
-		txType:     DepositTxType,
-		sourceHash: tx.SourceHash,
-		from:       *tx.From,
-		gasLimit:   tx.GasLimit,
-		to:         tx.To,
-		mint:       *tx.Mint,
-		amount:     *tx.Value,
-		isSystemTx: tx.IsSystemTx,
-		data:       tx.Data,
-		accessList: nil,
-		checkNonce: true,
+		txType:        DepositTxType,
+		sourceHash:    tx.SourceHash,
+		from:          *tx.From,
+		gasLimit:      tx.GasLimit,
+		to:            tx.To,
+		mint:          *tx.Mint,
+		amount:        *tx.Value,
+		isSystemTx:    tx.IsSystemTx,
+		data:          tx.Data,
+		accessList:    nil,
+		checkNonce:    true,
 		rollupDataGas: rollupDataGas(tx),
 	}
 

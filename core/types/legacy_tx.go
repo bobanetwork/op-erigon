@@ -374,16 +374,16 @@ func (tx *LegacyTx) DecodeRLP(s *rlp.Stream, encodingSize uint64) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx LegacyTx) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
 	msg := Message{
-		nonce:      tx.Nonce,
-		gasLimit:   tx.Gas,
-		gasPrice:   *tx.GasPrice,
-		tip:        *tx.GasPrice,
-		feeCap:     *tx.GasPrice,
-		to:         tx.To,
-		amount:     *tx.Value,
-		data:       tx.Data,
-		accessList: nil,
-		checkNonce: true,
+		nonce:         tx.Nonce,
+		gasLimit:      tx.Gas,
+		gasPrice:      *tx.GasPrice,
+		tip:           *tx.GasPrice,
+		feeCap:        *tx.GasPrice,
+		to:            tx.To,
+		amount:        *tx.Value,
+		data:          tx.Data,
+		accessList:    nil,
+		checkNonce:    true,
 		rollupDataGas: rollupDataGas(tx),
 	}
 
