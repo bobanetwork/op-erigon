@@ -29,6 +29,7 @@ import (
 	cmath "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus/misc"
+	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -75,6 +76,7 @@ type StateTransition struct {
 	sharedBuyGasBalance *uint256.Int
 
 	isBor bool
+	extraGas   uint64
 }
 
 // Message represents a message sent to a contract.
@@ -160,7 +162,7 @@ func IntrinsicGas(data []byte, accessList types2.AccessList, isContractCreation 
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTransition {
+func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool, extra uint64) *StateTransition {
 	isBor := evm.ChainConfig().Bor != nil
 	return &StateTransition{
 		gp:        gp,
@@ -177,6 +179,7 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 		sharedBuyGasBalance: uint256.NewInt(0),
 
 		isBor: isBor,
+		extraGas: extra,
 	}
 }
 
@@ -190,8 +193,8 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 // `refunds` is false when it is not required to apply gas refunds
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
 // for trace_call to replicate OE/Pariry behaviour
-func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
-	result, err := NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
+func ApplyMessageMM(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool, extra uint64) (*ExecutionResult, error) {
+	result, err := NewStateTransition(evm, msg, gp, extra).TransitionDb(refunds, gasBailout)
 
 	if err == nil && result != nil && result.Err == vm.ErrHCReverted {
 		log.Debug("MMDBG-HC ApplyMessage propagating ErrHCReverted")
@@ -199,7 +202,11 @@ func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, ga
 	}
 
 	return result, err
+}
 
+func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
+	log.Warn("MMDBG-HC state_transition ApplyMessage shim", "msg", msg)
+	return ApplyMessageMM(evm, msg, gp, refunds, gasBailout, 0)
 }
 
 // to returns the recipient of the message.
@@ -219,7 +226,7 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 	}
 	var l1Cost *uint256.Int
 	if optimismConfig := st.evm.ChainConfig().Optimism; optimismConfig != nil && st.evm.ChainRules().IsBedrock {
-		l1Cost = st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
+		l1Cost = st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg, st.extraGas)
 		if l1Cost != nil {
 			if _, overflow = mgval.AddOverflow(mgval, l1Cost); overflow {
 				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
@@ -589,9 +596,12 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		if st.evm.Context().L1CostFunc == nil {
 			log.Error("Expected L1CostFunc to be set, but it is not")
 		}
-		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
-		log.Info("MMDBG Cost for l1 is", "cost", cost)
-		if cost != nil {
+		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg, st.extraGas)
+		log.Info("MMDBG state_transition cost for L1 is", "cost", cost)
+		if msg.GetType() == types.OffchainTxType {
+			// This cost is passed to and paid by the next Tx. Don't double-credit it here.
+			log.Debug("MMDBG-HC Not crediting OptimismL1FeeRecipient for Offchain tx", "cost", cost)
+		} else if cost != nil {
 			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
 		}
 	}

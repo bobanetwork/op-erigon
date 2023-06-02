@@ -63,10 +63,22 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	if msg.IsDepositTx() && config.IsOptimismRegolith(evm.Context().Time) {
 		nonce = ibs.GetNonce(msg.From())
 	}
+	extra := uint64(0)
+	if msg.GetType() == types.OffchainTxType {
+		log.Debug("MMDBG-HC state_processor push extraGas", "rdg", msg.RollupDataGas())
+		ibs.ExtraL1 = msg.RollupDataGas()
+	} else if ibs.ExtraL1 != 0 {
+		extra = ibs.ExtraL1
+		log.Debug("MMDBG-HC state_processor pop extraGas", "gas", extra)
+		ibs.ExtraL1 = 0
+	}
+	if msg.GetType() != types.DepositTxType || extra != 0 {
+		log.Debug("MMDBG-HC before ApplyMessageMM", "type", msg.GetType(), "extra", extra)
+	}
 
-	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
-	if err != nil {
-		log.Debug("MMDBG-HC ApplyMessage", "err", err, "result", result, "msg", msg)
+	result, err := ApplyMessageMM(evm, msg, gp, true /* refunds */, false /* gasBailout */, extra)
+	if err != nil || extra != 0 {
+		log.Debug("MMDBG-HC after ApplyMessageMM", "type", msg.GetType(), "err", err, "result", result, "msg", msg)
 	}
 
 	if err != nil {
@@ -112,7 +124,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 			// FIXME there are other fields to populate, but we don't have easy access
 			// to them, should address in a refactor.
 			if l1CostFunc := evm.Context().L1CostFunc; l1CostFunc != nil {
-				l1Fee := l1CostFunc(evm.Context().BlockNumber, msg)
+				l1Fee := l1CostFunc(evm.Context().BlockNumber, msg, extra)
 				if l1Fee != nil {
 					receipt.L1Fee = l1Fee.ToBig()
 					log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "txhash", tx.Hash())

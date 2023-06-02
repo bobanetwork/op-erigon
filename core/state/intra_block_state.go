@@ -88,6 +88,8 @@ type IntraBlockState struct {
 	nextRevisionID int
 	trace          bool
 	balanceInc     map[libcommon.Address]*BalanceIncrease // Map of balance increases (without first reading the account)
+
+	ExtraL1        uint64
 }
 
 // Create a new state from a given trie

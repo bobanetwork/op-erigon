@@ -36,7 +36,7 @@ type StateGetter interface {
 
 // L1CostFunc is used in the state transition to determine the cost of a rollup message.
 // Returns nil if there is no cost.
-type L1CostFunc func(blockNum uint64, msg RollupMessage) *uint256.Int
+type L1CostFunc func(blockNum uint64, msg RollupMessage, extra uint64) *uint256.Int
 
 var (
 	L1BaseFeeSlot = libcommon.BigToHash(big.NewInt(1))
@@ -52,7 +52,7 @@ var L1BlockAddr = libcommon.HexToAddress("0x420000000000000000000000000000000000
 func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 	cacheBlockNum := ^uint64(0)
 	var l1BaseFee, overhead, scalar *uint256.Int
-	return func(blockNum uint64, msg RollupMessage) *uint256.Int {
+	return func(blockNum uint64, msg RollupMessage, extra uint64) *uint256.Int {
 		rollupDataGas := msg.RollupDataGas() // Only fake txs for RPC view-calls are 0.
 		if config.Optimism == nil || msg.IsDepositTx() || rollupDataGas == 0 {
 			log.Info("MMDBG Skipping L1 Cost", "blockNum", blockNum, "optimism", config.Optimism, "isDepositTx", msg.IsDepositTx(), "rollupDataGas", rollupDataGas)
@@ -65,8 +65,8 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 			statedb.GetState(L1BlockAddr, &ScalarSlot, scalar)
 			cacheBlockNum = blockNum
 		}
-		log.Info("MMDBG L1Cost", "blockNum", blockNum, "rollupDataGas", rollupDataGas, "l1BaseFee", l1BaseFee, "overhead", overhead, "scalar", scalar)
-		return L1Cost(rollupDataGas, l1BaseFee, overhead, scalar)
+		log.Info("MMDBG L1Cost", "blockNum", blockNum, "rollupDataGas", rollupDataGas, "extra", extra, "l1BaseFee", l1BaseFee, "overhead", overhead, "scalar", scalar)
+		return L1Cost(rollupDataGas + extra, l1BaseFee, overhead, scalar)
 	}
 }
 

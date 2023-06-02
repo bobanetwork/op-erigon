@@ -357,6 +357,4 @@ func (tx *DepositTransaction) Sender(signer Signer) (libcommon.Address, error) {
 	return *tx.From, nil
 }
 func (tx *DepositTransaction) SetSender(addr libcommon.Address) {
-	log.Warn("MMDBG dtX SetSender")
-	// NOP - FIXME? ct.from.Store(addr)
 }
