@@ -1,4 +1,4 @@
-// Copyright 2022 mmontour@enya.ai based on legacy_tx.go (original copyright below)
+// Portions copyright 2022-2023 mmontour@enya.ai based on legacy_tx.go (original copyright below)
 // This file adds support for the Optimistic Rollup deposit transaction type
 // as specified at https://github.com/ethereum-optimism/optimism/blob/develop/specs/deposits.md
 
@@ -65,10 +65,8 @@ func (tx DepositTransaction) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.I
 func (tx *DepositTransaction) Unwrap() Transaction { return tx }
 
 func (tx DepositTransaction) Cost() *uint256.Int {
-	log.Warn("MMDBG dtX Cost")
-	total := new(uint256.Int).SetUint64(0) // FIXME
-	//total.Mul(total, tx.GasPrice)
-	//total.Add(total, tx.Value)
+	log.Error("Cost() called for a Deposit transaction")
+	total := new(uint256.Int)
 	return total
 }
 
@@ -84,14 +82,13 @@ func (tx DepositTransaction) GetDataHashes() []libcommon.Hash {
 }
 
 func (tx DepositTransaction) Protected() bool {
-	return true // FIXME
+	return true
 }
 
 func (tx DepositTransaction) EncodingSize() int {
 	// FIXME - inefficient
 	var bb bytes.Buffer
 	tx.EncodeRLP(&bb)
-	log.Debug("MMDBG tx.EncodingSize", "tx", tx, "len", bb.Len())
 
 	return bb.Len()
 }
@@ -112,23 +109,8 @@ func (tx DepositTransaction) copy() *DepositTransaction {
 	return cpy
 }
 
-/*
-func (tx *DepositTransaction) Size() common.StorageSize {
-	log.Warn("MMDBG dtX Size")
-	if size := tx.size.Load(); size != nil {
-		return size.(common.StorageSize)
-	}
-	c := 42 // FIXME
-	tx.size.Store(common.StorageSize(c))
-	return common.StorageSize(c)
-}
-*/
-
 // MarshalBinary returns the canonical encoding of the transaction.
-// For legacy transactions, it returns the RLP encoding. For EIP-2718 typed
-// transactions, it returns the type and payload.
 func (tx DepositTransaction) MarshalBinary(w io.Writer) error {
-	//log.Debug("MMDBG MarshalBinary calling EncodeRLP")
 	return tx.EncodeRLP(w)
 }
 
@@ -149,9 +131,7 @@ func (tx DepositTransaction) EncodeRLP(w io.Writer) error {
 	buf.WriteBytes(tx.Data)
 	buf.ListEnd(idx1)
 
-	//log.Debug("MMDBG EncodeRLP", "bufBytes", buf.ToBytes())
 	w.Write(buf.ToBytes())
-
 	return nil
 }
 
@@ -214,7 +194,6 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 		return fmt.Errorf("close tx struct: %w", err)
 	}
 
-	log.Debug("MMDBG DecodeRLP successful", "tx", tx)
 	return nil
 }
 
@@ -234,42 +213,22 @@ func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Me
 		checkNonce:    true,
 		rollupDataGas: rollupDataGas(tx),
 	}
-
-	var err error
-	//msg.from, err = tx.Sender(s)
-	log.Debug("MMDBG dtX AsMessage", "txhash", tx.Hash(), "msg", msg)
-	return msg, err
+	return msg, nil
 }
 
 func (tx *DepositTransaction) WithSignature(signer Signer, sig []byte) (Transaction, error) {
-	log.Warn("MMDBG dtX WithSignature")
+	log.Error("WithSignature() called for a Deposit transaction")
 	cpy := tx.copy()
-	/*
-		r, s, v, err := signer.SignatureValues(tx, sig)
-		if err != nil {
-			return nil, err
-		}
-		cpy.R.Set(r)
-		cpy.S.Set(s)
-		cpy.V.Set(v)
-	*/
 	return cpy, nil
 }
 
 func (tx *DepositTransaction) FakeSign(address libcommon.Address) (Transaction, error) {
-	log.Warn("MMDBG dtX FakeSign")
+	log.Error("FakeSign() called for a Deposit transaction")
 	cpy := tx.copy()
-	//	cpy.R.Set(u256.Num1)
-	//	cpy.S.Set(u256.Num1)
-	//	cpy.V.Set(u256.Num4)
-	//	cpy.from.Store(address)
 	return cpy, nil
 }
-
 // Hash computes the hash (but not for signatures!)
 func (tx *DepositTransaction) Hash() libcommon.Hash {
-	//log.Warn("MMDBG dtX Hash")
-
 	if hash := tx.hash.Load(); hash != nil {
 		return *hash.(*libcommon.Hash)
 	}
@@ -292,43 +251,20 @@ func (tx *DepositTransaction) Hash() libcommon.Hash {
 }
 
 func (tx DepositTransaction) SigningHash(chainID *big.Int) libcommon.Hash {
-	return libcommon.Hash{} // FIXME
+	log.Error("SigningHash() called for a Deposit transaction")
+	return libcommon.Hash{}
 }
-
-/*
-func (tx DepositTransaction) SigningHash(chainID *big.Int) common.Hash {
-	if chainID != nil && chainID.Sign() != 0 {
-		return rlpHash([]interface{}{
-			tx.Nonce,
-			tx.GasPrice,
-			tx.Gas,
-			tx.To,
-			tx.Value,
-			tx.Data,
-			chainID, uint(0), uint(0),
-		})
-	}
-	return rlpHash([]interface{}{
-		tx.Nonce,
-		tx.GasPrice,
-		tx.Gas,
-		tx.To,
-		tx.Value,
-		tx.Data,
-	})
-}
-*/
 
 func (tx DepositTransaction) Type() byte { return DepositTxType }
 
 func (tx DepositTransaction) RawSignatureValues() (*uint256.Int, *uint256.Int, *uint256.Int) {
-	log.Warn("MMDBG dtX RawSignatureValues")
+	log.Error("SigningHash() called for a Deposit transaction")
 	return uint256.NewInt(0), uint256.NewInt(0), uint256.NewInt(0)
 }
 
 func (tx DepositTransaction) GetChainID() *uint256.Int {
-	log.Warn("MMDBG dtX GetChainID")
-	return new(uint256.Int).SetUint64(901) // FIXME
+	log.Error("GetChainID() called for a Deposit transaction")
+	return new(uint256.Int)
 }
 func (tx DepositTransaction) GetSender() (libcommon.Address, bool) {
 	return *tx.From, true
@@ -357,4 +293,8 @@ func (tx *DepositTransaction) Sender(signer Signer) (libcommon.Address, error) {
 	return *tx.From, nil
 }
 func (tx *DepositTransaction) SetSender(addr libcommon.Address) {
+	if tx.From != nil && *tx.From != addr {
+		log.Error("SetSender() address confict for Deposit transaction", "old", tx.From, "new", addr)
+	}
+	// otherwise a NOP
 }
