@@ -105,6 +105,24 @@ type Header struct {
 	VerkleKeyVals []verkle.KeyValuePair
 }
 
+type LegacyHeader struct {
+	ParentHash  libcommon.Hash    `json:"parentHash"       gencodec:"required"`
+	UncleHash   libcommon.Hash    `json:"sha3Uncles"       gencodec:"required"`
+	Coinbase    libcommon.Address `json:"miner"`
+	Root        libcommon.Hash    `json:"stateRoot"        gencodec:"required"`
+	TxHash      libcommon.Hash    `json:"transactionsRoot" gencodec:"required"`
+	ReceiptHash libcommon.Hash    `json:"receiptsRoot"     gencodec:"required"`
+	Bloom       Bloom             `json:"logsBloom"        gencodec:"required"`
+	Difficulty  *big.Int          `json:"difficulty"       gencodec:"required"`
+	Number      *big.Int          `json:"number"           gencodec:"required"`
+	GasLimit    uint64            `json:"gasLimit"         gencodec:"required"`
+	GasUsed     uint64            `json:"gasUsed"          gencodec:"required"`
+	Time        uint64            `json:"timestamp"        gencodec:"required"`
+	Extra       []byte            `json:"extraData"        gencodec:"required"`
+	MixDigest   libcommon.Hash    `json:"mixHash"` // prevRandao after EIP-4399
+	Nonce       BlockNonce        `json:"nonce"`
+}
+
 // ParentExcessDataGas is a helper that returns the excess data gas value of the parent block.  It
 // returns nil if the parent header could not be fetched, or if the parent block's excess data gas
 // is nil.
@@ -527,6 +545,27 @@ func (h *Header) SetExcessDataGas(v *big.Int) {
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
 func (h *Header) Hash() libcommon.Hash {
+	// The difficult of legacy blocks is 1 or 2
+	if h.Difficulty.Cmp(libcommon.Big1) == 0 || h.Difficulty.Cmp(libcommon.Big2) == 0 {
+		legacyHeader := &LegacyHeader{
+			ParentHash:  h.ParentHash,
+			UncleHash:   h.UncleHash,
+			Coinbase:    h.Coinbase,
+			Root:        h.Root,
+			TxHash:      h.TxHash,
+			ReceiptHash: h.ReceiptHash,
+			Bloom:       h.Bloom,
+			Difficulty:  h.Difficulty,
+			Number:      h.Number,
+			GasLimit:    h.GasLimit,
+			GasUsed:     h.GasUsed,
+			Time:        h.Time,
+			Extra:       h.Extra,
+			MixDigest:   h.MixDigest,
+			Nonce:       h.Nonce,
+		}
+		return rlpHash(legacyHeader)
+	}
 	return rlpHash(h)
 }
 

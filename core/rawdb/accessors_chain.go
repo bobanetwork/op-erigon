@@ -997,7 +997,7 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 	if len(data) == 0 {
 		return nil
 	}
-	var receipts types.Receipts
+	var receipts types.ReceiptsEncodable
 	if err := cbor.Unmarshal(&receipts, bytes.NewReader(data)); err != nil {
 		log.Error("receipt unmarshal failed", "err", err)
 		return nil
@@ -1032,7 +1032,7 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 		}
 	}
 
-	return receipts
+	return receipts.ToReceipts()
 }
 
 // ReadReceipts retrieves all the transaction receipts belonging to a block, including
@@ -1083,7 +1083,7 @@ func WriteReceipts(tx kv.Putter, number uint64, receipts types.Receipts) error {
 	}
 
 	buf.Reset()
-	err := cbor.Marshal(buf, receipts)
+	err := cbor.Marshal(buf, receipts.ToReceiptsEncodable())
 	if err != nil {
 		return fmt.Errorf("encode block receipts for block %d: %w", number, err)
 	}
@@ -1115,7 +1115,7 @@ func AppendReceipts(tx kv.StatelessWriteTx, blockNumber uint64, receipts types.R
 	}
 
 	buf.Reset()
-	err := cbor.Marshal(buf, receipts)
+	err := cbor.Marshal(buf, receipts.ToReceiptsEncodable())
 	if err != nil {
 		return fmt.Errorf("encode block receipts for block %d: %w", blockNumber, err)
 	}

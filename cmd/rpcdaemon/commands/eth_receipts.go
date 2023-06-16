@@ -42,7 +42,7 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	// FIXME disabling the cached receipt path to avoid wiring L1 Fee stuff for
 	// the moment
 	cached := rawdb.ReadReceipts(tx, block, senders)
-	if cached != nil && len(cached) == 0 {
+	if cached != nil && len(cached) != 0 {
 		log.Info("MMDBG returning cached receipts")
 		return cached, nil
 	} else {
