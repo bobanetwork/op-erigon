@@ -307,7 +307,7 @@ func startHandlingForkChoice(
 			cfg.hd.BeaconRequestList.Remove(requestId)
 			return nil, err
 		}
-		if ihProgress >= *headerNumber && cfg.chainConfig.Optimism == nil {
+		if (ihProgress > *headerNumber && cfg.chainConfig.Optimism == nil) || (ihProgress == *headerNumber) {
 			// FCU points to a canonical and fully validated block in the past.
 			// Treat it as a no-op to avoid unnecessary unwind of block execution and other stages
 			// with subsequent rewind on a newer FCU.

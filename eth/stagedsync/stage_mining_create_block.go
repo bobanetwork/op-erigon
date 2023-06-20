@@ -178,7 +178,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	}
 
 	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
-	if cfg.blockBuilderParameters.GasLimit != nil {
+	if cfg.blockBuilderParameters != nil && cfg.blockBuilderParameters.GasLimit != nil {
 		log.Info("MMDBG Override gas limit from Engine API", "old", header.GasLimit, "new", *cfg.blockBuilderParameters.GasLimit)
 		header.GasLimit = *cfg.blockBuilderParameters.GasLimit
 	} else if cfg.chainConfig.Optimism != nil && cfg.miner.MiningConfig.GasLimit != 0 {

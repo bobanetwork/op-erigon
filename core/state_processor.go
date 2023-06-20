@@ -19,6 +19,7 @@ package core
 import (
 	"math/big"
 
+	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/log/v3"
@@ -105,14 +106,25 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		receipt.TransactionIndex = uint(ibs.TxIndex())
 
 		if config.Optimism != nil {
-			// FIXME there are other fields to populate, but we don't have easy access
-			// to them, should address in a refactor.
+			// FIXME, these are already fetched by the L1CostFunc, but the wiring is
+			// weird, so, re-fetching.
+			var l1BaseFee, overhead, scalar uint256.Int
+			ibs.GetState(types.L1BlockAddr, &types.L1BaseFeeSlot, &l1BaseFee)
+			ibs.GetState(types.L1BlockAddr, &types.OverheadSlot, &overhead)
+			ibs.GetState(types.L1BlockAddr, &types.ScalarSlot, &scalar)
+
 			if l1CostFunc := evm.Context().L1CostFunc; l1CostFunc != nil {
 				l1Fee := l1CostFunc(evm.Context().BlockNumber, msg)
 				if l1Fee != nil {
 					receipt.L1Fee = l1Fee.ToBig()
+				} else {
+					receipt.L1Fee = &big.Int{}
 				}
-				log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "txhash", tx.Hash())
+				feeScalar := new(big.Float).SetInt(scalar.ToBig())
+				receipt.FeeScalar = feeScalar.Quo(feeScalar, big.NewFloat(1e6))
+				receipt.L1GasUsed = new(big.Int).SetUint64(msg.RollupDataGas())
+				receipt.L1GasPrice = l1BaseFee.ToBig()
+				log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "feeScalar", feeScalar, "l1GasPrice", receipt.L1GasPrice, "l1GasUsed", receipt.L1GasUsed, "txhash", tx.Hash())
 			} else {
 				log.Warn("MMDBG No cost function set in context", "txhash", tx.Hash())
 			}

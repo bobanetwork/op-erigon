@@ -57,9 +57,6 @@ func FinishForward(s *StageState, tx kv.RwTx, cfg FinishCfg, initialCycle bool) 
 	if s.BlockNumber > executionAt { // Erigon will self-heal (download missed blocks) eventually
 		return nil
 	}
-	if executionAt <= s.BlockNumber {
-		return nil
-	}
 	rawdb.WriteHeadBlockHash(tx, rawdb.ReadHeadHeaderHash(tx))
 	err = s.Update(tx, executionAt)
 	if err != nil {
