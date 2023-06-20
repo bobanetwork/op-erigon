@@ -122,7 +122,8 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 				}
 				feeScalar := new(big.Float).SetInt(scalar.ToBig())
 				receipt.FeeScalar = feeScalar.Quo(feeScalar, big.NewFloat(1e6))
-				receipt.L1GasUsed = new(big.Int).SetUint64(msg.RollupDataGas())
+				l1GasUsed := uint256.NewInt(msg.RollupDataGas())
+				receipt.L1GasUsed = l1GasUsed.Add(l1GasUsed, &overhead).ToBig()
 				receipt.L1GasPrice = l1BaseFee.ToBig()
 				log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "feeScalar", feeScalar, "l1GasPrice", receipt.L1GasPrice, "l1GasUsed", receipt.L1GasUsed, "txhash", tx.Hash())
 			} else {
