@@ -791,6 +791,11 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositNonce != nil {
 		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
 	}
+	if chainConfig.Optimism != nil && !chainConfig.IsBedrock(header.Number.Uint64()) {
+		if receipt.L2BobaFee != nil {
+			fields["l2BobaFee"] = (*hexutil.Big)(receipt.L2BobaFee)
+		}
+	}
 
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(txn.GetPrice().Uint64())

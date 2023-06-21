@@ -315,7 +315,7 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 // minutes on mainnet.  The current limit has been chosen arbitrarily as
 // 'useful' without likely being overly computationally intense.  This parameter
 // could possibly be made configurable in the future if needed.
-var maxGetProofRewindBlockCount uint64 = 1_000
+var maxGetProofRewindBlockCount uint64 = 100_000
 
 // GetProof is partially implemented; no Storage proofs, and proofs must be for
 // blocks within maxGetProofRewindBlockCount blocks of the head.

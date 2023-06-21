@@ -574,6 +574,28 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 func (r Receipts) ToReceiptsEncodable() ReceiptsEncodable {
 	receiptsEncodable := make([]*ReceiptEncodable, len(r))
 	for i, receipts := range r {
+		var (
+			l1GasPrice string
+			l1GasUsed  string
+			l1Fee      string
+			feeScalar  string
+			l2BobaFee  string
+		)
+		if receipts.L1GasPrice != nil {
+			l1GasPrice = (*receipts.L1GasPrice).String()
+		}
+		if receipts.L1GasUsed != nil {
+			l1GasUsed = (*receipts.L1GasUsed).String()
+		}
+		if receipts.L1Fee != nil {
+			l1Fee = (*receipts.L1Fee).String()
+		}
+		if receipts.FeeScalar != nil {
+			feeScalar = (*receipts.FeeScalar).String()
+		}
+		if receipts.L2BobaFee != nil {
+			l2BobaFee = (*receipts.L2BobaFee).String()
+		}
 		receipt := ReceiptEncodable{
 			Type:              receipts.Type,
 			PostState:         receipts.PostState,
@@ -587,11 +609,11 @@ func (r Receipts) ToReceiptsEncodable() ReceiptsEncodable {
 			BlockHash:         receipts.BlockHash,
 			BlockNumber:       receipts.BlockNumber,
 			TransactionIndex:  receipts.TransactionIndex,
-			L1GasPrice:        (*receipts.L1GasPrice).String(),
-			L1GasUsed:         (*receipts.L1GasUsed).String(),
-			L1Fee:             (*receipts.L1Fee).String(),
-			FeeScalar:         (*receipts.FeeScalar).String(),
-			L2BobaFee:         (*receipts.L2BobaFee).String(),
+			L1GasPrice:        l1GasPrice,
+			L1GasUsed:         l1GasUsed,
+			L1Fee:             l1Fee,
+			FeeScalar:         feeScalar,
+			L2BobaFee:         l2BobaFee,
 		}
 		receiptsEncodable[i] = &receipt
 	}
