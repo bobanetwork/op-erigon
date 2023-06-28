@@ -239,7 +239,7 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
 	response, err := ethapi.RPCMarshalBlockEx(b, true, fullTx, borTx, borTxHash, additionalFields, receipts)
-	if err == nil && number == rpc.PendingBlockNumber {
+	if err == nil && number == rpc.PendingBlockNumber && chainConfig.Optimism == nil { // don't remove info if optimism
 		// Pending blocks need to nil out a few fields
 		for _, field := range []string{"hash", "nonce", "miner"} {
 			response[field] = nil
