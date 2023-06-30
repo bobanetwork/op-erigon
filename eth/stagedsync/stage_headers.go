@@ -106,8 +106,8 @@ func SpawnStageHeaders(
 		}
 		defer tx.Rollback()
 	}
-	if initialCycle && cfg.blockReader != nil && cfg.blockReader.Snapshots() != nil && cfg.blockReader.Snapshots().Cfg().Enabled {
-		if err := cfg.hd.AddHeadersFromSnapshot(tx, cfg.blockReader.Snapshots().BlocksAvailable(), cfg.blockReader); err != nil {
+	if initialCycle && cfg.blockReader.FreezingCfg().Enabled {
+		if err := cfg.hd.AddHeadersFromSnapshot(tx, cfg.blockReader); err != nil {
 			return err
 		}
 	}
@@ -165,7 +165,7 @@ func HeadersPOS(
 		// Specifically, this allows to execute snapshot blocks before waiting for CL.
 		if execProgress, err := s.ExecutionAt(tx); err != nil {
 			return err
-		} else if s.BlockNumber >= execProgress {
+		} else if s.BlockNumber > execProgress {
 			return nil
 		}
 	}
@@ -178,7 +178,7 @@ func HeadersPOS(
 	interrupt, requestId, requestWithStatus := cfg.hd.BeaconRequestList.WaitForRequest(syncing, test)
 
 	cfg.hd.SetHeaderReader(&ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader})
-	headerInserter := headerdownload.NewHeaderInserter(s.LogPrefix(), nil, s.BlockNumber, cfg.blockReader, cfg.blockWriter)
+	headerInserter := headerdownload.NewHeaderInserter(s.LogPrefix(), nil, s.BlockNumber, cfg.blockReader)
 
 	interrupted, err := handleInterrupt(interrupt, cfg, tx, headerInserter, useExternalTx, logger)
 	if err != nil {
@@ -713,7 +713,9 @@ func saveDownloadedPoSHeaders(tx kv.RwTx, cfg HeadersCfg, headerInserter *header
 		logger.Info("PoS headers verified and saved", "requestId", cfg.hd.RequestId(), "fork head", lastValidHash)
 	}
 
-	cfg.hd.HeadersCollector().Close()
+	if cfg.hd.HeadersCollector() != nil {
+		cfg.hd.HeadersCollector().Close()
+	}
 	cfg.hd.SetHeadersCollector(nil)
 	cfg.hd.SetPosStatus(headerdownload.Idle)
 }
@@ -811,7 +813,7 @@ func HeadersPOW(
 	if localTd == nil {
 		return fmt.Errorf("localTD is nil: %d, %x", headerProgress, hash)
 	}
-	headerInserter := headerdownload.NewHeaderInserter(logPrefix, localTd, headerProgress, cfg.blockReader, cfg.blockWriter)
+	headerInserter := headerdownload.NewHeaderInserter(logPrefix, localTd, headerProgress, cfg.blockReader)
 	cfg.hd.SetHeaderReader(&ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader})
 
 	stopped := false
@@ -1030,7 +1032,7 @@ func HeadersUnwind(u *UnwindState, s *StageState, tx kv.RwTx, cfg HeadersCfg, te
 			return fmt.Errorf("iterate over headers to mark bad headers: %w", err)
 		}
 	}
-	if err := rawdb.TruncateCanonicalHash(tx, u.UnwindPoint+1, false /* deleteHeaders */); err != nil {
+	if err := rawdb.TruncateCanonicalHash(tx, u.UnwindPoint+1, badBlock); err != nil {
 		return err
 	}
 	if badBlock {

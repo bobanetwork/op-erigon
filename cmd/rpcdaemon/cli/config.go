@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -20,14 +19,13 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/kvcfg"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
 	libstate "github.com/ledgerwatch/erigon-lib/state"
-	"github.com/ledgerwatch/erigon/core/state/historyv2read"
 	"github.com/ledgerwatch/erigon/core/state/temporal"
 	"github.com/ledgerwatch/erigon/core/systemcontracts"
-	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/ledgerwatch/erigon/turbo/debug"
 	"github.com/ledgerwatch/erigon/turbo/logging"
+	"github.com/ledgerwatch/erigon/turbo/snapshotsync/freezeblocks"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync/snap"
 
 	"github.com/ledgerwatch/erigon-lib/direct"
@@ -60,8 +58,6 @@ import (
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/erigon/turbo/services"
-	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
-
 	// Force-load native and js packages, to trigger registration
 	_ "github.com/ledgerwatch/erigon/eth/tracers/js"
 	_ "github.com/ledgerwatch/erigon/eth/tracers/native"
@@ -108,6 +104,7 @@ func RootCommand() (*cobra.Command, *httpcfg.HttpCfg) {
 	rootCmd.PersistentFlags().StringVar(&cfg.GRPCListenAddress, "grpc.addr", nodecfg.DefaultGRPCHost, "GRPC server listening interface")
 	rootCmd.PersistentFlags().IntVar(&cfg.GRPCPort, "grpc.port", nodecfg.DefaultGRPCPort, "GRPC server listening port")
 	rootCmd.PersistentFlags().BoolVar(&cfg.GRPCHealthCheckEnabled, "grpc.healthcheck", false, "Enable GRPC health check")
+	rootCmd.PersistentFlags().Float64Var(&ethconfig.Defaults.RPCTxFeeCap, utils.RPCGlobalTxFeeCapFlag.Name, utils.RPCGlobalTxFeeCapFlag.Value, utils.RPCGlobalTxFeeCapFlag.Usage)
 
 	rootCmd.PersistentFlags().BoolVar(&cfg.TCPServerEnabled, "tcp", false, "Enable TCP server")
 	rootCmd.PersistentFlags().StringVar(&cfg.TCPListenAddress, "tcp.addr", nodecfg.DefaultTCPHost, "TCP server listening interface")
@@ -206,38 +203,35 @@ func subscribeToStateChanges(ctx context.Context, client StateChangesClient, cac
 
 func checkDbCompatibility(ctx context.Context, db kv.RoDB) error {
 	// DB schema version compatibility check
-	var version []byte
 	var compatErr error
 	var compatTx kv.Tx
 	if compatTx, compatErr = db.BeginRo(ctx); compatErr != nil {
 		return fmt.Errorf("open Ro Tx for DB schema compability check: %w", compatErr)
 	}
 	defer compatTx.Rollback()
-	if version, compatErr = compatTx.GetOne(kv.DatabaseInfo, kv.DBSchemaVersionKey); compatErr != nil {
+	major, minor, patch, ok, err := rawdb.ReadDBSchemaVersion(compatTx)
+	if err != nil {
 		return fmt.Errorf("read version for DB schema compability check: %w", compatErr)
 	}
-	if len(version) != 12 {
-		return fmt.Errorf("database does not have major schema version. upgrade and restart Erigon core")
+	if ok {
+		var compatible bool
+		dbSchemaVersion := &kv.DBSchemaVersion
+		if major != dbSchemaVersion.Major {
+			compatible = false
+		} else if minor != dbSchemaVersion.Minor {
+			compatible = false
+		} else {
+			compatible = true
+		}
+		if !compatible {
+			return fmt.Errorf("incompatible DB Schema versions: reader %d.%d.%d, database %d.%d.%d",
+				dbSchemaVersion.Major, dbSchemaVersion.Minor, dbSchemaVersion.Patch,
+				major, minor, patch)
+		}
+		log.Info("DB schemas compatible", "reader", fmt.Sprintf("%d.%d.%d", dbSchemaVersion.Major, dbSchemaVersion.Minor, dbSchemaVersion.Patch),
+			"database", fmt.Sprintf("%d.%d.%d", major, minor, patch))
 	}
-	major := binary.BigEndian.Uint32(version)
-	minor := binary.BigEndian.Uint32(version[4:])
-	patch := binary.BigEndian.Uint32(version[8:])
-	var compatible bool
-	dbSchemaVersion := &kv.DBSchemaVersion
-	if major != dbSchemaVersion.Major {
-		compatible = false
-	} else if minor != dbSchemaVersion.Minor {
-		compatible = false
-	} else {
-		compatible = true
-	}
-	if !compatible {
-		return fmt.Errorf("incompatible DB Schema versions: reader %d.%d.%d, database %d.%d.%d",
-			dbSchemaVersion.Major, dbSchemaVersion.Minor, dbSchemaVersion.Patch,
-			major, minor, patch)
-	}
-	log.Info("DB schemas compatible", "reader", fmt.Sprintf("%d.%d.%d", dbSchemaVersion.Major, dbSchemaVersion.Minor, dbSchemaVersion.Patch),
-		"database", fmt.Sprintf("%d.%d.%d", major, minor, patch))
+
 	return nil
 }
 
@@ -296,7 +290,7 @@ func RemoteServices(ctx context.Context, cfg httpcfg.HttpCfg, logger log.Logger,
 	}
 
 	// Configure DB first
-	var allSnapshots *snapshotsync.RoSnapshots
+	var allSnapshots *freezeblocks.RoSnapshots
 	onNewSnapshot := func() {}
 	if cfg.WithDatadir {
 		var rwKv kv.RwDB
@@ -314,14 +308,11 @@ func RemoteServices(ctx context.Context, cfg httpcfg.HttpCfg, logger log.Logger,
 
 		var cc *chain.Config
 		if err := db.View(context.Background(), func(tx kv.Tx) error {
-			genesisBlock, err := blockReader.BlockByNumber(ctx, tx, 0)
+			genesisHash, err := rawdb.ReadCanonicalHash(tx, 0)
 			if err != nil {
 				return err
 			}
-			if genesisBlock == nil {
-				return fmt.Errorf("genesis not found in DB. Likely Erigon was never started on this datadir")
-			}
-			cc, err = rawdb.ReadChainConfig(tx, genesisBlock.Hash())
+			cc, err = rawdb.ReadChainConfig(tx, genesisHash)
 			if err != nil {
 				return err
 			}
@@ -342,7 +333,7 @@ func RemoteServices(ctx context.Context, cfg httpcfg.HttpCfg, logger log.Logger,
 		}
 
 		// Configure sapshots
-		allSnapshots = snapshotsync.NewRoSnapshots(cfg.Snap, cfg.Dirs.Snap, logger)
+		allSnapshots = freezeblocks.NewRoSnapshots(cfg.Snap, cfg.Dirs.Snap, logger)
 		// To povide good UX - immediatly can read snapshots after RPCDaemon start, even if Erigon is down
 		// Erigon does store list of snapshots in db: means RPCDaemon can read this list now, but read by `remoteKvClient.Snapshots` after establish grpc connection
 		allSnapshots.OptimisticReopenWithDB(db)
@@ -389,7 +380,7 @@ func RemoteServices(ctx context.Context, cfg httpcfg.HttpCfg, logger log.Logger,
 			}()
 		}
 		onNewSnapshot()
-		blockReader = snapshotsync.NewBlockReader(allSnapshots, ethconfig.Defaults.TransactionsV3)
+		blockReader = freezeblocks.NewBlockReader(allSnapshots)
 
 		var histV3Enabled bool
 		_ = db.View(ctx, func(tx kv.Tx) error {
@@ -398,7 +389,7 @@ func RemoteServices(ctx context.Context, cfg httpcfg.HttpCfg, logger log.Logger,
 		})
 		if histV3Enabled {
 			logger.Info("HistoryV3", "enable", histV3Enabled)
-			db, err = temporal.New(rwKv, agg, accounts.ConvertV3toV2, historyv2read.RestoreCodeHash, accounts.DecodeIncarnationFromStorage, systemcontracts.SystemContractCodeLookup[cc.ChainName])
+			db, err = temporal.New(rwKv, agg, systemcontracts.SystemContractCodeLookup[cc.ChainName])
 			if err != nil {
 				return nil, nil, nil, nil, nil, nil, nil, nil, nil, err
 			}
@@ -453,7 +444,7 @@ func RemoteServices(ctx context.Context, cfg httpcfg.HttpCfg, logger log.Logger,
 	txPoolService := rpcservices.NewTxPoolService(txPool)
 
 	if !cfg.WithDatadir {
-		blockReader = snapshotsync.NewRemoteBlockReader(remoteBackendClient)
+		blockReader = freezeblocks.NewRemoteBlockReader(remoteBackendClient)
 	}
 
 	remoteEth := rpcservices.NewRemoteBackend(remoteBackendClient, db, blockReader)
@@ -498,7 +489,6 @@ func startRegularRpcServer(ctx context.Context, cfg httpcfg.HttpCfg, rpcAPI []rp
 	// register apis and create handler stack
 	httpEndpoint := fmt.Sprintf("%s:%d", cfg.HttpListenAddress, cfg.HttpPort)
 
-	logger.Trace("TraceRequests = %t\n", cfg.TraceRequests)
 	srv := rpc.NewServer(cfg.RpcBatchConcurrency, cfg.TraceRequests, cfg.RpcStreamingDisable, logger)
 
 	allowListForRPC, err := parseAllowListForRPC(cfg.RpcAllowListFilePath)
@@ -618,7 +608,6 @@ type engineInfo struct {
 }
 
 func startAuthenticatedRpcServer(cfg httpcfg.HttpCfg, rpcAPI []rpc.API, logger log.Logger) (*engineInfo, error) {
-	logger.Trace("TraceRequests = %t\n", cfg.TraceRequests)
 	srv := rpc.NewServer(cfg.RpcBatchConcurrency, cfg.TraceRequests, cfg.RpcStreamingDisable, logger)
 
 	engineListener, engineSrv, engineHttpEndpoint, err := createEngineListener(cfg, rpcAPI, logger)

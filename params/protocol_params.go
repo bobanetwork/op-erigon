@@ -20,6 +20,7 @@ import (
 	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/chain"
 )
 
 var (
@@ -175,12 +176,9 @@ const (
 
 	// stuff from EIP-4844
 	FieldElementsPerBlob       = 4096 // each field element is 32 bytes
-	MaxDataGasPerBlock         = 1 << 19
-	DataGasPerBlob             = 1 << 17
-	TargetDataGasPerBlock      = 1 << 18
 	MinDataGasPrice            = 1
-	DataGasPriceUpdateFraction = 2225652
-	MaxBlobsPerBlock           = MaxDataGasPerBlock / DataGasPerBlob
+	DataGasPriceUpdateFraction = 3338477
+	MaxBlobsPerBlock           = chain.MaxDataGasPerBlock / chain.DataGasPerBlob
 
 	BlobVerificationGas      uint64 = 1800000
 	BlobCommitmentVersionKZG uint8  = 0x01

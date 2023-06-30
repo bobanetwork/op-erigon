@@ -25,13 +25,17 @@ type ErigonNode struct {
 
 // Serve runs the node and blocks the execution. It returns when the node is existed.
 func (eri *ErigonNode) Serve() error {
-	defer eri.stack.Close()
+	defer eri.Close()
 
 	eri.run()
 
 	eri.stack.Wait()
 
 	return nil
+}
+
+func (eri *ErigonNode) Close() {
+	eri.stack.Close()
 }
 
 func (eri *ErigonNode) run() {
@@ -56,8 +60,6 @@ func NewNodConfigUrfave(ctx *cli.Context, logger log.Logger) *nodecfg.Config {
 	switch chain {
 	case networkname.SepoliaChainName:
 		logger.Info("Starting Erigon on Sepolia testnet...")
-	case networkname.RinkebyChainName:
-		logger.Info("Starting Erigon on Rinkeby testnet...")
 	case networkname.GoerliChainName:
 		logger.Info("Starting Erigon on Görli testnet...")
 	case networkname.DevChainName:

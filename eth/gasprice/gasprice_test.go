@@ -113,16 +113,15 @@ func newTestBackend(t *testing.T) *testBackend {
 			t.Fatalf("failed to create tx: %v", txErr)
 		}
 		b.AddTx(tx)
-	}, false)
+	})
 	if err != nil {
 		t.Error(err)
 	}
 	// Construct testing chain
-	if err = m.InsertChain(chain); err != nil {
+	if err = m.InsertChain(chain, nil); err != nil {
 		t.Error(err)
 	}
-	br, _ := m.NewBlocksIO()
-	return &testBackend{db: m.DB, cfg: params.TestChainConfig, blockReader: br}
+	return &testBackend{db: m.DB, cfg: params.TestChainConfig, blockReader: m.BlockReader}
 }
 
 func (b *testBackend) CurrentHeader() *types.Header {

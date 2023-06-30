@@ -27,11 +27,12 @@ import (
 	"time"
 
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/log/v3"
+	"github.com/protolambda/ztyp/codec"
+
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
-	"github.com/ledgerwatch/log/v3"
-	"github.com/protolambda/ztyp/codec"
 
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/math"
@@ -192,9 +193,6 @@ func DecodeWrappedTransaction(data []byte) (Transaction, error) {
 	}
 	if data[0] < 0x80 { // the encoding is canonical, not RLP
 
-		// EIP-4844 tx differs from previous types of transactions in network
-		// encoding. It's SSZ encoded and includes blobs and kzgs.
-		// Previous types have no different encoding.
 		return UnmarshalWrappedTransactionFromBinary(data)
 	}
 	s := rlp.NewStream(bytes.NewReader(data), uint64(len(data)))
@@ -220,12 +218,6 @@ func UnmarshalTransactionFromBinary(data []byte) (Transaction, error) {
 		return nil, fmt.Errorf("short input: %v", len(data))
 	}
 	switch data[0] {
-	case BlobTxType:
-		t := &SignedBlobTx{}
-		if err := DecodeSSZ(data[1:], t); err != nil {
-			return nil, err
-		}
-		return t, nil
 	case AccessListTxType:
 		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
 		t := &AccessListTx{}
@@ -236,6 +228,13 @@ func UnmarshalTransactionFromBinary(data []byte) (Transaction, error) {
 	case DynamicFeeTxType:
 		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
 		t := &DynamicFeeTransaction{}
+		if err := t.DecodeRLP(s); err != nil {
+			return nil, err
+		}
+		return t, nil
+	case BlobTxType:
+		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
+		t := &BlobTx{}
 		if err := t.DecodeRLP(s); err != nil {
 			return nil, err
 		}
@@ -273,8 +272,9 @@ func UnmarshalWrappedTransactionFromBinary(data []byte) (Transaction, error) {
 	if data[0] != BlobTxType {
 		return UnmarshalTransactionFromBinary(data)
 	}
+	s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
 	t := &BlobTxWrapper{}
-	if err := DecodeSSZ(data[1:], t); err != nil {
+	if err := t.DecodeRLP(s); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -650,7 +650,7 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 	m.gasLimit = gas
 }
 
-func (m Message) DataGas() uint64 { return params.DataGasPerBlob * uint64(len(m.dataHashes)) }
+func (m Message) DataGas() uint64 { return chain.DataGasPerBlob * uint64(len(m.dataHashes)) }
 func (m Message) MaxFeePerDataGas() *uint256.Int {
 	return &m.maxFeePerDataGas
 }

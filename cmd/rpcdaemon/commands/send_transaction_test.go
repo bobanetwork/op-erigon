@@ -11,6 +11,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/sentry"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
+	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/commands"
@@ -21,11 +22,16 @@ import (
 	"github.com/ledgerwatch/erigon/eth/protocols/eth"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
-	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/erigon/turbo/stages"
 	"github.com/ledgerwatch/log/v3"
 )
+
+func newBaseApiForTest(m *stages.MockSentry) *commands.BaseAPI {
+	agg := m.HistoryV3Components()
+	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
+	return commands.NewBaseApi(nil, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
+}
 
 func TestSendRawTransaction(t *testing.T) {
 	t.Skip("Flaky test")
@@ -34,7 +40,7 @@ func TestSendRawTransaction(t *testing.T) {
 
 	chain, err := core.GenerateChain(m.ChainConfig, m.Genesis, m.Engine, m.DB, 1, func(i int, b *core.BlockGen) {
 		b.SetCoinbase(common.Address{1})
-	}, false /* intermediateHashes */)
+	})
 	require.NoError(err)
 	{ // Do 1 step to start txPool
 
@@ -58,10 +64,10 @@ func TestSendRawTransaction(t *testing.T) {
 		for _, err = range m.Send(&sentry.InboundMessage{Id: sentry.MessageId_BLOCK_HEADERS_66, Data: b, PeerId: m.PeerId}) {
 			require.NoError(err)
 		}
-		m.ReceiveWg.Wait() // Wait for all messages to be processed before we proceeed
+		m.ReceiveWg.Wait() // Wait for all messages to be processed before we proceed
 
-		initialCycle := true
-		if _, err := stages.StageLoopStep(m.Ctx, m.DB, m.Sync, initialCycle, logger, nil, nil); err != nil {
+		initialCycle := stages.MockInsertAsInitialCycle
+		if err := stages.StageLoopIteration(m.Ctx, m.DB, nil, m.Sync, initialCycle, logger, m.BlockReader, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -73,9 +79,7 @@ func TestSendRawTransaction(t *testing.T) {
 	ctx, conn := rpcdaemontest.CreateTestGrpcConn(t, m)
 	txPool := txpool.NewTxpoolClient(conn)
 	ff := rpchelper.New(ctx, nil, txPool, txpool.NewMiningClient(conn), func() {}, m.Log)
-	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
-	br, _ := m.NewBlocksIO()
-	api := commands.NewEthAPI(commands.NewBaseApi(ff, stateCache, br, nil, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs), m.DB, nil, txPool, nil, 5000000, 100_000, logger)
+	api := commands.NewEthAPI(newBaseApiForTest(m), m.DB, nil, txPool, nil, 5000000, 100_000, logger)
 
 	buf := bytes.NewBuffer(nil)
 	err = txn.MarshalBinary(buf)

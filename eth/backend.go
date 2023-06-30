@@ -37,6 +37,7 @@ import (
 	"github.com/ledgerwatch/erigon/cl/phase1/execution_client"
 	"github.com/ledgerwatch/erigon/core/rawdb/blockio"
 	"github.com/ledgerwatch/erigon/ethdb/prune"
+	"github.com/ledgerwatch/erigon/turbo/snapshotsync/freezeblocks"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync/snap"
 
 	"github.com/holiman/uint256"
@@ -63,7 +64,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
 	"github.com/ledgerwatch/erigon-lib/kv/remotedbserver"
 	libstate "github.com/ledgerwatch/erigon-lib/state"
-	txpool2 "github.com/ledgerwatch/erigon-lib/txpool"
+	"github.com/ledgerwatch/erigon-lib/txpool"
 	"github.com/ledgerwatch/erigon-lib/txpool/txpooluitl"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
@@ -84,11 +85,9 @@ import (
 	"github.com/ledgerwatch/erigon/consensus/merge"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
-	"github.com/ledgerwatch/erigon/core/state/historyv2read"
 	"github.com/ledgerwatch/erigon/core/state/temporal"
 	"github.com/ledgerwatch/erigon/core/systemcontracts"
 	"github.com/ledgerwatch/erigon/core/types"
-	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
@@ -107,7 +106,6 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/engineapi"
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/turbo/shards"
-	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
 	stages2 "github.com/ledgerwatch/erigon/turbo/stages"
 	"github.com/ledgerwatch/erigon/turbo/stages/headerdownload"
 )
@@ -138,7 +136,7 @@ type Ethereum struct {
 
 	ethBackendRPC      *privateapi.EthBackendServer
 	miningRPC          txpool_proto.MiningServer
-	stateChangesClient txpool2.StateChangesClient
+	stateChangesClient txpool.StateChangesClient
 
 	miningSealingQuit chan struct{}
 	pendingBlocks     chan *types.Block
@@ -163,18 +161,18 @@ type Ethereum struct {
 	waitForStageLoopStop chan struct{}
 	waitForMiningStop    chan struct{}
 
-	txPool2DB               kv.RwDB
-	txPool2                 *txpool2.TxPool
-	newTxs2                 chan types2.Announcements
-	txPool2Fetch            *txpool2.Fetch
-	txPool2Send             *txpool2.Send
-	txPool2GrpcServer       txpool_proto.TxpoolServer
+	txPoolDB                kv.RwDB
+	txPool                  *txpool.TxPool
+	newTxs                  chan types2.Announcements
+	txPoolFetch             *txpool.Fetch
+	txPoolSend              *txpool.Send
+	txPoolGrpcServer        txpool_proto.TxpoolServer
 	notifyMiningAboutNewTxs chan struct{}
 	forkValidator           *engineapi.ForkValidator
 	downloader              *downloader3.Downloader
 
 	agg            *libstate.AggregatorV3
-	blockSnapshots *snapshotsync.RoSnapshots
+	blockSnapshots *freezeblocks.RoSnapshots
 	blockReader    services.FullBlockReader
 	blockWriter    *blockio.BlockWriter
 	kvRPC          *remotedbserver.KvServer
@@ -227,11 +225,6 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 			return err
 		}
 
-		config.TransactionsV3, err = kvcfg.TransactionsV3.WriteOnce(tx, config.TransactionsV3)
-		if err != nil {
-			return err
-		}
-
 		isCorrectSync, useSnapshots, err := snap.EnsureNotChanged(tx, config.Snapshot)
 		if err != nil {
 			return err
@@ -266,7 +259,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		logger: logger,
 	}
 
-	blockReader, blockWriter, allSnapshots, agg, err := setUpBlockReader(ctx, chainKv, config.Dirs, config.Snapshot, config.HistoryV3, config.TransactionsV3, logger)
+	blockReader, blockWriter, allSnapshots, agg, err := setUpBlockReader(ctx, chainKv, config.Dirs, config.Snapshot, config.HistoryV3, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +300,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	}
 
 	if config.HistoryV3 {
-		backend.chainDB, err = temporal.New(backend.chainDB, agg, accounts.ConvertV3toV2, historyv2read.RestoreCodeHash, accounts.DecodeIncarnationFromStorage, systemcontracts.SystemContractCodeLookup[chainConfig.ChainName])
+		backend.chainDB, err = temporal.New(backend.chainDB, agg, systemcontracts.SystemContractCodeLookup[chainConfig.ChainName])
 		if err != nil {
 			return nil, err
 		}
@@ -423,7 +416,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		notifications *shards.Notifications) error {
 		// Needs its own notifications to not update RPC daemon and txpool about pending blocks
 		stateSync, err := stages2.NewInMemoryExecution(backend.sentryCtx, backend.chainDB, config, backend.sentriesClient,
-			dirs, notifications, allSnapshots, backend.agg, log.New() /* logging will be discarded */)
+			dirs, notifications, blockReader, blockWriter, backend.agg, log.New() /* logging will be discarded */)
 		if err != nil {
 			return err
 		}
@@ -492,15 +485,15 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	var miningRPC txpool_proto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)
 	if config.DeprecatedTxPool.Disable {
-		backend.txPool2GrpcServer = &txpool2.GrpcDisabled{}
+		backend.txPoolGrpcServer = &txpool.GrpcDisabled{}
 	} else {
 		//cacheConfig := kvcache.DefaultCoherentCacheConfig
 		//cacheConfig.MetricsLabel = "txpool"
 
-		backend.newTxs2 = make(chan types2.Announcements, 1024)
+		backend.newTxs = make(chan types2.Announcements, 1024)
 		//defer close(newTxs)
-		backend.txPool2DB, backend.txPool2, backend.txPool2Fetch, backend.txPool2Send, backend.txPool2GrpcServer, err = txpooluitl.AllComponents(
-			ctx, config.TxPool, kvcache.NewDummy(), backend.newTxs2, backend.chainDB, backend.sentriesClient.Sentries(), stateDiffClient, logger,
+		backend.txPoolDB, backend.txPool, backend.txPoolFetch, backend.txPoolSend, backend.txPoolGrpcServer, err = txpooluitl.AllComponents(
+			ctx, config.TxPool, kvcache.NewDummy(), backend.newTxs, backend.chainDB, backend.sentriesClient.Sentries(), stateDiffClient, logger,
 		)
 		if err != nil {
 			return nil, err
@@ -519,8 +512,8 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	// proof-of-work mining
 	mining := stagedsync.New(
 		stagedsync.MiningStages(backend.sentryCtx,
-			stagedsync.StageMiningCreateBlockCfg(backend.chainDB, miner, *backend.chainConfig, backend.engine, backend.txPool2, backend.txPool2DB, nil, tmpdir, backend.blockReader),
-			stagedsync.StageMiningExecCfg(backend.chainDB, miner, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, nil, 0, backend.txPool2, backend.txPool2DB, blockReader),
+			stagedsync.StageMiningCreateBlockCfg(backend.chainDB, miner, *backend.chainConfig, backend.engine, backend.txPoolDB, nil, tmpdir, backend.blockReader),
+			stagedsync.StageMiningExecCfg(backend.chainDB, miner, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, nil, 0, backend.txPool, backend.txPoolDB, blockReader),
 			stagedsync.StageHashStateCfg(backend.chainDB, dirs, config.HistoryV3),
 			stagedsync.StageTrieCfg(backend.chainDB, false, true, true, tmpdir, blockReader, nil, config.HistoryV3, backend.agg),
 			stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miner, backend.miningSealingQuit, backend.blockReader),
@@ -540,8 +533,8 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		miningStatePos.MiningConfig.Etherbase = param.SuggestedFeeRecipient
 		proposingSync := stagedsync.New(
 			stagedsync.MiningStages(backend.sentryCtx,
-				stagedsync.StageMiningCreateBlockCfg(backend.chainDB, miningStatePos, *backend.chainConfig, backend.engine, backend.txPool2, backend.txPool2DB, param, tmpdir, backend.blockReader),
-				stagedsync.StageMiningExecCfg(backend.chainDB, miningStatePos, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, interrupt, param.PayloadId, backend.txPool2, backend.txPool2DB, blockReader),
+				stagedsync.StageMiningCreateBlockCfg(backend.chainDB, miningStatePos, *backend.chainConfig, backend.engine, backend.txPoolDB, param, tmpdir, backend.blockReader),
+				stagedsync.StageMiningExecCfg(backend.chainDB, miningStatePos, backend.notifications.Events, *backend.chainConfig, backend.engine, &vm.Config{}, tmpdir, interrupt, param.PayloadId, backend.txPool, backend.txPoolDB, blockReader),
 				stagedsync.StageHashStateCfg(backend.chainDB, dirs, config.HistoryV3),
 				stagedsync.StageTrieCfg(backend.chainDB, false, true, true, tmpdir, blockReader, nil, config.HistoryV3, backend.agg),
 				stagedsync.StageMiningFinishCfg(backend.chainDB, *backend.chainConfig, backend.engine, miningStatePos, backend.miningSealingQuit, backend.blockReader),
@@ -573,7 +566,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		backend.privateAPI, err = privateapi.StartGrpc(
 			kvRPC,
 			ethBackendRPC,
-			backend.txPool2GrpcServer,
+			backend.txPoolGrpcServer,
 			miningRPC,
 			stack.Config().PrivateApiAddr,
 			stack.Config().PrivateApiRateLimit,
@@ -625,7 +618,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 			return nil, err
 		}
 
-		go caplin1.RunCaplinPhase1(ctx, client, beaconCfg, genesisCfg, engine, state)
+		go caplin1.RunCaplinPhase1(ctx, client, beaconCfg, genesisCfg, engine, state, nil)
 	}
 
 	if currentBlock == nil {
@@ -647,15 +640,15 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	}()
 
 	if !config.DeprecatedTxPool.Disable {
-		backend.txPool2Fetch.ConnectCore()
-		backend.txPool2Fetch.ConnectSentries()
-		var newTxsBroadcaster *txpool2.NewSlotsStreams
-		if casted, ok := backend.txPool2GrpcServer.(*txpool2.GrpcServer); ok {
+		backend.txPoolFetch.ConnectCore()
+		backend.txPoolFetch.ConnectSentries()
+		var newTxsBroadcaster *txpool.NewSlotsStreams
+		if casted, ok := backend.txPoolGrpcServer.(*txpool.GrpcServer); ok {
 			newTxsBroadcaster = casted.NewSlotsStreams
 		}
-		go txpool2.MainLoop(backend.sentryCtx,
-			backend.txPool2DB, backend.chainDB,
-			backend.txPool2, backend.newTxs2, backend.txPool2Send, newTxsBroadcaster,
+		go txpool.MainLoop(backend.sentryCtx,
+			backend.txPoolDB, backend.chainDB,
+			backend.txPool, backend.newTxs, backend.txPoolSend, newTxsBroadcaster,
 			func() {
 				select {
 				case backend.notifyMiningAboutNewTxs <- struct{}{}:
@@ -706,8 +699,9 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 	}
 
 	backend.ethBackendRPC, backend.miningRPC, backend.stateChangesClient = ethBackendRPC, miningRPC, stateDiffClient
+	blockRetire := freezeblocks.NewBlockRetire(1, dirs, blockReader, blockWriter, backend.chainDB, backend.notifications.Events, logger)
 
-	backend.syncStages = stages2.NewDefaultStages(backend.sentryCtx, backend.chainDB, stack.Config().P2P, config, backend.sentriesClient, backend.notifications, backend.downloaderClient, blockReader, backend.agg, backend.forkValidator, logger)
+	backend.syncStages = stages2.NewDefaultStages(backend.sentryCtx, backend.chainDB, stack.Config().P2P, config, backend.sentriesClient, backend.notifications, backend.downloaderClient, blockReader, blockRetire, backend.agg, backend.forkValidator, logger)
 	backend.syncUnwindOrder = stagedsync.DefaultUnwindOrder
 	backend.syncPruneOrder = stagedsync.DefaultPruneOrder
 	backend.stagedSync = stagedsync.New(backend.syncStages, backend.syncUnwindOrder, backend.syncPruneOrder, logger)
@@ -756,7 +750,7 @@ func (s *Ethereum) Init(stack *node.Node, config *ethconfig.Config) error {
 	// start HTTP API
 	httpRpcCfg := stack.Config().Http
 	ethRpcClient, txPoolRpcClient, miningRpcClient, stateCache, ff, err := cli.EmbeddedServices(ctx, chainKv, httpRpcCfg.StateCache, blockReader, ethBackendRPC,
-		s.txPool2GrpcServer, miningRPC, stateDiffClient, s.logger)
+		s.txPoolGrpcServer, miningRPC, stateDiffClient, s.logger)
 	if err != nil {
 		return err
 	}
@@ -904,12 +898,6 @@ func (s *Ethereum) StartMining(ctx context.Context, db kv.RwDB, mining *stagedsy
 		errc := make(chan error, 1)
 
 		for {
-			// Only reset if some work was done previously as we'd like to rely
-			// on the `miner.recommit` as backup.
-			if hasWork {
-				mineEvery.Reset(cfg.Recommit)
-			}
-
 			// Only check for case if you're already mining (i.e. works = true) and
 			// waiting for error or you don't have any work yet (i.e. hasWork = false).
 			if works || !hasWork {
@@ -943,6 +931,7 @@ func (s *Ethereum) StartMining(ctx context.Context, db kv.RwDB, mining *stagedsy
 			if !works && hasWork {
 				works = true
 				hasWork = false
+				mineEvery.Reset(cfg.Recommit)
 				go func() { errc <- stages2.MiningStep(ctx, db, mining, tmpDir) }()
 			}
 		}
@@ -1036,14 +1025,14 @@ func (s *Ethereum) setUpSnapDownloader(ctx context.Context, downloaderCfg *downl
 	return err
 }
 
-func setUpBlockReader(ctx context.Context, db kv.RwDB, dirs datadir.Dirs, snConfig ethconfig.Snapshot, histV3, transactionsV3 bool, logger log.Logger) (services.FullBlockReader, *blockio.BlockWriter, *snapshotsync.RoSnapshots, *libstate.AggregatorV3, error) {
-	allSnapshots := snapshotsync.NewRoSnapshots(snConfig, dirs.Snap, logger)
+func setUpBlockReader(ctx context.Context, db kv.RwDB, dirs datadir.Dirs, snConfig ethconfig.BlocksFreezing, histV3 bool, logger log.Logger) (services.FullBlockReader, *blockio.BlockWriter, *freezeblocks.RoSnapshots, *libstate.AggregatorV3, error) {
+	allSnapshots := freezeblocks.NewRoSnapshots(snConfig, dirs.Snap, logger)
 	var err error
 	if !snConfig.NoDownloader {
 		allSnapshots.OptimisticalyReopenWithDB(db)
 	}
-	blockReader := snapshotsync.NewBlockReader(allSnapshots, transactionsV3)
-	blockWriter := blockio.NewBlockWriter(histV3, transactionsV3)
+	blockReader := freezeblocks.NewBlockReader(allSnapshots)
+	blockWriter := blockio.NewBlockWriter(histV3)
 
 	dir.MustExist(dirs.SnapHistory)
 	agg, err := libstate.NewAggregatorV3(ctx, dirs.SnapHistory, dirs.Tmp, ethconfig.HistoryV3AggregationStep, db, logger)
@@ -1084,8 +1073,8 @@ func (s *Ethereum) Start() error {
 	s.sentriesClient.StartStreamLoops(s.sentryCtx)
 	time.Sleep(10 * time.Millisecond) // just to reduce logs order confusion
 
-	hook := stages2.NewHook(s.sentryCtx, s.notifications, s.stagedSync, s.chainConfig, s.logger, s.sentriesClient.UpdateHead)
-	go stages2.StageLoop(s.sentryCtx, s.chainDB, s.stagedSync, s.sentriesClient.Hd, s.waitForStageLoopStop, s.config.Sync.LoopThrottle, s.logger, nil, hook)
+	hook := stages2.NewHook(s.sentryCtx, s.notifications, s.stagedSync, s.blockReader, s.chainConfig, s.logger, s.sentriesClient.UpdateHead)
+	go stages2.StageLoop(s.sentryCtx, s.chainDB, s.stagedSync, s.sentriesClient.Hd, s.waitForStageLoopStop, s.config.Sync.LoopThrottle, s.logger, s.blockReader, hook)
 
 	return nil
 }
@@ -1123,8 +1112,8 @@ func (s *Ethereum) Stop() error {
 	for _, sentryServer := range s.sentryServers {
 		sentryServer.Close()
 	}
-	if s.txPool2DB != nil {
-		s.txPool2DB.Close()
+	if s.txPoolDB != nil {
+		s.txPoolDB.Close()
 	}
 	if s.agg != nil {
 		s.agg.Close()
