@@ -82,9 +82,10 @@ var (
 		Usage: "Minimum free disk space in MB, once reached triggers auto shut down (default = --cache.gc converted to MB, 0 = disabled)",
 	}
 	NetworkIdFlag = cli.Uint64Flag{
-		Name:  "networkid",
-		Usage: "Explicitly set network id (integer)(For testnets: use --chain <testnet_name> instead)",
-		Value: ethconfig.Defaults.NetworkID,
+		Name:    "networkid",
+		Usage:   "Explicitly set network id (integer)(For testnets: use --chain <testnet_name> instead)",
+		Value:   ethconfig.Defaults.NetworkID,
+		EnvVars: []string{"CHAIN_ID"},
 	}
 	DeveloperPeriodFlag = cli.IntFlag{
 		Name:  "dev.period",
