@@ -45,10 +45,25 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, blockNrOrHa
 	}
 	defer tx.Rollback()
 
-	chainConfig, err := api.chainConfig(tx)
+	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
+	chainConfig, err := api.chainConfig(tx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain config: %v", err)
+	}
+	if !chainConfig.IsBedrock(bn) {
+		if api.historicalRPCService != nil {
+			var result hexutility.Bytes
+			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_call", args, hexutil.EncodeUint64(bn)); err != nil {
+				return nil, fmt.Errorf("historical backend failed: %w", err)
+			}
+			return result, nil
+		}
+		return nil, rpc.ErrNoHistoricalFallback
+	}
+
 	engine := api.engine()
 
 	if args.Gas == nil || uint64(*args.Gas) == 0 {

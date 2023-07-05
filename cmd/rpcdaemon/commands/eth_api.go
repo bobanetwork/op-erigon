@@ -123,9 +123,13 @@ type BaseAPI struct {
 
 	evmCallTimeout time.Duration
 	dirs           datadir.Dirs
+
+	// Optimism specific field
+	seqRPCService        *rpc.Client
+	historicalRPCService *rpc.Client
 }
 
-func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, dirs datadir.Dirs) *BaseAPI {
+func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, dirs datadir.Dirs, seqRPCService, historicalRPCService *rpc.Client) *BaseAPI {
 	blocksLRUSize := 128 // ~32Mb
 	if !singleNodeMode {
 		blocksLRUSize = 512
@@ -135,7 +139,7 @@ func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader serv
 		panic(err)
 	}
 
-	return &BaseAPI{filters: f, stateCache: stateCache, blocksLRU: blocksLRU, _blockReader: blockReader, _txnReader: blockReader, _agg: agg, evmCallTimeout: evmCallTimeout, _engine: engine, dirs: dirs}
+	return &BaseAPI{filters: f, stateCache: stateCache, blocksLRU: blocksLRU, _blockReader: blockReader, _txnReader: blockReader, _agg: agg, evmCallTimeout: evmCallTimeout, _engine: engine, dirs: dirs, seqRPCService: seqRPCService, historicalRPCService: historicalRPCService}
 }
 
 func (api *BaseAPI) chainConfig(tx kv.Tx) (*chain.Config, error) {
@@ -309,6 +313,20 @@ func (api *BaseAPI) pruneMode(tx kv.Tx) (*prune.Mode, error) {
 	api._pruneMode.Store(&mode)
 
 	return p, nil
+}
+
+func (api *BaseAPI) blockNumberFromBlockNumberOrHash(tx kv.Tx, bnh *rpc.BlockNumberOrHash) (uint64, error) {
+	if number, ok := bnh.Number(); ok {
+		return uint64(number.Int64()), nil
+	}
+	if hash, ok := bnh.Hash(); ok {
+		number := rawdb.ReadHeaderNumber(tx, hash)
+		if number == nil {
+			return 0, fmt.Errorf("block %x not found", hash)
+		}
+		return *number, nil
+	}
+	return 0, fmt.Errorf("invalid block number of hash")
 }
 
 // APIImpl is implementation of the EthAPI interface based on remote Db access

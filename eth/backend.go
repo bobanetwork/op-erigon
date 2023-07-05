@@ -136,9 +136,11 @@ type Ethereum struct {
 	genesisBlock *types.Block
 	genesisHash  libcommon.Hash
 
-	ethBackendRPC      *privateapi.EthBackendServer
-	miningRPC          txpool_proto.MiningServer
-	stateChangesClient txpool2.StateChangesClient
+	ethBackendRPC        *privateapi.EthBackendServer
+	seqRPCService        *rpc.Client
+	historicalRPCService *rpc.Client
+	miningRPC            txpool_proto.MiningServer
+	stateChangesClient   txpool2.StateChangesClient
 
 	miningSealingQuit chan struct{}
 	pendingBlocks     chan *types.Block
@@ -489,6 +491,26 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		return nil, err
 	}
 
+	// Setup sequencer and hsistorical RPC relay services
+	if config.RollupSequencerHTTP != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP, logger)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.seqRPCService = client
+	}
+	if config.RollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC, logger)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.historicalRPCService = client
+	}
+
 	var miningRPC txpool_proto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)
 	if config.DeprecatedTxPool.Disable {
@@ -765,8 +787,8 @@ func (s *Ethereum) Init(stack *node.Node, config *ethconfig.Config) error {
 	if casted, ok := s.engine.(*bor.Bor); ok {
 		borDb = casted.DB
 	}
-	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, httpRpcCfg, s.engine, s.logger)
-	authApiList := commands.AuthAPIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, httpRpcCfg, s.engine, s.logger)
+	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, httpRpcCfg, s.engine, s.seqRPCService, s.historicalRPCService, s.logger)
+	authApiList := commands.AuthAPIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, httpRpcCfg, s.engine, s.seqRPCService, s.historicalRPCService, s.logger)
 	go func() {
 		if err := cli.StartRpcServer(ctx, httpRpcCfg, apiList, authApiList, s.logger); err != nil {
 			s.logger.Error(err.Error())

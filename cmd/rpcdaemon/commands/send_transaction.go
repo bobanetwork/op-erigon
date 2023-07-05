@@ -24,6 +24,13 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 		return common.Hash{}, err
 	}
 
+	if api.seqRPCService != nil {
+		if err := api.seqRPCService.CallContext(ctx, nil, "eth_sendRawTransaction", hexutility.Encode(encodedTx)); err != nil {
+			return common.Hash{}, err
+		}
+		return txn.Hash(), nil
+	}
+
 	// If the transaction fee cap is already specified, ensure the
 	// fee of the given transaction is _reasonable_.
 	if err := checkTxFee(txn.GetPrice().ToBig(), txn.GetGas(), ethconfig.Defaults.RPCTxFeeCap); err != nil {

@@ -776,6 +776,27 @@ var (
 		Usage: "Port for sentinel",
 		Value: 7777,
 	}
+
+	// Rollup Flags
+	RollupSequencerHTTPFlag = cli.StringFlag{
+		Name:    "rollup.sequencerhttp",
+		Usage:   "HTTP endpoint for the sequencer mempool",
+		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP_ENDPOINT"},
+	}
+	RollupHistoricalRPCFlag = cli.StringFlag{
+		Name:    "rollup.historicalrpc",
+		Usage:   "RPC endpoint for historical data.",
+		EnvVars: []string{"ROLLUP_HISTORICAL_RPC_ENDPOINT"},
+	}
+	RollupHistoricalRPCTimeoutFlag = cli.StringFlag{
+		Name:  "rollup.historicalrpctimeout",
+		Usage: "Timeout for historical RPC requests.",
+		Value: "5s",
+	}
+	RollupDisableTxPoolGossipFlag = cli.BoolFlag{
+		Name:  "rollup.disabletxpoolgossip",
+		Usage: "Disable transaction pool gossip.",
+	}
 )
 
 var MetricFlags = []cli.Flag{&MetricsEnabledFlag, &MetricsHTTPFlag, &MetricsPortFlag}
@@ -1581,6 +1602,18 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 	if ctx.IsSet(SentryDropUselessPeers.Name) {
 		cfg.DropUselessPeers = ctx.Bool(SentryDropUselessPeers.Name)
 	}
+
+	// Rollup params
+	if ctx.IsSet(RollupSequencerHTTPFlag.Name) && !ctx.IsSet(MiningEnabledFlag.Name) {
+		cfg.RollupSequencerHTTP = ctx.String(RollupSequencerHTTPFlag.Name)
+	}
+	if ctx.IsSet(RollupHistoricalRPCFlag.Name) {
+		cfg.RollupHistoricalRPC = ctx.String(RollupHistoricalRPCFlag.Name)
+	}
+	if ctx.IsSet(RollupDisableTxPoolGossipFlag.Name) {
+		cfg.RollupDisableTxPoolGossip = ctx.Bool(RollupDisableTxPoolGossipFlag.Name)
+	}
+	cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
 }
 
 // SetDNSDiscoveryDefaults configures DNS discovery with the given URL if

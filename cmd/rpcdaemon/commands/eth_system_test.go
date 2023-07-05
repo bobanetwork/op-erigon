@@ -44,7 +44,7 @@ func TestGasPrice(t *testing.T) {
 			defer m.DB.Close()
 			stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 			br, _ := m.NewBlocksIO()
-			base := NewBaseApi(nil, stateCache, br, nil, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
+			base := NewBaseApi(nil, stateCache, br, nil, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil)
 			eth := NewEthAPI(base, m.DB, nil, nil, nil, 5000000, 100_000, log.New())
 
 			ctx := context.Background()

@@ -75,7 +75,7 @@ func TestSendRawTransaction(t *testing.T) {
 	ff := rpchelper.New(ctx, nil, txPool, txpool.NewMiningClient(conn), func() {}, m.Log)
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	br, _ := m.NewBlocksIO()
-	api := commands.NewEthAPI(commands.NewBaseApi(ff, stateCache, br, nil, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs), m.DB, nil, txPool, nil, 5000000, 100_000, logger)
+	api := commands.NewEthAPI(commands.NewBaseApi(ff, stateCache, br, nil, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), m.DB, nil, txPool, nil, 5000000, 100_000, logger)
 
 	buf := bytes.NewBuffer(nil)
 	err = txn.MarshalBinary(buf)

@@ -251,6 +251,11 @@ type Config struct {
 	OverrideShanghaiTime *big.Int `toml:",omitempty"`
 
 	DropUselessPeers bool
+
+	RollupSequencerHTTP        string
+	RollupHistoricalRPC        string
+	RollupHistoricalRPCTimeout time.Duration
+	RollupDisableTxPoolGossip  bool
 }
 
 type Sync struct {

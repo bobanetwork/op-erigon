@@ -26,6 +26,26 @@ func (api *APIImpl) GetBalance(ctx context.Context, address libcommon.Address, b
 		return nil, fmt.Errorf("getBalance cannot open tx: %w", err1)
 	}
 	defer tx.Rollback()
+
+	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	if err != nil {
+		return nil, err
+	}
+	chainConfig, err := api.chainConfig(tx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain config: %v", err)
+	}
+	if !chainConfig.IsBedrock(bn) {
+		if api.historicalRPCService != nil {
+			var result hexutil.Big
+			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getBalance", address, hexutil.EncodeUint64(bn)); err != nil {
+				return nil, fmt.Errorf("historical backend failed: %w", err)
+			}
+			return &result, nil
+		}
+		return nil, rpc.ErrNoHistoricalFallback
+	}
+
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), "")
 	if err != nil {
 		return nil, err
@@ -62,6 +82,26 @@ func (api *APIImpl) GetTransactionCount(ctx context.Context, address libcommon.A
 		return nil, fmt.Errorf("getTransactionCount cannot open tx: %w", err1)
 	}
 	defer tx.Rollback()
+
+	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	if err != nil {
+		return nil, err
+	}
+	chainConfig, err := api.chainConfig(tx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain config: %v", err)
+	}
+	if !chainConfig.IsBedrock(bn) {
+		if api.historicalRPCService != nil {
+			var result hexutil.Uint64
+			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getTransactionCount", address, hexutil.EncodeUint64(bn)); err != nil {
+				return nil, fmt.Errorf("historical backend failed: %w", err)
+			}
+			return &result, nil
+		}
+		return nil, rpc.ErrNoHistoricalFallback
+	}
+
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), "")
 	if err != nil {
 		return nil, err
@@ -81,10 +121,26 @@ func (api *APIImpl) GetCode(ctx context.Context, address libcommon.Address, bloc
 		return nil, fmt.Errorf("getCode cannot open tx: %w", err1)
 	}
 	defer tx.Rollback()
+
+	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	if err != nil {
+		return nil, err
+	}
 	chainConfig, err := api.chainConfig(tx)
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
+	if !chainConfig.IsBedrock(bn) {
+		if api.historicalRPCService != nil {
+			var result hexutility.Bytes
+			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getCode", address, hexutil.EncodeUint64(bn)); err != nil {
+				return nil, fmt.Errorf("historical backend failed: %w", err)
+			}
+			return result, nil
+		}
+		return nil, rpc.ErrNoHistoricalFallback
+	}
+
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), chainConfig.ChainName)
 	if err != nil {
 		return nil, err
@@ -110,6 +166,25 @@ func (api *APIImpl) GetStorageAt(ctx context.Context, address libcommon.Address,
 		return hexutility.Encode(common.LeftPadBytes(empty, 32)), err1
 	}
 	defer tx.Rollback()
+
+	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	if err != nil {
+		return hexutility.Encode(common.LeftPadBytes(empty, 32)), err
+	}
+	chainConfig, err := api.chainConfig(tx)
+	if err != nil {
+		return hexutility.Encode(common.LeftPadBytes(empty, 32)), fmt.Errorf("read chain config: %v", err)
+	}
+	if !chainConfig.IsBedrock(bn) {
+		if api.historicalRPCService != nil {
+			var result hexutility.Bytes
+			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getStorageAt", address, index, hexutil.EncodeUint64(bn)); err != nil {
+				return hexutility.Encode(common.LeftPadBytes(empty, 32)), fmt.Errorf("historical backend failed: %w", err)
+			}
+			return hexutility.Encode(common.LeftPadBytes(result, 32)), nil
+		}
+		return hexutility.Encode(common.LeftPadBytes(empty, 32)), rpc.ErrNoHistoricalFallback
+	}
 
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), "")
 	if err != nil {
