@@ -35,7 +35,7 @@ func (api *APIImpl) GetBalance(ctx context.Context, address libcommon.Address, b
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if !chainConfig.IsBedrock(bn) {
+	if chainConfig.IsOptimismPreBedrock(bn) {
 		if api.historicalRPCService != nil {
 			var result hexutil.Big
 			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getBalance", address, hexutil.EncodeUint64(bn)); err != nil {
@@ -91,7 +91,7 @@ func (api *APIImpl) GetTransactionCount(ctx context.Context, address libcommon.A
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if !chainConfig.IsBedrock(bn) {
+	if chainConfig.IsOptimismPreBedrock(bn) {
 		if api.historicalRPCService != nil {
 			var result hexutil.Uint64
 			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getTransactionCount", address, hexutil.EncodeUint64(bn)); err != nil {
@@ -130,7 +130,7 @@ func (api *APIImpl) GetCode(ctx context.Context, address libcommon.Address, bloc
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if !chainConfig.IsBedrock(bn) {
+	if chainConfig.IsOptimismPreBedrock(bn) {
 		if api.historicalRPCService != nil {
 			var result hexutility.Bytes
 			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getCode", address, hexutil.EncodeUint64(bn)); err != nil {
@@ -175,7 +175,7 @@ func (api *APIImpl) GetStorageAt(ctx context.Context, address libcommon.Address,
 	if err != nil {
 		return hexutility.Encode(common.LeftPadBytes(empty, 32)), fmt.Errorf("read chain config: %v", err)
 	}
-	if !chainConfig.IsBedrock(bn) {
+	if chainConfig.IsOptimismPreBedrock(bn) {
 		if api.historicalRPCService != nil {
 			var result hexutility.Bytes
 			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getStorageAt", address, index, hexutil.EncodeUint64(bn)); err != nil {
