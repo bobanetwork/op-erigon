@@ -212,6 +212,7 @@ func (api *PrivateDebugAPIImpl) TraceTransaction(ctx context.Context, hash commo
 				return err
 			}
 			stream.WriteRaw(string(result))
+			return nil
 		}
 		return rpc.ErrNoHistoricalFallback
 	}
