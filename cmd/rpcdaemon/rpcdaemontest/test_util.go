@@ -122,7 +122,7 @@ func CreateOptimismTestSentry(t *testing.T) (*stages.MockSentry, *core.ChainPack
 
 	var (
 		gspec = &types.Genesis{
-			Config: params.TestChainConfig,
+			Config: params.TestOptimismChainConfig,
 			Alloc: types.GenesisAlloc{
 				address:  {Balance: big.NewInt(9000000000000000000)},
 				address1: {Balance: big.NewInt(200000000000000000)},
@@ -131,11 +131,6 @@ func CreateOptimismTestSentry(t *testing.T) (*stages.MockSentry, *core.ChainPack
 			GasLimit: 10000000,
 		}
 	)
-	gspec.Config.Optimism = &chain.OptimismConfig{
-		EIP1559Elasticity:  8,
-		EIP1559Denominator: 1,
-	}
-	gspec.Config.BedrockBlock = big.NewInt(10000)
 	m := stages.MockWithGenesis(t, gspec, key, false)
 
 	contractBackend := backends.NewTestSimulatedBackendWithConfig(t, gspec.Alloc, gspec.Config, gspec.GasLimit)

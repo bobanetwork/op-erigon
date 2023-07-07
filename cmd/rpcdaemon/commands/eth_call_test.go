@@ -71,7 +71,7 @@ func TestEstimateGasHistoricalRPC(t *testing.T) {
 		expected  string
 	}{
 		{
-			caseName:  "miss api",
+			caseName:  "missing api",
 			payload:   "",
 			appendAPI: false,
 			isError:   true,
@@ -308,7 +308,7 @@ func TestGetProofHistoricalRPC(t *testing.T) {
 		expected  string
 	}{
 		{
-			caseName:  "miss api",
+			caseName:  "missing api",
 			payload:   "",
 			appendAPI: false,
 			isError:   true,

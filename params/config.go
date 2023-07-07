@@ -165,6 +165,26 @@ var (
 		Aura:                  &chain.AuRaConfig{},
 	}
 
+	TestOptimismChainConfig = &chain.Config{
+		ChainID:               big.NewInt(1337),
+		Consensus:             chain.EtHashConsensus,
+		HomesteadBlock:        big.NewInt(0),
+		TangerineWhistleBlock: big.NewInt(0),
+		SpuriousDragonBlock:   big.NewInt(0),
+		ByzantiumBlock:        big.NewInt(0),
+		ConstantinopleBlock:   big.NewInt(0),
+		PetersburgBlock:       big.NewInt(0),
+		IstanbulBlock:         big.NewInt(0),
+		MuirGlacierBlock:      big.NewInt(0),
+		BerlinBlock:           big.NewInt(0),
+		Ethash:                new(chain.EthashConfig),
+		Optimism: &chain.OptimismConfig{
+			EIP1559Elasticity:  8,
+			EIP1559Denominator: 1,
+		},
+		BedrockBlock: big.NewInt(1000000000000000000),
+	}
+
 	TestRules = TestChainConfig.Rules(0, 0)
 )
 

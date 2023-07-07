@@ -66,7 +66,7 @@ func TestGetBalanceHistoricalRPC(t *testing.T) {
 		expected  string
 	}{
 		{
-			caseName:  "miss api",
+			caseName:  "missing api",
 			payload:   "",
 			appendAPI: false,
 			isError:   true,
@@ -130,7 +130,7 @@ func TestGetTransactionCountHistoricalRPC(t *testing.T) {
 		expected  string
 	}{
 		{
-			caseName:  "miss api",
+			caseName:  "missing api",
 			payload:   "",
 			appendAPI: false,
 			isError:   true,
@@ -194,7 +194,7 @@ func TestGetCodeHistoricalRPC(t *testing.T) {
 		expected  string
 	}{
 		{
-			caseName:  "miss api",
+			caseName:  "missing api",
 			payload:   "",
 			appendAPI: false,
 			isError:   true,
@@ -258,7 +258,7 @@ func TestGetStorageAtHistoricalRPC(t *testing.T) {
 		expected  string
 	}{
 		{
-			caseName:  "miss api",
+			caseName:  "missing api",
 			payload:   "",
 			appendAPI: false,
 			isError:   true,
