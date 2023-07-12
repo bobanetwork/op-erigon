@@ -19,16 +19,16 @@
       "0": 2
     },
     "producerDelay": {
-      "0": 6
+      "0": 4
     },
     "sprint": {
-      "0": 64
+      "0":16
     },
     "backupMultiplier": {
       "0": 5
     },
     "stateSyncConfirmationDelay": {
-      "354000000": 128
+      "0": 128
     },
     "validatorContract": "0x0000000000000000000000000000000000001000",
     "stateReceiverContract": "0x0000000000000000000000000000000000001001",
