@@ -160,7 +160,7 @@ func IntrinsicGas(data []byte, accessList types2.AccessList, isContractCreation 
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool, extra uint64) *StateTransition {
+func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTransition {
 	isBor := evm.ChainConfig().Bor != nil
 	return &StateTransition{
 		gp:        gp,
@@ -177,7 +177,6 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool, extra uint
 		sharedBuyGasBalance: uint256.NewInt(0),
 
 		isBor: isBor,
-		extraGas: extra,
 	}
 }
 
@@ -192,7 +191,7 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool, extra uint
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
 // for trace_call to replicate OE/Pariry behaviour
 func ApplyMessageMM(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool, extra uint64) (*ExecutionResult, error) {
-	result, err := NewStateTransition(evm, msg, gp, extra).TransitionDb(refunds, gasBailout)
+	result, err := NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
 
 	if err == nil && result != nil && result.Err == vm.ErrHCReverted {
 		log.Debug("MMDBG-HC ApplyMessage propagating ErrHCReverted")

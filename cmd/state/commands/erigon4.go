@@ -37,6 +37,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/eth/ethconsensusconfig"
+	"github.com/ledgerwatch/erigon/node/nodecfg"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/turbo/debug"
 	"github.com/ledgerwatch/erigon/turbo/services"
@@ -84,12 +85,7 @@ var erigon4Cmd = &cobra.Command{
 	Use:   "erigon4",
 	Short: "Experimental command to re-execute blocks from beginning using erigon2 state representation and history/domain",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var logger log.Logger
-		var err error
-		if logger, err = debug.SetupCobra(cmd, "erigon4"); err != nil {
-			logger.Error("Setting up", "error", err)
-			return err
-		}
+		logger := debug.SetupCobra(cmd, "erigon4")
 		return Erigon4(genesis, chainConfig, logger)
 	},
 }
@@ -616,6 +612,6 @@ func initConsensusEngine(cc *chain2.Config, snapshots *freezeblocks.RoSnapshots,
 	} else {
 		consensusConfig = &config.Ethash
 	}
-	return ethconsensusconfig.CreateConsensusEngine(cc, consensusConfig, config.Miner.Notify, config.Miner.Noverify, config.HeimdallgRPCAddress,
-		config.HeimdallURL, config.WithoutHeimdall, datadirCli, true /* readonly */, logger)
+	return ethconsensusconfig.CreateConsensusEngine(&nodecfg.Config{Dirs: datadir.New(datadirCli)}, cc, consensusConfig, config.Miner.Notify, config.Miner.Noverify, config.HeimdallgRPCAddress,
+		config.HeimdallURL, config.WithoutHeimdall, true /* readonly */, logger)
 }

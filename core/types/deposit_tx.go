@@ -227,6 +227,7 @@ func (tx *DepositTransaction) FakeSign(address libcommon.Address) (Transaction, 
 	cpy := tx.copy()
 	return cpy, nil
 }
+
 // Hash computes the hash (but not for signatures!)
 func (tx *DepositTransaction) Hash() libcommon.Hash {
 	if hash := tx.hash.Load(); hash != nil {
