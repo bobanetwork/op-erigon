@@ -152,12 +152,12 @@ func DoOffchain(reqUrl string, reqMethod libcommon.Address, reqPayload []byte) (
 		return []byte(err.Error()), 1002
 	}
 	log.Debug("MMDBG-HC ClientCall result", "responseStringEnc", responseStringEnc)
-	
+
 	if len(responseStringEnc) > HC_MAX_ENC {
 		log.Warn("MMDBG-HC Encoded response too long", "len", len(responseStringEnc))
 		return []byte("Encoded response too long"), 1004
 	}
-	
+
 	responseBytes, err = hexutil.Decode(responseStringEnc)
 	if err != nil {
 		log.Warn("MMDBG-HC Response decode failed", "err", err)
@@ -282,7 +282,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		tBytes, _   = abi.NewType("bytes", "", nil)
 		tBytes32, _ = abi.NewType("bytes32", "", nil)
 		tString, _  = abi.NewType("string", "", nil)
-		tUint32,_  = abi.NewType("uint32", "", nil)
+		tUint32, _  = abi.NewType("uint32", "", nil)
 		tUint256, _ = abi.NewType("uint256", "", nil)
 		tBool, _    = abi.NewType("bool", "", nil)
 	)
@@ -348,7 +348,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 	case HC_LEGACY_OFFCHAIN:
 		dec, err := (abi.Arguments{{Type: tUint32}, {Type: tString}, {Type: tBytes}}).Unpack(hc.Request[4:])
 		log.Debug("MMDBG-HC ABI decode (offchain)", "dec", dec, "err", err, "hc", hc)
-	
+
 		legacyVersion := dec[0].(uint32)
 		log.Debug("MMDBG-HC Legacy Offchain call", "version", legacyVersion)
 
@@ -360,7 +360,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		reqUrl := dec[1].(string)
 		reqMethod := hc.Caller
 		reqPayload := dec[2].([]byte)
-		
+
 		hasher.Write([]byte{0x7d, 0x93, 0x61, 0x6c})
 		hasher.Write(hc.Caller.Bytes())
 		hasher.Write([]byte(reqUrl))
@@ -385,11 +385,11 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 			log.Debug("MMDBG-HC LegacyOffchain failed", "errCode", responseCode, "response", responseBytes)
 		}
 		log.Debug("MMDBG-HC Legacy Request (1)", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
-		
+
 		if legacyVersion == 1 {
 			responseLen := new(big.Int).SetBytes(responseBytes[:32])
 			responseBytes = responseBytes[32:]
-			
+
 			if responseLen.Cmp(big.NewInt(int64(len(responseBytes)))) != 0 {
 				log.Warn("MMDBG-HC Legacy-decode length mismatch", "expected", responseLen, "actual", len(responseBytes))
 				hc.State = 4

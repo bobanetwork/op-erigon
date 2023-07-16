@@ -240,17 +240,17 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
 	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
-		txType:     OffchainTxType,
-		sourceHash: tx.SourceHash,
-		from:       *tx.From,
-		gasLimit:   tx.GasLimit,
-		to:         tx.To,
-		mint:       *tx.Mint,
-		amount:     *tx.Value,
-		isSystemTx: tx.IsSystemTx,
-		data:       tx.Data,
-		accessList: nil,
-		checkNonce: true,
+		txType:        OffchainTxType,
+		sourceHash:    tx.SourceHash,
+		from:          *tx.From,
+		gasLimit:      tx.GasLimit,
+		to:            tx.To,
+		mint:          *tx.Mint,
+		amount:        *tx.Value,
+		isSystemTx:    tx.IsSystemTx,
+		data:          tx.Data,
+		accessList:    nil,
+		checkNonce:    true,
 		rollupDataGas: rollupDataGas(tx),
 	}
 
