@@ -18,7 +18,6 @@ package vm
 
 import (
 	"sync/atomic"
-	//"bytes"
 
 	"github.com/holiman/uint256"
 
@@ -278,7 +277,6 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 		if addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") && CheckTrigger(evm.hc, input, ret, err) {
 			log.Debug("MMDBG-HC evm.Call method triggered", "prefix", hexutility.Bytes(input[:4]), "addr", addr, "caller", caller.Address(), "ret", hexutility.Bytes(ret))
 			evm.hc.Caller = caller.Address()
-			evm.hc.State = 1
 			evm.hc.Request = make([]byte, len(input))
 			copy(evm.hc.Request, input)
 		}

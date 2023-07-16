@@ -27,6 +27,7 @@ import (
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon/common/hexutil"
+
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 )
 

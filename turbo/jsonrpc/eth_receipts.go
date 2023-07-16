@@ -731,7 +731,7 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		if t.Protected() {
 			chainId = types.DeriveChainId(&t.V).ToBig()
 		}
-	case *types.DepositTransaction:
+	case *types.DepositTransaction, *types.OffchainTransaction:
 		chainId = chainConfig.ChainID
 	default:
 		chainId = txn.GetChainID().ToBig()

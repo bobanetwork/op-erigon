@@ -66,14 +66,16 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	if msg.IsDepositTx() && config.IsOptimismRegolith(evm.Context().Time) {
 		nonce = ibs.GetNonce(msg.From())
 	}
+
+	// This is used to transfer the L1 storage costs for an Offchain Tx to the associated user Tx.
 	extra := uint64(0)
 	if msg.GetType() == types.OffchainTxType {
 		log.Debug("MMDBG-HC state_processor push extraGas", "rdg", msg.RollupDataGas())
-		ibs.ExtraL1 = msg.RollupDataGas()
-	} else if ibs.ExtraL1 != 0 {
-		extra = ibs.ExtraL1
+		ibs.SetExtraL1(msg.RollupDataGas())
+	} else if ibs.ExtraL1() != 0 {
+		extra = ibs.ExtraL1()
 		log.Debug("MMDBG-HC state_processor pop extraGas", "gas", extra)
-		ibs.ExtraL1 = 0
+		ibs.SetExtraL1(0)
 	}
 	if msg.GetType() != types.DepositTxType || extra != 0 {
 		log.Debug("MMDBG-HC before ApplyMessageMM", "type", msg.GetType(), "extra", extra)
@@ -161,7 +163,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 // indicating the block was invalid.
 func ApplyTransactionMM(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader,
 	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
-	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config,hc *vm.HCContext,
+	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config, hc *vm.HCContext,
 ) (*types.Receipt, []byte, error) {
 	log.Info("MMDBG ApplyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment

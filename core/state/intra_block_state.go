@@ -89,8 +89,7 @@ type IntraBlockState struct {
 	nextRevisionID int
 	trace          bool
 	balanceInc     map[libcommon.Address]*BalanceIncrease // Map of balance increases (without first reading the account)
-
-	ExtraL1        uint64
+	extraL1        uint64
 }
 
 // Create a new state from a given trie
@@ -450,6 +449,15 @@ func (sdb *IntraBlockState) setTransientState(addr libcommon.Address, key libcom
 // GetTransientState gets transient storage for a given account.
 func (sdb *IntraBlockState) GetTransientState(addr libcommon.Address, key libcommon.Hash) uint256.Int {
 	return sdb.transientStorage.Get(addr, key)
+}
+
+// Hybrid Compute extension
+func (sdb *IntraBlockState) ExtraL1() uint64 {
+	return sdb.extraL1
+}
+
+func (sdb *IntraBlockState) SetExtraL1(val uint64) {
+	sdb.extraL1 = val
 }
 
 func (sdb *IntraBlockState) getStateObject(addr libcommon.Address) (stateObject *stateObject) {

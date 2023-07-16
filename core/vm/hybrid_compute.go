@@ -498,6 +498,7 @@ func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 		log.Debug("MMDBG-HC noTrigger", "sel", hexutility.Bytes(input[:4]))
 		return false
 	}
+	hc.State = 1
 	log.Debug("MMDBG-HC Triggered with", "OpType", hc.OpType)
 	return true
 }

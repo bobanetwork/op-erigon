@@ -66,7 +66,7 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 			cacheBlockNum = blockNum
 		}
 		log.Info("MMDBG L1Cost", "blockNum", blockNum, "rollupDataGas", rollupDataGas, "extra", extra, "l1BaseFee", l1BaseFee, "overhead", overhead, "scalar", scalar)
-		return L1Cost(rollupDataGas + extra, l1BaseFee, overhead, scalar)
+		return L1Cost(rollupDataGas+extra, l1BaseFee, overhead, scalar)
 	}
 }
 
