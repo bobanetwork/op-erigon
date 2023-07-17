@@ -5,16 +5,13 @@ on:
       - devel
       - alpha
       - stable
+      - boba-develop
   pull_request:
     branches:
       - devel
       - alpha
       - stable
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
+      - boba-develop
 
 concurrency:
   group: ${{ github.ref }}
