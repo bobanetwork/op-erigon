@@ -16,21 +16,20 @@ import (
 	"github.com/ledgerwatch/erigon/core/rawdb/blockio"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/turbo/services"
-	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
+	"github.com/ledgerwatch/erigon/turbo/snapshotsync/freezeblocks"
 	"github.com/ledgerwatch/log/v3"
 )
 
 func blocksIO(db kv.RoDB) (services.FullBlockReader, *blockio.BlockWriter) {
-	var histV3, transactionsV3 bool
+	var histV3 bool
 	if err := db.View(context.Background(), func(tx kv.Tx) error {
-		transactionsV3, _ = kvcfg.TransactionsV3.Enabled(tx)
 		histV3, _ = kvcfg.HistoryV3.Enabled(tx)
 		return nil
 	}); err != nil {
 		panic(err)
 	}
-	br := snapshotsync.NewBlockReader(snapshotsync.NewRoSnapshots(ethconfig.Snapshot{Enabled: false}, "", log.New()), transactionsV3)
-	bw := blockio.NewBlockWriter(histV3, transactionsV3)
+	br := freezeblocks.NewBlockReader(freezeblocks.NewRoSnapshots(ethconfig.BlocksFreezing{Enabled: false}, "", log.New()))
+	bw := blockio.NewBlockWriter(histV3)
 	return br, bw
 }
 

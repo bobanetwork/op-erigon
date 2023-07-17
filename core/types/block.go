@@ -96,8 +96,10 @@ type Header struct {
 
 	BaseFee         *big.Int        `json:"baseFeePerGas"`   // EIP-1559
 	WithdrawalsHash *libcommon.Hash `json:"withdrawalsRoot"` // EIP-4895
-	// ExcessDataGas was added by EIP-4844 and is ignored in legacy headers.
-	ExcessDataGas *big.Int `json:"excessDataGas"`
+
+	// DataGasUsed & ExcessDataGas were added by EIP-4844 and are ignored in legacy headers.
+	DataGasUsed   *uint64 `json:"dataGasUsed"`
+	ExcessDataGas *uint64 `json:"excessDataGas"`
 
 	// The verkle proof is ignored in legacy headers
 	Verkle        bool
@@ -121,21 +123,6 @@ type LegacyHeader struct {
 	Extra       []byte            `json:"extraData"        gencodec:"required"`
 	MixDigest   libcommon.Hash    `json:"mixHash"` // prevRandao after EIP-4399
 	Nonce       BlockNonce        `json:"nonce"`
-}
-
-// ParentExcessDataGas is a helper that returns the excess data gas value of the parent block.  It
-// returns nil if the parent header could not be fetched, or if the parent block's excess data gas
-// is nil.
-func (h *Header) ParentExcessDataGas(getHeader func(hash libcommon.Hash, number uint64) *Header) *big.Int {
-	p := getHeader(h.ParentHash, h.Number.Uint64()-1)
-	if p != nil {
-		return p.ExcessDataGas
-	}
-	return nil
-}
-
-func bitsToBytes(bitLen int) (byteLen int) {
-	return (bitLen + 7) / 8
 }
 
 func (h *Header) EncodingSize() int {
@@ -166,7 +153,7 @@ func (h *Header) EncodingSize() int {
 		}
 	default:
 		if len(h.Extra) >= 56 {
-			encodingSize += bitsToBytes(bits.Len(uint(len(h.Extra))))
+			encodingSize += libcommon.BitLenToByteLen(bits.Len(uint(len(h.Extra))))
 		}
 		encodingSize += len(h.Extra)
 	}
@@ -174,7 +161,7 @@ func (h *Header) EncodingSize() int {
 	if len(h.AuRaSeal) != 0 {
 		encodingSize += 1 + rlp.IntLenExcludingHead(h.AuRaStep) + 1 + len(h.AuRaSeal)
 		if len(h.AuRaSeal) >= 56 {
-			encodingSize += bitsToBytes(bits.Len(uint(len(h.AuRaSeal))))
+			encodingSize += libcommon.BitLenToByteLen(bits.Len(uint(len(h.AuRaSeal))))
 		}
 	} else {
 		encodingSize += 33 /* MixDigest */ + 9 /* BlockNonce */
@@ -189,9 +176,13 @@ func (h *Header) EncodingSize() int {
 		encodingSize += 33
 	}
 
+	if h.DataGasUsed != nil {
+		encodingSize++
+		encodingSize += rlp.IntLenExcludingHead(*h.DataGasUsed)
+	}
 	if h.ExcessDataGas != nil {
 		encodingSize++
-		encodingSize += rlp.BigIntLenExcludingHead(h.ExcessDataGas)
+		encodingSize += rlp.IntLenExcludingHead(*h.ExcessDataGas)
 	}
 
 	if h.Verkle {
@@ -205,7 +196,7 @@ func (h *Header) EncodingSize() int {
 			}
 		default:
 			if len(h.VerkleProof) >= 56 {
-				encodingSize += bitsToBytes(bits.Len(uint(len(h.VerkleProof))))
+				encodingSize += libcommon.BitLenToByteLen(bits.Len(uint(len(h.VerkleProof))))
 			}
 			encodingSize += len(h.VerkleProof)
 		}
@@ -336,8 +327,13 @@ func (h *Header) EncodeRLP(w io.Writer) error {
 		}
 	}
 
+	if h.DataGasUsed != nil {
+		if err := rlp.EncodeInt(*h.DataGasUsed, w, b[:]); err != nil {
+			return err
+		}
+	}
 	if h.ExcessDataGas != nil {
-		if err := rlp.EncodeBigInt(h.ExcessDataGas, w, b[:]); err != nil {
+		if err := rlp.EncodeInt(*h.ExcessDataGas, w, b[:]); err != nil {
 			return err
 		}
 	}
@@ -487,8 +483,21 @@ func (h *Header) DecodeRLP(s *rlp.Stream) error {
 	h.WithdrawalsHash = new(libcommon.Hash)
 	h.WithdrawalsHash.SetBytes(b)
 
-	// ExcessDataGas
-	if b, err = s.Uint256Bytes(); err != nil {
+	var dataGasUsed uint64
+	if dataGasUsed, err = s.Uint(); err != nil {
+		if errors.Is(err, rlp.EOL) {
+			h.DataGasUsed = nil
+			if err := s.ListEnd(); err != nil {
+				return fmt.Errorf("close header struct (no DataGasUsed): %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("read DataGasUsed: %w", err)
+	}
+	h.DataGasUsed = &dataGasUsed
+
+	var excessDataGas uint64
+	if excessDataGas, err = s.Uint(); err != nil {
 		if errors.Is(err, rlp.EOL) {
 			h.ExcessDataGas = nil
 			if err := s.ListEnd(); err != nil {
@@ -498,7 +507,7 @@ func (h *Header) DecodeRLP(s *rlp.Stream) error {
 		}
 		return fmt.Errorf("read ExcessDataGas: %w", err)
 	}
-	h.ExcessDataGas = new(big.Int).SetBytes(b)
+	h.ExcessDataGas = &excessDataGas
 
 	if h.Verkle {
 		if h.VerkleProof, err = s.Bytes(); err != nil {
@@ -526,20 +535,9 @@ type headerMarshaling struct {
 	Time          hexutil.Uint64
 	Extra         hexutility.Bytes
 	BaseFee       *hexutil.Big
-	ExcessDataGas *hexutil.Big
+	DataGasUsed   *hexutil.Uint64
+	ExcessDataGas *hexutil.Uint64
 	Hash          libcommon.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
-}
-
-// SetExcessDataGas sets the excess_data_gas field in the header
-func (h *Header) SetExcessDataGas(v *big.Int) {
-	h.ExcessDataGas = new(big.Int)
-	if v != nil {
-		h.ExcessDataGas.Set(v)
-	}
-	if h.WithdrawalsHash == nil {
-		// leaving this nil would result in a buggy encoding
-		h.WithdrawalsHash = &EmptyRootHash
-	}
 }
 
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
@@ -574,15 +572,19 @@ var headerSize = common.StorageSize(reflect.TypeOf(Header{}).Size())
 // Size returns the approximate memory used by all internal contents. It is used
 // to approximate and limit the memory consumption of various caches.
 func (h *Header) Size() common.StorageSize {
-	s := headerSize + common.StorageSize(len(h.Extra)+bitsToBytes(h.Difficulty.BitLen())+bitsToBytes(h.Number.BitLen()))
+	s := headerSize
+	s += common.StorageSize(len(h.Extra) + libcommon.BitLenToByteLen(h.Difficulty.BitLen()) + libcommon.BitLenToByteLen(h.Number.BitLen()))
 	if h.BaseFee != nil {
-		s += common.StorageSize(bitsToBytes(h.BaseFee.BitLen()))
+		s += common.StorageSize(libcommon.BitLenToByteLen(h.BaseFee.BitLen()))
 	}
 	if h.WithdrawalsHash != nil {
 		s += common.StorageSize(32)
 	}
+	if h.DataGasUsed != nil {
+		s += common.StorageSize(8)
+	}
 	if h.ExcessDataGas != nil {
-		s += common.StorageSize(bitsToBytes(h.ExcessDataGas.BitLen()))
+		s += common.StorageSize(8)
 	}
 	return s
 }
@@ -606,11 +608,6 @@ func (h *Header) SanityCheck() error {
 	if h.BaseFee != nil {
 		if bfLen := h.BaseFee.BitLen(); bfLen > 256 {
 			return fmt.Errorf("too large base fee: bitlen %d", bfLen)
-		}
-	}
-	if h.ExcessDataGas != nil {
-		if bfLen := h.ExcessDataGas.BitLen(); bfLen > 256 {
-			return fmt.Errorf("too large excess data gas: bitlen %d", bfLen)
 		}
 	}
 
@@ -692,7 +689,7 @@ func (rb RawBody) payloadSize() (payloadSize, txsLen, unclesLen, withdrawalsLen 
 		txsLen += len(tx)
 	}
 	if txsLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(txsLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(txsLen)))
 	}
 	payloadSize += txsLen
 
@@ -702,12 +699,12 @@ func (rb RawBody) payloadSize() (payloadSize, txsLen, unclesLen, withdrawalsLen 
 		unclesLen++
 		uncleLen := uncle.EncodingSize()
 		if uncleLen >= 56 {
-			unclesLen += bitsToBytes(bits.Len(uint(uncleLen)))
+			unclesLen += libcommon.BitLenToByteLen(bits.Len(uint(uncleLen)))
 		}
 		unclesLen += uncleLen
 	}
 	if unclesLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(unclesLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(unclesLen)))
 	}
 	payloadSize += unclesLen
 
@@ -718,12 +715,12 @@ func (rb RawBody) payloadSize() (payloadSize, txsLen, unclesLen, withdrawalsLen 
 			withdrawalsLen++
 			withdrawalLen := withdrawal.EncodingSize()
 			if withdrawalLen >= 56 {
-				withdrawalLen += bitsToBytes(bits.Len(uint(withdrawalLen)))
+				withdrawalLen += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalLen)))
 			}
 			withdrawalsLen += withdrawalLen
 		}
 		if withdrawalsLen >= 56 {
-			payloadSize += bitsToBytes(bits.Len(uint(withdrawalsLen)))
+			payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalsLen)))
 		}
 		payloadSize += withdrawalsLen
 	}
@@ -856,12 +853,12 @@ func (bfs BodyForStorage) payloadSize() (payloadSize, unclesLen, withdrawalsLen 
 		unclesLen++
 		uncleLen := uncle.EncodingSize()
 		if uncleLen >= 56 {
-			unclesLen += bitsToBytes(bits.Len(uint(uncleLen)))
+			unclesLen += libcommon.BitLenToByteLen(bits.Len(uint(uncleLen)))
 		}
 		unclesLen += uncleLen
 	}
 	if unclesLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(unclesLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(unclesLen)))
 	}
 	payloadSize += unclesLen
 
@@ -872,12 +869,12 @@ func (bfs BodyForStorage) payloadSize() (payloadSize, unclesLen, withdrawalsLen 
 			withdrawalsLen++
 			withdrawalLen := withdrawal.EncodingSize()
 			if withdrawalLen >= 56 {
-				withdrawalLen += bitsToBytes(bits.Len(uint(withdrawalLen)))
+				withdrawalLen += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalLen)))
 			}
 			withdrawalsLen += withdrawalLen
 		}
 		if withdrawalsLen >= 56 {
-			payloadSize += bitsToBytes(bits.Len(uint(withdrawalsLen)))
+			payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalsLen)))
 		}
 		payloadSize += withdrawalsLen
 	}
@@ -1004,22 +1001,14 @@ func (bb Body) payloadSize() (payloadSize int, txsLen, unclesLen, withdrawalsLen
 	payloadSize++
 	for _, tx := range bb.Transactions {
 		txsLen++
-		var txLen int
-		switch t := tx.(type) {
-		case *LegacyTx:
-			txLen = t.EncodingSize()
-		case *AccessListTx:
-			txLen = t.EncodingSize()
-		case *DynamicFeeTransaction:
-			txLen = t.EncodingSize()
-		}
+		txLen := tx.EncodingSize()
 		if txLen >= 56 {
-			txsLen += bitsToBytes(bits.Len(uint(txLen)))
+			txsLen += libcommon.BitLenToByteLen(bits.Len(uint(txLen)))
 		}
 		txsLen += txLen
 	}
 	if txsLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(txsLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(txsLen)))
 	}
 	payloadSize += txsLen
 
@@ -1029,12 +1018,12 @@ func (bb Body) payloadSize() (payloadSize int, txsLen, unclesLen, withdrawalsLen
 		unclesLen++
 		uncleLen := uncle.EncodingSize()
 		if uncleLen >= 56 {
-			unclesLen += bitsToBytes(bits.Len(uint(uncleLen)))
+			unclesLen += libcommon.BitLenToByteLen(bits.Len(uint(uncleLen)))
 		}
 		unclesLen += uncleLen
 	}
 	if unclesLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(unclesLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(unclesLen)))
 	}
 	payloadSize += unclesLen
 
@@ -1045,12 +1034,12 @@ func (bb Body) payloadSize() (payloadSize int, txsLen, unclesLen, withdrawalsLen
 			withdrawalsLen++
 			withdrawalLen := withdrawal.EncodingSize()
 			if withdrawalLen >= 56 {
-				withdrawalLen += bitsToBytes(bits.Len(uint(withdrawalLen)))
+				withdrawalLen += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalLen)))
 			}
 			withdrawalsLen += withdrawalLen
 		}
 		if withdrawalsLen >= 56 {
-			payloadSize += bitsToBytes(bits.Len(uint(withdrawalsLen)))
+			payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalsLen)))
 		}
 		payloadSize += withdrawalsLen
 	}
@@ -1070,19 +1059,8 @@ func (bb Body) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	for _, tx := range bb.Transactions {
-		switch t := tx.(type) {
-		case *LegacyTx:
-			if err := t.EncodeRLP(w); err != nil {
-				return err
-			}
-		case *AccessListTx:
-			if err := t.EncodeRLP(w); err != nil {
-				return err
-			}
-		case *DynamicFeeTransaction:
-			if err := t.EncodeRLP(w); err != nil {
-				return err
-			}
+		if err := tx.EncodeRLP(w); err != nil {
+			return err
 		}
 	}
 	// encode Uncles
@@ -1271,9 +1249,13 @@ func CopyHeader(h *Header) *Header {
 		cpy.WithdrawalsHash = new(libcommon.Hash)
 		cpy.WithdrawalsHash.SetBytes(h.WithdrawalsHash.Bytes())
 	}
+	if h.DataGasUsed != nil {
+		dataGasUsed := *h.DataGasUsed
+		cpy.DataGasUsed = &dataGasUsed
+	}
 	if h.ExcessDataGas != nil {
-		cpy.ExcessDataGas = new(big.Int)
-		cpy.ExcessDataGas.Set(h.ExcessDataGas)
+		excessDataGas := *h.ExcessDataGas
+		cpy.ExcessDataGas = &excessDataGas
 	}
 	return &cpy
 }
@@ -1360,7 +1342,7 @@ func (bb Block) payloadSize() (payloadSize int, txsLen, unclesLen, withdrawalsLe
 	payloadSize++
 	headerLen := bb.header.EncodingSize()
 	if headerLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(headerLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(headerLen)))
 	}
 	payloadSize += headerLen
 
@@ -1370,12 +1352,12 @@ func (bb Block) payloadSize() (payloadSize int, txsLen, unclesLen, withdrawalsLe
 		txsLen++
 		txLen := tx.EncodingSize()
 		if txLen >= 56 {
-			txsLen += bitsToBytes(bits.Len(uint(txLen)))
+			txsLen += libcommon.BitLenToByteLen(bits.Len(uint(txLen)))
 		}
 		txsLen += txLen
 	}
 	if txsLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(txsLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(txsLen)))
 	}
 	payloadSize += txsLen
 
@@ -1385,12 +1367,12 @@ func (bb Block) payloadSize() (payloadSize int, txsLen, unclesLen, withdrawalsLe
 		unclesLen++
 		uncleLen := uncle.EncodingSize()
 		if uncleLen >= 56 {
-			unclesLen += bitsToBytes(bits.Len(uint(uncleLen)))
+			unclesLen += libcommon.BitLenToByteLen(bits.Len(uint(uncleLen)))
 		}
 		unclesLen += uncleLen
 	}
 	if unclesLen >= 56 {
-		payloadSize += bitsToBytes(bits.Len(uint(unclesLen)))
+		payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(unclesLen)))
 	}
 	payloadSize += unclesLen
 
@@ -1401,12 +1383,12 @@ func (bb Block) payloadSize() (payloadSize int, txsLen, unclesLen, withdrawalsLe
 			withdrawalsLen++
 			withdrawalLen := withdrawal.EncodingSize()
 			if withdrawalLen >= 56 {
-				withdrawalLen += bitsToBytes(bits.Len(uint(withdrawalLen)))
+				withdrawalLen += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalLen)))
 			}
 			withdrawalsLen += withdrawalLen
 		}
 		if withdrawalsLen >= 56 {
-			payloadSize += bitsToBytes(bits.Len(uint(withdrawalsLen)))
+			payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(withdrawalsLen)))
 		}
 		payloadSize += withdrawalsLen
 	}
@@ -1501,13 +1483,6 @@ func (b *Block) BaseFee() *big.Int {
 }
 func (b *Block) WithdrawalsHash() *libcommon.Hash { return b.header.WithdrawalsHash }
 func (b *Block) Withdrawals() Withdrawals         { return b.withdrawals }
-
-func (b *Block) ExcessDataGas() *big.Int {
-	if b.header.ExcessDataGas == nil {
-		return nil
-	}
-	return new(big.Int).Set(b.header.ExcessDataGas)
-}
 
 // Header returns a deep-copy of the entire block header using CopyHeader()
 func (b *Block) Header() *Header       { return CopyHeader(b.header) }

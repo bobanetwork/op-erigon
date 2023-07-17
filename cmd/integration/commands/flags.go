@@ -16,7 +16,7 @@ var (
 	block, pruneTo, unwind         uint64
 	unwindEvery                    uint64
 	batchSizeStr                   string
-	reset, warmup                  bool
+	reset, warmup, noCommit        bool
 	bucket                         string
 	datadirCli, toChaindata        string
 	migration                      string
@@ -30,7 +30,7 @@ var (
 	pruneHBefore, pruneRBefore     uint64
 	pruneTBefore, pruneCBefore     uint64
 	experiments                    []string
-	chain                          string // Which chain to use (mainnet, rinkeby, goerli, etc.)
+	chain                          string // Which chain to use (mainnet, goerli, sepolia, etc.)
 
 	commitmentMode string
 	commitmentTrie string
@@ -85,6 +85,9 @@ func withBlock(cmd *cobra.Command) {
 
 func withUnwind(cmd *cobra.Command) {
 	cmd.Flags().Uint64Var(&unwind, "unwind", 0, "how much blocks unwind on each iteration")
+}
+func withNoCommit(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&noCommit, "no-commit", false, "run everything in 1 transaction, but doesn't commit it")
 }
 
 func withPruneTo(cmd *cobra.Command) {
