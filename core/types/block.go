@@ -545,7 +545,7 @@ type headerMarshaling struct {
 func (h *Header) Hash() libcommon.Hash {
 	// The difficult of legacy blocks is 1 or 2
 	if h.Difficulty != nil && h.BaseFee != nil {
-		if (h.Difficulty.Cmp(libcommon.Big1) == 0 || h.Difficulty.Cmp(libcommon.Big2) == 0) && h.BaseFee.Cmp(libcommon.Big1) == 0 {
+		if (h.Difficulty.Cmp(libcommon.Big1) == 0 || h.Difficulty.Cmp(libcommon.Big2) == 0) && h.BaseFee.Cmp(libcommon.Big0) == 0 {
 			legacyHeader := &LegacyHeader{
 				ParentHash:  h.ParentHash,
 				UncleHash:   h.UncleHash,
