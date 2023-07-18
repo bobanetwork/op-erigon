@@ -222,6 +222,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		if isBobaLegacyBlock {
 			current.Header.GasLimit = uint64(cfg.chainConfig.GetBobaGenesisGasLimit())
 			current.Header.Coinbase = libcommon.HexToAddress(cfg.chainConfig.GetBobaGenesisCoinbase())
+			current.Header.BaseFee = libcommon.Big0
 		}
 
 		return nil
@@ -314,6 +315,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	if isBobaLegacyBlock {
 		current.Header.GasLimit = uint64(cfg.chainConfig.GetBobaGenesisGasLimit())
 		current.Header.Coinbase = libcommon.HexToAddress(cfg.chainConfig.GetBobaGenesisCoinbase())
+		current.Header.BaseFee = libcommon.Big0
 	}
 
 	return nil

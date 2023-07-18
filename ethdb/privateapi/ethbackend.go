@@ -307,15 +307,17 @@ func (s *EthBackendServer) EngineGetBlobsBundleV1(ctx context.Context, in *remot
 // EngineNewPayload validates and possibly executes payload
 func (s *EthBackendServer) EngineNewPayload(ctx context.Context, req *types2.ExecutionPayload) (*remote.EnginePayloadStatus, error) {
 	difficulty := serenity.SerenityDifficulty
+	baseFee := gointerfaces.ConvertH256ToUint256Int(req.BaseFeePerGas).ToBig()
 	if s.config.IsBobaLegacyBlock(big.NewInt(int64(req.BlockNumber))) {
 		difficulty = libcommon.Big2
+		baseFee = libcommon.Big0
 	}
 	header := types.Header{
 		ParentHash:  gointerfaces.ConvertH256ToHash(req.ParentHash),
 		Coinbase:    gointerfaces.ConvertH160toAddress(req.Coinbase),
 		Root:        gointerfaces.ConvertH256ToHash(req.StateRoot),
 		Bloom:       gointerfaces.ConvertH2048ToBloom(req.LogsBloom),
-		BaseFee:     gointerfaces.ConvertH256ToUint256Int(req.BaseFeePerGas).ToBig(),
+		BaseFee:     baseFee,
 		Extra:       req.ExtraData,
 		Number:      big.NewInt(int64(req.BlockNumber)),
 		GasUsed:     req.GasUsed,

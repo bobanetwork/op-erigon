@@ -504,6 +504,7 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		head.Difficulty = big.NewInt(1)
 		head.Extra = common.Hex2Bytes(g.Config.GetBobaGenesisExtraData())
 		head.Coinbase = libcommon.HexToAddress(g.Config.GetBobaGenesisCoinbase())
+		head.BaseFee = big.NewInt(0)
 	}
 
 	var root libcommon.Hash
