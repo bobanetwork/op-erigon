@@ -384,8 +384,9 @@ func startHandlingForkChoice(
 		return nil, err
 	}
 	log.Info("MMDBG Forking point is", "blockNumber", forkingPoint)
-	isBedrockBlock := cfg.chainConfig.Optimism != nil && cfg.chainConfig.IsBedrock(header.Number.Uint64())
-	if forkingPoint < preProgress && isBedrockBlock {
+	// isBedrockBlock := cfg.chainConfig.Optimism != nil && cfg.chainConfig.IsBedrock(header.Number.Uint64())
+	// if forkingPoint < preProgress && isBedrockBlock {
+	if forkingPoint < preProgress {
 
 		logger.Info(fmt.Sprintf("[%s] Fork choice: re-org", s.LogPrefix()), "goal", headerNumber, "from", preProgress, "unwind to", forkingPoint)
 
