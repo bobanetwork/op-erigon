@@ -279,6 +279,9 @@ func TestGetProof(t *testing.T) {
 
 func TestGetProofHistoricalRPC(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateOptimismTestSentry(t)
+	if m.HistoryV3 {
+		t.Skip("not supported by Erigon3")
+	}
 	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
 
 	table := []struct {
