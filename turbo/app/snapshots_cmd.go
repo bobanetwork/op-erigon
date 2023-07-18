@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -27,12 +28,13 @@ import (
 	"github.com/ledgerwatch/erigon/cmd/hack/tool/fromdb"
 	"github.com/ledgerwatch/erigon/cmd/utils"
 	"github.com/ledgerwatch/erigon/core/rawdb"
+	"github.com/ledgerwatch/erigon/core/rawdb/blockio"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/eth/ethconfig/estimate"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/turbo/debug"
 	"github.com/ledgerwatch/erigon/turbo/logging"
-	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
+	"github.com/ledgerwatch/erigon/turbo/snapshotsync/freezeblocks"
 	"github.com/ledgerwatch/log/v3"
 	"github.com/urfave/cli/v2"
 )
@@ -90,6 +92,20 @@ var snapshotCommand = cli.Command{
 			Action: doDecompressSpeed,
 			Flags:  joinFlags([]cli.Flag{&utils.DataDirFlag}, debug.Flags, logging.Flags),
 		},
+		{
+			Name:   "diff",
+			Action: doDiff,
+			Flags: joinFlags([]cli.Flag{
+				&cli.PathFlag{
+					Name:     "src",
+					Required: true,
+				},
+				&cli.PathFlag{
+					Name:     "dst",
+					Required: true,
+				},
+			}, debug.Flags, logging.Flags),
+		},
 	},
 }
 
@@ -125,6 +141,36 @@ func preloadFileAsync(name string) {
 		ff, _ := os.Open(name)
 		_, _ = io.CopyBuffer(io.Discard, bufio.NewReaderSize(ff, 64*1024*1024), make([]byte, 64*1024*1024))
 	}()
+}
+
+func doDiff(cliCtx *cli.Context) error {
+	defer log.Info("Done")
+	srcF, dstF := cliCtx.String("src"), cliCtx.String("dst")
+	src, err := compress.NewDecompressor(srcF)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dst, err := compress.NewDecompressor(dstF)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	i := 0
+	srcG, dstG := src.MakeGetter(), dst.MakeGetter()
+	var srcBuf, dstBuf []byte
+	for srcG.HasNext() {
+		i++
+		srcBuf, _ = srcG.Next(srcBuf[:0])
+		dstBuf, _ = dstG.Next(dstBuf[:0])
+
+		if !bytes.Equal(srcBuf, dstBuf) {
+			log.Error(fmt.Sprintf("found difference: %d, %x, %x\n", i, srcBuf, dstBuf))
+			return nil
+		}
+	}
+	return nil
 }
 
 func doDecompressSpeed(cliCtx *cli.Context) error {
@@ -219,13 +265,13 @@ func doIndicesCommand(cliCtx *cli.Context) error {
 	}
 	cfg := ethconfig.NewSnapCfg(true, true, false)
 
-	allSnapshots := snapshotsync.NewRoSnapshots(cfg, dirs.Snap, logger)
+	allSnapshots := freezeblocks.NewRoSnapshots(cfg, dirs.Snap, logger)
 	if err := allSnapshots.ReopenFolder(); err != nil {
 		return err
 	}
 	allSnapshots.LogStat()
 	indexWorkers := estimate.IndexSnapshot.Workers()
-	if err := snapshotsync.BuildMissedIndices("Indexing", ctx, dirs, *chainID, indexWorkers, logger); err != nil {
+	if err := freezeblocks.BuildMissedIndices("Indexing", ctx, dirs, *chainID, indexWorkers, logger); err != nil {
 		return err
 	}
 	agg, err := libstate.NewAggregatorV3(ctx, dirs.SnapHistory, dirs.Tmp, ethconfig.HistoryV3AggregationStep, chainDB, logger)
@@ -365,13 +411,14 @@ func doRetireCommand(cliCtx *cli.Context) error {
 	defer db.Close()
 
 	cfg := ethconfig.NewSnapCfg(true, true, true)
-	snapshots := snapshotsync.NewRoSnapshots(cfg, dirs.Snap, logger)
+	snapshots := freezeblocks.NewRoSnapshots(cfg, dirs.Snap, logger)
 	if err := snapshots.ReopenFolder(); err != nil {
 		return err
 	}
-	blockReader := snapshotsync.NewBlockReader(snapshots, fromdb.TxsV3(db))
+	blockReader := freezeblocks.NewBlockReader(snapshots)
+	blockWriter := blockio.NewBlockWriter(fromdb.HistV3(db))
 
-	br := snapshotsync.NewBlockRetire(estimate.CompressSnapshot.Workers(), dirs.Tmp, blockReader, db, nil, nil, logger)
+	br := freezeblocks.NewBlockRetire(estimate.CompressSnapshot.Workers(), dirs, blockReader, blockWriter, db, nil, logger)
 	agg, err := libstate.NewAggregatorV3(ctx, dirs.SnapHistory, dirs.Tmp, ethconfig.HistoryV3AggregationStep, db, logger)
 	if err != nil {
 		return err
@@ -389,7 +436,7 @@ func doRetireCommand(cliCtx *cli.Context) error {
 			forwardProgress, err = stages.GetStageProgress(tx, stages.Senders)
 			return err
 		})
-		from2, to2, ok := snapshotsync.CanRetire(forwardProgress, br.Snapshots())
+		from2, to2, ok := freezeblocks.CanRetire(forwardProgress, blockReader.FrozenBlocks())
 		if ok {
 			from, to, every = from2, to2, to2-from2
 		}
@@ -397,11 +444,11 @@ func doRetireCommand(cliCtx *cli.Context) error {
 
 	logger.Info("Params", "from", from, "to", to, "every", every)
 	for i := from; i < to; i += every {
-		if err := br.RetireBlocks(ctx, i, i+every, log.LvlInfo); err != nil {
+		if err := br.RetireBlocks(ctx, i, i+every, log.LvlInfo, nil); err != nil {
 			panic(err)
 		}
 		if err := db.UpdateNosync(ctx, func(tx kv.RwTx) error {
-			if err := rawdb.WriteSnapshots(tx, br.Snapshots().Files(), agg.Files()); err != nil {
+			if err := rawdb.WriteSnapshots(tx, blockReader.FrozenFiles(), agg.Files()); err != nil {
 				return err
 			}
 			for j := 0; j < 10_000; j++ { // prune happens by small steps, so need many runs

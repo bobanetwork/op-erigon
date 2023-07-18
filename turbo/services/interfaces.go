@@ -3,11 +3,13 @@ package services
 import (
 	"context"
 
+	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/rlp"
+	"github.com/ledgerwatch/log/v3"
 )
 
 type All struct {
@@ -18,23 +20,29 @@ type BlockReader interface {
 	BlockByNumber(ctx context.Context, db kv.Tx, number uint64) (*types.Block, error)
 	BlockByHash(ctx context.Context, db kv.Tx, hash common.Hash) (*types.Block, error)
 	CurrentBlock(db kv.Tx) (*types.Block, error)
-	BlockWithSenders(ctx context.Context, tx kv.Getter, hash common.Hash, blockHeight uint64) (block *types.Block, senders []common.Address, err error)
+	BlockWithSenders(ctx context.Context, tx kv.Getter, hash common.Hash, blockNum uint64) (block *types.Block, senders []common.Address, err error)
 }
 
 type HeaderReader interface {
-	Header(ctx context.Context, tx kv.Getter, hash common.Hash, blockHeight uint64) (*types.Header, error)
-	HeaderByNumber(ctx context.Context, tx kv.Getter, blockHeight uint64) (*types.Header, error)
+	Header(ctx context.Context, tx kv.Getter, hash common.Hash, blockNum uint64) (*types.Header, error)
+	HeaderByNumber(ctx context.Context, tx kv.Getter, blockNum uint64) (*types.Header, error)
 	HeaderByHash(ctx context.Context, tx kv.Getter, hash common.Hash) (*types.Header, error)
+	ReadAncestor(db kv.Getter, hash common.Hash, number, ancestor uint64, maxNonCanonical *uint64) (common.Hash, uint64)
+
+	//TODO: change it to `iter`
+	HeadersRange(ctx context.Context, walker func(header *types.Header) error) error
 }
 
 type CanonicalReader interface {
-	CanonicalHash(ctx context.Context, tx kv.Getter, blockHeight uint64) (common.Hash, error)
+	CanonicalHash(ctx context.Context, tx kv.Getter, blockNum uint64) (common.Hash, error)
+	BadHeaderNumber(ctx context.Context, tx kv.Getter, hash common.Hash) (blockHeight *uint64, err error)
 }
 
 type BodyReader interface {
-	BodyWithTransactions(ctx context.Context, tx kv.Getter, hash common.Hash, blockHeight uint64) (body *types.Body, err error)
-	BodyRlp(ctx context.Context, tx kv.Getter, hash common.Hash, blockHeight uint64) (bodyRlp rlp.RawValue, err error)
-	Body(ctx context.Context, tx kv.Getter, hash common.Hash, blockHeight uint64) (body *types.Body, txAmount uint32, err error)
+	BodyWithTransactions(ctx context.Context, tx kv.Getter, hash common.Hash, blockNum uint64) (body *types.Body, err error)
+	BodyRlp(ctx context.Context, tx kv.Getter, hash common.Hash, blockNum uint64) (bodyRlp rlp.RawValue, err error)
+	Body(ctx context.Context, tx kv.Getter, hash common.Hash, blockNum uint64) (body *types.Body, txAmount uint32, err error)
+	HasSenders(ctx context.Context, tx kv.Getter, hash common.Hash, blockNum uint64) (bool, error)
 }
 
 type TxnReader interface {
@@ -60,13 +68,26 @@ type FullBlockReader interface {
 	TxnReader
 	CanonicalReader
 
-	TxsV3Enabled() bool
+	FrozenBlocks() uint64
+	FrozenFiles() (list []string)
+	FreezingCfg() ethconfig.BlocksFreezing
+	CanPruneTo(currentBlockInDB uint64) (canPruneBlocksTo uint64)
+
 	Snapshots() BlockSnapshots
 }
 
 type BlockSnapshots interface {
-	Cfg() ethconfig.Snapshot
-	BlocksAvailable() uint64
+	ReopenFolder() error
+	SegmentsMax() uint64
+	ScanDir() (map[string]struct{}, []*Range, error)
+}
+
+// BlockRetire - freezing blocks: moving old data from DB to snapshot files
+type BlockRetire interface {
+	PruneAncientBlocks(tx kv.RwTx, limit int) error
+	RetireBlocksInBackground(ctx context.Context, maxBlockNumInDB uint64, lvl log.Lvl, seedNewSnapshots func(downloadRequest []DownloadRequest) error)
+	HasNewFrozenFiles() bool
+	BuildMissedIndicesIfNeed(ctx context.Context, logPrefix string, notifier DBEventNotifier, cc *chain.Config) error
 }
 
 /*
@@ -84,3 +105,21 @@ type BlockWriter interface {
 	WriteBody(tx kv.RwTx, hash libcommon.Hash, number uint64, body *types.Body) error
 }
 */
+
+type DBEventNotifier interface {
+	OnNewSnapshot()
+}
+
+type DownloadRequest struct {
+	Ranges      *Range
+	Path        string
+	TorrentHash string
+}
+
+func NewDownloadRequest(ranges *Range, path string, torrentHash string) DownloadRequest {
+	return DownloadRequest{Ranges: ranges, Path: path, TorrentHash: torrentHash}
+}
+
+type Range struct {
+	From, To uint64
+}

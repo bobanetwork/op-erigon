@@ -235,6 +235,9 @@ func VerifyHeaderBasics(chain consensus.ChainHeaderReader, header, parent *types
 		// Verify the header's EIP-1559 attributes.
 		return err
 	}
+	if header.DataGasUsed != nil {
+		return fmt.Errorf("invalid dataGasUsed before fork: have %v, expected 'nil'", header.DataGasUsed)
+	}
 	if header.ExcessDataGas != nil {
 		return fmt.Errorf("invalid excessDataGas before fork: have %v, expected 'nil'", header.ExcessDataGas)
 	}
@@ -549,7 +552,7 @@ func (ethash *Ethash) Prepare(chain consensus.ChainHeaderReader, header *types.H
 }
 
 func (ethash *Ethash) Initialize(config *chain.Config, chain consensus.ChainHeaderReader, header *types.Header,
-	state *state.IntraBlockState, txs []types.Transaction, uncles []*types.Header, syscall consensus.SystemCall) {
+	state *state.IntraBlockState, txs []types.Transaction, uncles []*types.Header, syscall consensus.SysCallCustom) {
 }
 
 // Finalize implements consensus.Engine, accumulating the block and uncle rewards,
@@ -600,9 +603,6 @@ func (ethash *Ethash) SealHash(header *types.Header) (hash libcommon.Hash) {
 	}
 	if header.BaseFee != nil {
 		enc = append(enc, header.BaseFee)
-	}
-	if header.ExcessDataGas != nil {
-		enc = append(enc, header.ExcessDataGas)
 	}
 	rlp.Encode(hasher, enc)
 	hasher.Sum(hash[:0])

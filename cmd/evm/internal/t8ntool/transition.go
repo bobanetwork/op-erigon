@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/common/datadir"
+	"github.com/ledgerwatch/erigon/core/state/temporal"
 	"github.com/ledgerwatch/log/v3"
 	"github.com/urfave/cli/v2"
 
@@ -37,9 +39,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/length"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcfg"
-	"github.com/ledgerwatch/erigon-lib/kv/memdb"
-
-	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/commands"
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus/ethash"
@@ -52,6 +51,7 @@ import (
 	"github.com/ledgerwatch/erigon/eth/tracers/logger"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/erigon/tests"
+	"github.com/ledgerwatch/erigon/turbo/jsonrpc"
 	"github.com/ledgerwatch/erigon/turbo/trie"
 )
 
@@ -221,7 +221,7 @@ func Main(ctx *cli.Context) error {
 		txsWithKeys = inputData.Txs
 	}
 	// We may have to sign the transactions.
-	signer := types.MakeSigner(chainConfig, prestate.Env.Number)
+	signer := types.MakeSigner(chainConfig, prestate.Env.Number, prestate.Env.Timestamp)
 
 	if txs, err = signUnsignedTransactions(txsWithKeys, *signer); err != nil {
 		return NewError(ErrorJson, fmt.Errorf("failed signing transactions: %v", err))
@@ -293,7 +293,8 @@ func Main(ctx *cli.Context) error {
 		}
 		return h
 	}
-	db := memdb.New("" /* tmpDir */)
+
+	_, db, _ := temporal.NewTestDB(nil, datadir.New(""), nil)
 	defer db.Close()
 
 	tx, err := db.BeginRw(context.Background())
@@ -363,7 +364,7 @@ func (t *txWithKey) UnmarshalJSON(input []byte) error {
 	}
 
 	// Now, read the transaction itself
-	var txJson commands.RPCTransaction
+	var txJson jsonrpc.RPCTransaction
 
 	if err := json.Unmarshal(input, &txJson); err != nil {
 		return err
@@ -378,7 +379,7 @@ func (t *txWithKey) UnmarshalJSON(input []byte) error {
 	return nil
 }
 
-func getTransaction(txJson commands.RPCTransaction) (types.Transaction, error) {
+func getTransaction(txJson jsonrpc.RPCTransaction) (types.Transaction, error) {
 	gasPrice, value := uint256.NewInt(0), uint256.NewInt(0)
 	var overflow bool
 	var chainId *uint256.Int
@@ -446,13 +447,13 @@ func getTransaction(txJson commands.RPCTransaction) (types.Transaction, error) {
 
 		dynamicFeeTx := types.DynamicFeeTransaction{
 			CommonTx: types.CommonTx{
-				ChainID: chainId,
-				Nonce:   uint64(txJson.Nonce),
-				To:      txJson.To,
-				Value:   value,
-				Gas:     uint64(txJson.Gas),
-				Data:    txJson.Input,
+				Nonce: uint64(txJson.Nonce),
+				To:    txJson.To,
+				Value: value,
+				Gas:   uint64(txJson.Gas),
+				Data:  txJson.Input,
 			},
+			ChainID:    chainId,
 			Tip:        tip,
 			FeeCap:     feeCap,
 			AccessList: *txJson.Accesses,
