@@ -105,7 +105,10 @@ require (
 	pgregory.net/rapid v1.0.0
 )
 
-require github.com/ethereum/go-ethereum v1.10.25
+require (
+	github.com/anacrolix/log v0.14.0
+	github.com/ethereum/go-ethereum v1.10.25
+)
 
 require (
 	crawshaw.io/sqlite v0.3.3-0.20220618202545-d1964889ea3c // indirect
@@ -117,7 +120,6 @@ require (
 	github.com/anacrolix/envpprof v1.2.1 // indirect
 	github.com/anacrolix/generics v0.0.0-20230428105757-683593396d68 // indirect
 	github.com/anacrolix/go-libutp v1.3.0 // indirect
-	github.com/anacrolix/log v0.14.0 // indirect
 	github.com/anacrolix/missinggo v1.3.0 // indirect
 	github.com/anacrolix/missinggo/perf v1.0.0 // indirect
 	github.com/anacrolix/missinggo/v2 v2.7.2-0.20230527121029-a582b4f397b9 // indirect
@@ -271,7 +273,7 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/ledgerwatch/erigon-lib => github.com/bobanetwork/v3-erigon-lib v0.0.0-20230712175420-636c390c9d3c
+replace github.com/ledgerwatch/erigon-lib => github.com/bobanetwork/v3-erigon-lib v0.0.0-20230718202321-182c163bbdde
 
 replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.12
 
