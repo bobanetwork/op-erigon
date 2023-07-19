@@ -25,6 +25,7 @@ import (
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
+	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -111,11 +112,11 @@ type ReceiptEncodable struct {
 	BlockHash         libcommon.Hash    `json:"blockHash,omitempty" codec:"-"`
 	BlockNumber       *big.Int          `json:"blockNumber,omitempty" codec:"-"`
 	TransactionIndex  uint              `json:"transactionIndex" codec:"-"`
-	L1GasPrice        string            `json:"l1GasPrice,omitempty"`
-	L1GasUsed         string            `json:"l1GasUsed,omitempty"`
-	L1Fee             string            `json:"l1Fee,omitempty"`
-	FeeScalar         string            `json:"l1FeeScalar,omitempty"`
-	L2BobaFee         string            `json:"l2BobaFee,omitempty"`
+	L1GasPrice        []byte            `json:"l1GasPrice,omitempty"`
+	L1GasUsed         []byte            `json:"l1GasUsed,omitempty"`
+	L1Fee             []byte            `json:"l1Fee,omitempty"`
+	FeeScalar         []byte            `json:"l1FeeScalar,omitempty"`
+	L2BobaFee         []byte            `json:"l2BobaFee,omitempty"`
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -579,26 +580,42 @@ func (r Receipts) ToReceiptsEncodable() ReceiptsEncodable {
 	receiptsEncodable := make([]*ReceiptEncodable, len(r))
 	for i, receipts := range r {
 		var (
-			l1GasPrice string
-			l1GasUsed  string
-			l1Fee      string
-			feeScalar  string
-			l2BobaFee  string
+			l1GasPrice []byte
+			l1GasUsed  []byte
+			l1Fee      []byte
+			feeScalar  []byte
+			l2BobaFee  []byte
+			err        error
 		)
 		if receipts.L1GasPrice != nil {
-			l1GasPrice = (*receipts.L1GasPrice).String()
+			l1GasPrice, err = (*receipts.L1GasPrice).GobEncode()
+			if err != nil {
+				log.Warn("failed to encode L1GasPrice", "err", err)
+			}
 		}
 		if receipts.L1GasUsed != nil {
-			l1GasUsed = (*receipts.L1GasUsed).String()
+			l1GasUsed, err = (*receipts.L1GasUsed).GobEncode()
+			if err != nil {
+				log.Warn("failed to encode L1GasUsed", "err", err)
+			}
 		}
 		if receipts.L1Fee != nil {
-			l1Fee = (*receipts.L1Fee).String()
+			l1Fee, err = (*receipts.L1Fee).GobEncode()
+			if err != nil {
+				log.Warn("failed to encode L1Fee", "err", err)
+			}
 		}
 		if receipts.FeeScalar != nil {
-			feeScalar = (*receipts.FeeScalar).String()
+			feeScalar, err = (*receipts.FeeScalar).GobEncode()
+			if err != nil {
+				log.Warn("failed to encode FeeScalar", "err", err)
+			}
 		}
 		if receipts.L2BobaFee != nil {
-			l2BobaFee = (*receipts.L2BobaFee).String()
+			l2BobaFee, err = (*receipts.L2BobaFee).GobEncode()
+			if err != nil {
+				log.Warn("failed to encode L2BobaFee", "err", err)
+			}
 		}
 		receipt := ReceiptEncodable{
 			Type:              receipts.Type,
@@ -627,11 +644,33 @@ func (r Receipts) ToReceiptsEncodable() ReceiptsEncodable {
 func (re ReceiptsEncodable) ToReceipts() Receipts {
 	receipts := make([]*Receipt, len(re))
 	for i, receiptEncodable := range re {
-		L1GasPrice, _ := new(big.Int).SetString(receiptEncodable.L1GasPrice, 10)
-		L1GasUsed, _ := new(big.Int).SetString(receiptEncodable.L1GasUsed, 10)
-		L1Fee, _ := new(big.Int).SetString(receiptEncodable.L1Fee, 10)
-		FeeScalar, _ := new(big.Float).SetString(receiptEncodable.FeeScalar)
-		L2BobaFee, _ := new(big.Int).SetString(receiptEncodable.L2BobaFee, 10)
+		var (
+			l1GasPrice *big.Int
+			l1GasUsed  *big.Int
+			l1Fee      *big.Int
+			feeScalar  *big.Float
+			l2BobaFee  *big.Int
+		)
+		if receiptEncodable.L1GasPrice != nil {
+			l1GasPrice = new(big.Int)
+			_ = l1GasPrice.GobDecode(receiptEncodable.L1GasPrice)
+		}
+		if receiptEncodable.L1GasUsed != nil {
+			l1GasUsed = new(big.Int)
+			_ = l1GasUsed.GobDecode(receiptEncodable.L1GasUsed)
+		}
+		if receiptEncodable.L1Fee != nil {
+			l1Fee = new(big.Int)
+			_ = l1Fee.GobDecode(receiptEncodable.L1Fee)
+		}
+		if receiptEncodable.FeeScalar != nil {
+			feeScalar = new(big.Float)
+			_ = feeScalar.GobDecode(receiptEncodable.FeeScalar)
+		}
+		if receiptEncodable.L2BobaFee != nil {
+			l2BobaFee = new(big.Int)
+			_ = l2BobaFee.GobDecode(receiptEncodable.L2BobaFee)
+		}
 		receipt := Receipt{
 			Type:              receiptEncodable.Type,
 			PostState:         receiptEncodable.PostState,
@@ -645,11 +684,11 @@ func (re ReceiptsEncodable) ToReceipts() Receipts {
 			BlockHash:         receiptEncodable.BlockHash,
 			BlockNumber:       receiptEncodable.BlockNumber,
 			TransactionIndex:  receiptEncodable.TransactionIndex,
-			L1GasPrice:        L1GasPrice,
-			L1GasUsed:         L1GasUsed,
-			L1Fee:             L1Fee,
-			FeeScalar:         FeeScalar,
-			L2BobaFee:         L2BobaFee,
+			L1GasPrice:        l1GasPrice,
+			L1GasUsed:         l1GasUsed,
+			L1Fee:             l1Fee,
+			FeeScalar:         feeScalar,
+			L2BobaFee:         l2BobaFee,
 		}
 		receipts[i] = &receipt
 	}
