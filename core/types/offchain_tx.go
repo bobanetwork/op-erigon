@@ -23,20 +23,17 @@
 package types
 
 import (
-	//"encoding/binary"
+	"bytes"
 	"fmt"
 	"io"
 	"math/big"
-	//"math/bits"
 
+	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
-	"github.com/ledgerwatch/erigon/common"
-	//"github.com/ledgerwatch/erigon/common/u256"
-	"bytes"
-	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
 	types2 "github.com/ledgerwatch/erigon-lib/types"
+	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
 )
@@ -48,8 +45,6 @@ type OffchainTransaction struct {
 	SourceHash *libcommon.Hash
 	From       *libcommon.Address
 	To         *libcommon.Address
-	Mint       *uint256.Int
-	Value      *uint256.Int
 	GasLimit   uint64
 	IsSystemTx bool
 	Data       []byte
@@ -102,7 +97,7 @@ func (tx OffchainTransaction) GetDataHashes() []libcommon.Hash {
 }
 
 func (tx OffchainTransaction) Protected() bool {
-	return true // FIXME
+	return true
 }
 
 func (tx OffchainTransaction) EncodingSize() int {
@@ -120,8 +115,6 @@ func (tx OffchainTransaction) copy() *OffchainTransaction {
 		SourceHash: tx.SourceHash,
 		From:       tx.From,
 		To:         tx.To,
-		Mint:       tx.Mint,
-		Value:      tx.Value,
 		GasLimit:   tx.GasLimit,
 		IsSystemTx: tx.IsSystemTx,
 		Data:       common.CopyBytes(tx.Data),
@@ -129,18 +122,6 @@ func (tx OffchainTransaction) copy() *OffchainTransaction {
 
 	return cpy
 }
-
-/*
-func (tx *OffchainTransaction) Size() common.StorageSize {
-	log.Warn("MMDBG dtX Size")
-	if size := tx.size.Load(); size != nil {
-		return size.(common.StorageSize)
-	}
-	c := 42 // FIXME
-	tx.size.Store(common.StorageSize(c))
-	return common.StorageSize(c)
-}
-*/
 
 // MarshalBinary returns the canonical encoding of the transaction.
 // For legacy transactions, it returns the RLP encoding. For EIP-2718 typed
@@ -160,8 +141,6 @@ func (tx OffchainTransaction) EncodeRLP(w io.Writer) error {
 	buf.WriteBytes(tx.SourceHash.Bytes())
 	buf.WriteBytes(tx.From.Bytes())
 	buf.WriteBytes(tx.To.Bytes())
-	buf.WriteBytes(tx.Mint.Bytes())
-	buf.WriteBytes(tx.Value.Bytes())
 	buf.WriteUint64(tx.GasLimit)
 	buf.WriteBool(tx.IsSystemTx)
 	buf.WriteBytes(tx.Data)
@@ -206,16 +185,6 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 	tx.To = &libcommon.Address{}
 	copy((*tx.To)[:], b)
 
-	if b, err = s.Uint256Bytes(); err != nil {
-		return fmt.Errorf("read Mint: %w", err)
-	}
-	tx.Mint = new(uint256.Int).SetBytes(b)
-
-	if b, err = s.Uint256Bytes(); err != nil {
-		return fmt.Errorf("read Value: %w", err)
-	}
-	tx.Value = new(uint256.Int).SetBytes(b)
-
 	if tx.GasLimit, err = s.Uint(); err != nil {
 		return fmt.Errorf("read GasLimit: %w", err)
 	}
@@ -238,50 +207,30 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 
 // AsMessage returns the transaction as a core.Message.
 func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
-	//log.Warn("MMDBG dtX AsMessage")
 	msg := Message{
 		txType:        OffchainTxType,
 		sourceHash:    tx.SourceHash,
 		from:          *tx.From,
 		gasLimit:      tx.GasLimit,
 		to:            tx.To,
-		mint:          *tx.Mint,
-		amount:        *tx.Value,
 		isSystemTx:    tx.IsSystemTx,
 		data:          tx.Data,
 		accessList:    nil,
 		checkNonce:    true,
 		rollupDataGas: rollupDataGas(tx),
 	}
-
-	var err error
-	//msg.from, err = tx.Sender(s)
-	log.Debug("MMDBG dtX AsMessage", "msg", msg)
-	return msg, err
+	return msg, nil
 }
 
 func (tx *OffchainTransaction) WithSignature(signer Signer, sig []byte) (Transaction, error) {
-	log.Warn("MMDBG dtX WithSignature")
+	log.Error("MMDBG WithSignature() called for an Offchain transaction")
 	cpy := tx.copy()
-	/*
-		r, s, v, err := signer.SignatureValues(tx, sig)
-		if err != nil {
-			return nil, err
-		}
-		cpy.R.Set(r)
-		cpy.S.Set(s)
-		cpy.V.Set(v)
-	*/
 	return cpy, nil
 }
 
 func (tx *OffchainTransaction) FakeSign(address libcommon.Address) (Transaction, error) {
-	log.Warn("MMDBG dtX FakeSign")
+	log.Error("MMDBG FakeSign() called for an Offchain transaction")
 	cpy := tx.copy()
-	//	cpy.R.Set(u256.Num1)
-	//	cpy.S.Set(u256.Num1)
-	//	cpy.V.Set(u256.Num4)
-	//	cpy.from.Store(address)
 	return cpy, nil
 }
 
@@ -296,8 +245,6 @@ func (tx *OffchainTransaction) Hash() libcommon.Hash {
 		tx.SourceHash,
 		tx.From,
 		tx.To,
-		tx.Mint,
-		tx.Value,
 		tx.GasLimit,
 		tx.IsSystemTx,
 		tx.Data,
@@ -308,43 +255,20 @@ func (tx *OffchainTransaction) Hash() libcommon.Hash {
 }
 
 func (tx OffchainTransaction) SigningHash(chainID *big.Int) libcommon.Hash {
-	return libcommon.Hash{} // FIXME
+	log.Error("MMDBG SigningHash() called for an Offchain transaction")
+	return libcommon.Hash{}
 }
-
-/*
-func (tx OffchainTransaction) SigningHash(chainID *big.Int) common.Hash {
-	if chainID != nil && chainID.Sign() != 0 {
-		return rlpHash([]interface{}{
-			tx.Nonce,
-			tx.GasPrice,
-			tx.Gas,
-			tx.To,
-			tx.Value,
-			tx.Data,
-			chainID, uint(0), uint(0),
-		})
-	}
-	return rlpHash([]interface{}{
-		tx.Nonce,
-		tx.GasPrice,
-		tx.Gas,
-		tx.To,
-		tx.Value,
-		tx.Data,
-	})
-}
-*/
 
 func (tx OffchainTransaction) Type() byte { return OffchainTxType }
 
 func (tx OffchainTransaction) RawSignatureValues() (*uint256.Int, *uint256.Int, *uint256.Int) {
-	log.Warn("MMDBG dtX RawSignatureValues")
+	log.Error("MMDBG RawSignatureValues() called for an Offchain transaction")
 	return uint256.NewInt(0), uint256.NewInt(0), uint256.NewInt(0)
 }
 
 func (tx OffchainTransaction) GetChainID() *uint256.Int {
-	log.Warn("MMDBG dtX GetChainID")
-	return new(uint256.Int).SetUint64(901) // FIXME
+	log.Error("GetChainID() called for an Offchain transaction")
+	return new(uint256.Int)
 }
 func (tx OffchainTransaction) GetSender() (libcommon.Address, bool) {
 	return *tx.From, true
@@ -354,7 +278,7 @@ func (tx OffchainTransaction) GetTo() *libcommon.Address {
 }
 
 func (tx OffchainTransaction) GetValue() *uint256.Int {
-	return tx.Value
+	return new(uint256.Int)
 }
 
 func (tx OffchainTransaction) IsContractDeploy() bool {
@@ -373,24 +297,20 @@ func (tx *OffchainTransaction) Sender(signer Signer) (libcommon.Address, error) 
 	return *tx.From, nil
 }
 func (tx *OffchainTransaction) SetSender(addr libcommon.Address) {
-	log.Warn("MMDBG dtX SetSender")
-	// NOP - FIXME? ct.from.Store(addr)
+	if tx.From != nil && *tx.From != addr {
+		log.Error("SetSender() address confict for Offchain transaction", "old", tx.From, "new", addr)
+	}
+	// otherwise a NOP
 }
 
-func NewOffchainTx(data []byte) *OffchainTransaction {
+func NewOffchainTx(hcHash libcommon.Hash, data []byte) *OffchainTransaction {
 	hcFrom := libcommon.HexToAddress("0xdEAddEadDeaDDEaDDeadDeAddeadDEaddeaD9901")
 	hcHelper := libcommon.HexToAddress("0x42000000000000000000000000000000000000Fd")
-	var hcHash libcommon.Hash
-
-	var TMP []byte = []byte{1} // FIXME - decide how to construct a SourceHash
-	hcHash, _ = common.HashData(TMP)
 
 	ret := &OffchainTransaction{
 		SourceHash: &hcHash,
 		From:       &hcFrom,
 		To:         &hcHelper,
-		Mint:       uint256.NewInt(0),
-		Value:      uint256.NewInt(0),
 		GasLimit:   150000000,
 		IsSystemTx: true,
 		Data:       common.CopyBytes(data),

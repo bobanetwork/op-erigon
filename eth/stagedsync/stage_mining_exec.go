@@ -129,7 +129,6 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 				}
 				txs = append(txs, transaction)
 			}
-
 			depTS := types.NewTransactionsFixedOrder(txs)
 
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
@@ -141,7 +140,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 
 		if txs != nil && !txs.Empty() {
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
-			log.Debug("MMDBG addTransactionsToMiningBlock (Prepared)", "err", err, "logs", logs)
+			log.Debug("MMDBG addTransactionsToMiningBlock (txs)", "err", err, "logs", logs)
 			if err != nil {
 				return err
 			}
@@ -320,12 +319,12 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 			continue
 		}
 		if int(transaction.Type()) == types.OffchainTxType {
-			// FIXME - may need to include some of the later checks
-			log.Debug("MMDBG bypassing filterBadTransactions for Offchain tx")
+			log.Debug("MMDBG-HC bypassing filterBadTransactions for Offchain tx")
 			filtered = append(filtered, transaction)
 			transactions = transactions[1:]
 			continue
-		} // Check transaction nonce
+		}
+		// Check transaction nonce
 		if account.Nonce > transaction.GetNonce() {
 			transactions = transactions[1:]
 			nonceTooLowCnt++
@@ -472,6 +471,7 @@ LOOP:
 		if stopped != nil {
 			select {
 			case <-stopped.C:
+				log.Debug("MMDBG-HC stage_mining_exec stopped", "current", current)
 				done = true
 				break LOOP
 			default:
@@ -479,6 +479,7 @@ LOOP:
 		}
 
 		if err := libcommon.Stopped(quit); err != nil {
+			log.Warn("MMDBG-HC stage_mining_exec error", "err", err)
 			return nil, true, err
 		}
 
@@ -490,6 +491,16 @@ LOOP:
 		// If we don't have enough gas for any further transactions then we're done
 		if gasPool.Gas() < params.TxGas {
 			logger.Debug(fmt.Sprintf("[%s] Not enough gas for further transactions", logPrefix), "have", gasPool, "want", params.TxGas)
+			log.Debug("MMDBG-HC stage_mining_exec has reached gas limit", "len", len(current.Txs))
+			if len(current.Txs) > 0 {
+				last := current.Txs[len(current.Txs)-1]
+				log.Debug("MMDBG-HC stage_mining_exec gasLimit check", "len", len(current.Txs), "lastType", last.Type())
+				if last.Type() == types.OffchainTxType {
+					log.Warn("MMDBG-HC Block ends on Offchain Tx", "last", last, "current", current)
+					// FIXME - remove it, reset hc state so it can try again in the next block
+					panic("not implemented")
+				}
+			}
 			done = true
 			break
 		}
@@ -503,7 +514,10 @@ LOOP:
 		// Retrieve the next transaction and abort if all done
 		txn = txs.Peek()
 		if txn == nil {
-			//			log.Debug("MMDBG-HC No more transactions", "cL", coalescedLogs)
+			if len(current.Txs) > 0 {
+				last := current.Txs[len(current.Txs)-1]
+				log.Debug("MMDBG-HC stage_mining_exec has no more transactions", "len", len(current.Txs), "lastType", last.Type())
+			}
 			break
 		}
 
@@ -527,7 +541,6 @@ LOOP:
 		// Check for pending Hybrid Compute
 		txnFrom, _ := txn.GetSender()
 		mh := vm.HCKey(txnFrom, txn.GetTo(), txn.GetNonce(), txn.GetData())
-		//log.Debug("MMDBG-HC Checking HCActive", "mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
 
 		if vm.HCActive[mh] != nil {
 			log.Debug("MMDBG-HC Skipping HCActive", " mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", vm.HCActive[mh])
@@ -537,12 +550,10 @@ LOOP:
 
 		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
 		// an OffchainTx into the queue ahead of it to populate the on-chain helper
-
 		hc = vm.HCResponseCache[mh]
-		//log.Debug("MMDBG-HC Transaction Peek", "txn", txn, "mh", mh, "hc", hc)
 		if hc != nil && hc.State == 2 && len(hc.Response) > 0 {
 			log.Debug("MMDBG-HC Found a prepared", "hc.Response", hexutility.Bytes(hc.Response))
-			txn = types.NewOffchainTx(hc.Response)
+			txn = types.NewOffchainTx(mh, hc.Response)
 			log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
 			hc.State = 3 // Ensure that OffchainTx is only inserted once
 			hcOffchain = true
@@ -558,12 +569,10 @@ LOOP:
 		if err == vm.ErrHCReverted {
 			log.Warn("MMDBG-HC stage_mining_exec got ErrHCReverted", "hc", hc, "txn", txn)
 
-			//txnFrom,_ := txn.GetSender()
-			//mh := vm.HCKey(txnFrom, txn.GetNonce(), txn.GetData())
 			vm.HCResponseCache[mh] = hc
 
 			if hc.State == 1 {
-				// This is a first-time failure for a Txn which didn't go through EstimateGas
+				// This is a first-time trigger for a Txn which didn't go through EstimateGas
 				log.Debug("MMDBG-HC Inserting HCActive in stage_mining_exec", "hc", hc, "mh", mh, "txn", txn)
 				// Need to skip this Tx for now, start a background task to do the offchain stuff,
 				// then re-insert it into the txpool.
@@ -613,7 +622,6 @@ LOOP:
 				delete(vm.HCResponseCache, mh)
 				txs.Shift()
 			}
-			// FIXME - remove HC cache entry
 		} else {
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
@@ -621,7 +629,6 @@ LOOP:
 			txs.Shift()
 		}
 	}
-	//	log.Debug("MMDBG-HC after addTransactionsToMiningBlock loop", "tcount", tcount, "current", current)
 
 	/*
 		// Notify resubmit loop to decrease resubmitting interval if env interval is larger

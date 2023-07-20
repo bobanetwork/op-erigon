@@ -304,7 +304,6 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 func (evm *EVM) Call(caller ContractRef, addr libcommon.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
 	ret, leftOverGas, err = evm.call(CALL, caller, addr, input, gas, value, bailout)
 	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.State == 1 {
-		// If previously triggered, pass ErrHCReverted up each level of the call stack
 		log.Debug("MMDBG-HC evm.Call setting ErrHCReverted", "prefix", input[:4], "addr", addr, "caller", caller.Address())
 		err = ErrHCReverted
 	}

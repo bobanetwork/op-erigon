@@ -175,17 +175,16 @@ func (r *ReusableCaller) DoCallWithNewGas(
 	hc := vm.HCResponseCache[mh]
 	if hc == nil {
 		hc = new(vm.HCContext)
-		hc.State = 0
 	}
 	r.evm.SetHC(hc)
 
 	var err error
 	var result *core.ExecutionResult
 
-	if len(hc.Response) > 0 && hc.State < 4 { // FIXME
+	if len(hc.Response) > 0 && hc.State < 3 {
 		// A cached response is available from a prior run
 
-		txn := types.NewOffchainTx(hc.Response)
+		txn := types.NewOffchainTx(mh, hc.Response)
 		log.Debug("MMDBG-HC Inserting HC Response", "hcState", hc.State, "mh", mh, "txn", txn)
 
 		var msg types.Message
@@ -196,7 +195,7 @@ func (r *ReusableCaller) DoCallWithNewGas(
 		log.Debug("MMDBG-HC call.go after HC_ApplyMessage", "err", err, "result", result)
 		if err != nil {
 			if err != vm.ErrOutOfGas {
-				hc.State = 4 // FIXME - Does this need to be a different failure code?
+				hc.State = 4
 			}
 			return nil, err
 		}
@@ -208,7 +207,6 @@ func (r *ReusableCaller) DoCallWithNewGas(
 	if err == vm.ErrHCReverted {
 		if vm.HCResponseCache[mh] == nil {
 			log.Debug("MMDBG-HC call.go Offchain triggered", "mh", mh, "hc", hc, "cache", vm.HCResponseCache[mh])
-			log.Debug("MMDBG-HC call.go context", "evm", r.evm.Context())
 
 			err = vm.HCRequest(hc, r.evm.Context().BlockNumber)
 			if err != nil {
@@ -221,8 +219,8 @@ func (r *ReusableCaller) DoCallWithNewGas(
 			// will be used on that call.
 		} else {
 			if err != vm.ErrOutOfGas {
-				hc.State = 4 // FIXME - Does this need to be a different failure code?
-				log.Warn("MMDBG-HC got ErrHCReverted on cached entry")
+				hc.State = 4
+				log.Warn("MMDBG-HC got ErrHCReverted when applying cached entry")
 				return nil, vm.ErrHCFailed
 			}
 		}

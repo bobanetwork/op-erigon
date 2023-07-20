@@ -194,7 +194,6 @@ func ApplyMessageMM(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, 
 	result, err := NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
 
 	if err == nil && result != nil && result.Err == vm.ErrHCReverted {
-		log.Debug("MMDBG-HC ApplyMessage propagating ErrHCReverted")
 		err = vm.ErrHCReverted
 	}
 
