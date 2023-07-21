@@ -188,11 +188,7 @@ func (s *Serenity) CalcDifficulty(chain consensus.ChainHeaderReader, time, paren
 // stock Ethereum consensus engine with EIP-3675 modifications.
 func (s *Serenity) verifyHeader(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
 
-	if chain.Config().IsBobaLegacyBlock(header.Number) {
-		if header.Time < parent.Time {
-			return errOlderBlockTime
-		}
-	} else {
+	if !chain.Config().IsBobaLegacyBlock(header.Number) {
 		// Skip these checks for the legacy blocks
 		if uint64(len(header.Extra)) > params.MaximumExtraDataSize {
 			return fmt.Errorf("extra-data longer than %d bytes (%d)", params.MaximumExtraDataSize, len(header.Extra))
@@ -227,8 +223,10 @@ func (s *Serenity) verifyHeader(chain consensus.ChainHeaderReader, header, paren
 		return errInvalidUncleHash
 	}
 
-	if err := misc.VerifyEip1559Header(chain.Config(), parent, header); err != nil {
-		return err
+	if !chain.Config().IsBobaLegacyBlock(header.Number) {
+		if err := misc.VerifyEip1559Header(chain.Config(), parent, header); err != nil {
+			return err
+		}
 	}
 
 	// Verify existence / non-existence of withdrawalsHash

@@ -715,11 +715,7 @@ func (s *EthBackendServer) EngineForkChoiceUpdated(ctx context.Context, req *rem
 	}
 	log.Debug("MMDBG continuing EngineForkChoiceUpdated", "headNumber", *headNumber, "headHash", headHash)
 
-	if s.config.IsBobaLegacyBlock(big.NewInt(int64(*headNumber))) {
-		if headHeader.Time > payloadAttributes.Timestamp {
-			return nil, &InvalidPayloadAttributesErr
-		}
-	} else {
+	if !s.config.IsBobaLegacyBlock(big.NewInt(int64(*headNumber))) {
 		if headHeader.Time >= payloadAttributes.Timestamp {
 			return nil, &InvalidPayloadAttributesErr
 		}
