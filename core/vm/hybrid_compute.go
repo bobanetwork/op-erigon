@@ -465,7 +465,7 @@ func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 	case HC_OP_LEGACY_RANDOM, HC_OP_LEGACY_OFFCHAIN, HC_OP_OFFCHAIN_V1, HC_OP_RANDSEQ_V1:
 		hc.State = HC_STATE_TRIGGERED
 		hc.OpType = msgSel
-		log.Debug("MMDBG-HC Triggered", "OpType", hc.OpType)
+		log.Debug("MMDBG-HC Triggered", "sel", hexutility.Bytes(input[:4]))
 	default:
 		log.Debug("MMDBG-HC noTrigger", "sel", hexutility.Bytes(input[:4]))
 		return false

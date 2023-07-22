@@ -567,8 +567,6 @@ LOOP:
 		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, hc)
 
 		if err == vm.ErrHCReverted {
-			log.Warn("MMDBG-HC stage_mining_exec got ErrHCReverted", "hc", hc, "txn", txn)
-
 			vm.HCResponseCache[mh] = hc
 
 			if hc.State == vm.HC_STATE_TRIGGERED {
@@ -587,7 +585,7 @@ LOOP:
 
 				continue
 			} else {
-				log.Debug("MMDBG-HC Marking as failed", "hc", hc, "mh", mh)
+				log.Warn("MMDBG-HC Non-trigger ErrHCReverted", "hc", hc, "mh", mh)
 				// We inserted an OffchainResponse ahead of this Tx but it still failed.
 				// FIXME - This may leave a cache entry in the helper contract. Should have a way to clean up.
 				hc.State = vm.HC_STATE_FAILED

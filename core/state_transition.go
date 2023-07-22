@@ -203,7 +203,6 @@ func ApplyMessageMM(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, 
 
 func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
 	log.Warn("MMDBG-HC state_transition ApplyMessage shim", "msg", msg)
-	panic("foo")
 	return ApplyMessageMM(evm, msg, gp, refunds, gasBailout, 0)
 }
 
