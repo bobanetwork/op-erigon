@@ -52,7 +52,7 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 	//	continue
 	//}
 
-	log.Debug("MMDBG-HC in SpawnMiningFinishStage", "current", current)
+	//log.Debug("MMDBG-HC in SpawnMiningFinishStage", "current", current)
 
 	block := types.NewBlock(current.Header, current.Txs, current.Uncles, current.Receipts, current.Withdrawals)
 	blockWithReceipts := &types.BlockWithReceipts{Block: block, Receipts: current.Receipts}

@@ -70,11 +70,11 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	// This is used to transfer the L1 storage costs for an Offchain Tx to the associated user Tx.
 	extra := uint64(0)
 	if msg.GetType() == types.OffchainTxType {
-		log.Debug("MMDBG-HC state_processor push extraGas", "rdg", msg.RollupDataGas())
+		log.Debug("MMDBG-HC state_processor push extraGas", "rdg", msg.RollupDataGas(), "hc", evm.HCContext())
 		ibs.SetExtraL1(msg.RollupDataGas())
 	} else if ibs.ExtraL1() != 0 {
 		extra = ibs.ExtraL1()
-		log.Debug("MMDBG-HC state_processor pop extraGas", "gas", extra)
+		log.Debug("MMDBG-HC state_processor pop extraGas", "gas", extra, "hc", evm.HCContext())
 		ibs.SetExtraL1(0)
 	}
 	if msg.GetType() != types.DepositTxType || extra != 0 {

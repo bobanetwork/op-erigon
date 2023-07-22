@@ -160,7 +160,7 @@ func IntrinsicGas(data []byte, accessList types2.AccessList, isContractCreation 
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTransition {
+func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool, extraGas uint64) *StateTransition {
 	isBor := evm.ChainConfig().Bor != nil
 	return &StateTransition{
 		gp:        gp,
@@ -176,7 +176,8 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 		sharedBuyGas:        uint256.NewInt(0),
 		sharedBuyGasBalance: uint256.NewInt(0),
 
-		isBor: isBor,
+		isBor:    isBor,
+		extraGas: extraGas,
 	}
 }
 
@@ -191,7 +192,7 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
 // for trace_call to replicate OE/Pariry behaviour
 func ApplyMessageMM(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool, extra uint64) (*ExecutionResult, error) {
-	result, err := NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
+	result, err := NewStateTransition(evm, msg, gp, extra).TransitionDb(refunds, gasBailout)
 
 	if err == nil && result != nil && result.Err == vm.ErrHCReverted {
 		err = vm.ErrHCReverted
@@ -202,6 +203,7 @@ func ApplyMessageMM(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, 
 
 func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
 	log.Warn("MMDBG-HC state_transition ApplyMessage shim", "msg", msg)
+	panic("foo")
 	return ApplyMessageMM(evm, msg, gp, refunds, gasBailout, 0)
 }
 
@@ -585,7 +587,9 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 			log.Error("Expected L1CostFunc to be set, but it is not")
 		}
 		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg, st.extraGas)
-		log.Info("MMDBG state_transition cost for L1 is", "cost", cost, "txType", msg.GetType())
+		if cost != nil {
+			log.Info("MMDBG state_transition cost for L1 is", "cost", *cost, "txType", msg.GetType(), "extra", st.extraGas)
+		}
 		if cost != nil && msg.GetType() != types.OffchainTxType {
 			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
 		}

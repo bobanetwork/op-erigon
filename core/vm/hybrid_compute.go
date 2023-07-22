@@ -27,43 +27,42 @@ import (
 	"github.com/ledgerwatch/log/v3"
 )
 
-/* Hybrid Compute extension. Used to capture information when an offchain operation is triggered
-   and pass that information to the code which generates the offchain transaction to populate the
-   result map in the helper contract.
-
-   The "State" variable tracks phases of the operation:
-     0 - Transaction has not yet invoked Hybrid Compute
-     1 - A trigger was detected when an EVM operation reverted
-     2 - An offchain result has been obtained and is ready to be applied
-     3 - An offchain Tx has been inserted ahead of the current Tx
-     4 - The HybridCompute interaction failed and will not be retried. The Tx will revert back to the caller
-         with a "GetResponse: Missing cache entry" result. This category applies only to failures in the
-	 Hybrid Compute mechanism itself. Where possible, other types of error will be reported in-band through
-	 the "success" parameter and a descriptive error message.
-
-*/
+type HcState int
 
 const (
-	HC_OP_NONE = iota
-	HC_OFFCHAIN_V1
-	HC_RANDOM_V1
-	HC_RANDOMSEQ_V1
-	HC_LEGACY_RANDOM
-	HC_LEGACY_OFFCHAIN
+	HC_STATE_NONE      HcState = 0 // Has not yet interacted with Hybrid Compute
+	HC_STATE_TRIGGERED         = 1 // ErrHcReverted trigger detected
+	HC_STATE_READY             = 2 // Offchain Tx has been prepared
+	HC_STATE_INSERTED          = 3 // Offchain Tx has been added to block
+	HC_STATE_COMPLETED         = 4 // FIXME Original Tx has been added after the Offchain Tx
+	HC_STATE_FAILED            = 5 // HC mechanism failed (various reasons). Doesn't include in-band errors returned to the client
+)
+
+const (
+	HC_OP_LEGACY_RANDOM   uint32 = 0xc6e4b0d3 // These are the function selectors from the helper contract
+	HC_OP_LEGACY_OFFCHAIN        = 0x7d93616c
+	HC_OP_OFFCHAIN_V1            = 0xc1fd7e46
+	HC_OP_RANDSEQ_V1             = 0x32be428f
 )
 
 // Maximum length of hex-encoded response string
 const HC_MAX_ENC = 16384
 
 type HCContext struct {
-	State  int
-	OpType int
-	Caller libcommon.Address
-	//ReqHash  *libcommon.Hash
+	State    HcState
+	OpType   uint32
+	Caller   libcommon.Address
 	Request  []byte
 	Response []byte
 }
 
+type RandomCacheEntry struct {
+	expectedHash libcommon.Hash
+	secret       *uint256.Int
+	commitBN     uint64
+}
+
+var randomCache map[libcommon.Hash]*RandomCacheEntry
 var HCResponseCache map[libcommon.Hash]*HCContext
 var HCActive map[libcommon.Hash]*HCContext
 
@@ -73,7 +72,6 @@ var HCActive map[libcommon.Hash]*HCContext
 // or input data from one call to another.
 // Cache entries are removed when eth_sendRawTransaction finishes or on a periodic cleanup timer for
 // transactions which were abandoned after gas estimation.
-
 func HCKey(fromAddr libcommon.Address, toPtr *libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
 	bNonce := make([]byte, 8)
 	binary.BigEndian.PutUint64(bNonce, nonce)
@@ -178,14 +176,6 @@ func DoOffchain(reqUrl string, reqMethod libcommon.Address, reqPayload []byte) (
 // event of database corruption).
 //
 // A future version may be extended to a 3-way XOR including an off-chain endpoint.
-
-type RandomCacheEntry struct {
-	expectedHash libcommon.Hash
-	secret       *uint256.Int
-	commitBN     uint64
-}
-
-var randomCache map[libcommon.Hash]*RandomCacheEntry
 
 func DoRandomSeq(caller libcommon.Address, session [32]byte, cNext libcommon.Hash, cNum *uint256.Int, blockNumber uint64) (*libcommon.Hash, *uint256.Int, error) {
 	var err error
@@ -294,12 +284,12 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 	hasher := sha3.NewLegacyKeccak256()
 
 	switch hc.OpType {
-	case HC_RANDOM_V1:
+	case HC_OP_LEGACY_RANDOM:
 		// SimpleRandom
 		r256, err := HCGenerateRandom()
 		if err != nil {
-			log.Warn("MMDBG-HC SimpleRandom failed", "err", err)
-			hc.State = 4
+			log.Warn("MMDBG-HC LegacyRandom failed", "err", err)
+			hc.State = HC_STATE_FAILED
 			return ErrHCFailed
 		}
 		r32 := r256.Bytes32()
@@ -307,45 +297,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 
 		hasher.Write([]byte{0xc6, 0xe4, 0xb0, 0xd3})
 		hasher.Write(hc.Caller.Bytes())
-	case HC_LEGACY_RANDOM:
-		// SimpleRandom
-		r256, err := HCGenerateRandom()
-		if err != nil {
-			log.Warn("MMDBG-HC LegacyRandom failed", "err", err)
-			hc.State = 4
-			return ErrHCFailed
-		}
-		r32 := r256.Bytes32()
-		responseBytes = r32[:]
-
-		hasher.Write([]byte{0x49, 0x3d, 0x57, 0xd6})
-		hasher.Write(hc.Caller.Bytes())
-	case HC_OFFCHAIN_V1:
-		// We now expect to have an ABI-encoded (url_string, payload_bytes)
-		dec, err := (abi.Arguments{{Type: tString}, {Type: tBytes}}).Unpack(hc.Request[4:])
-		log.Debug("MMDBG-HC ABI decode (offchain)", "dec", dec, "err", err, "hc", hc)
-
-		if err != nil {
-			log.Warn("MMDBG-HC Request decode failed", "err", err)
-			hc.State = 4
-			return ErrHCFailed
-		}
-		reqUrl := dec[0].(string)
-		reqMethod := hc.Caller
-		reqPayload := dec[1].([]byte)
-
-		hasher.Write([]byte{0xc1, 0xfd, 0x7e, 0x46})
-		hasher.Write(hc.Caller.Bytes())
-		hasher.Write([]byte(reqUrl))
-		hasher.Write(reqPayload)
-
-		log.Debug("MMDBG-HC Request", "reqUrl", reqUrl, "reqMethod", reqMethod)
-		responseBytes, responseCode = DoOffchain(reqUrl, reqMethod, reqPayload)
-		if responseCode != 0 {
-			log.Debug("MMDBG-HC DoOffchain failed", "errCode", responseCode, "response", responseBytes)
-		}
-		log.Debug("MMDBG-HC Request", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
-	case HC_LEGACY_OFFCHAIN:
+	case HC_OP_LEGACY_OFFCHAIN:
 		dec, err := (abi.Arguments{{Type: tUint32}, {Type: tString}, {Type: tBytes}}).Unpack(hc.Request[4:])
 		log.Debug("MMDBG-HC ABI decode (offchain)", "dec", dec, "err", err, "hc", hc)
 
@@ -354,7 +306,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 
 		if err != nil {
 			log.Warn("MMDBG-HC Request decode failed", "err", err)
-			hc.State = 4
+			hc.State = HC_STATE_FAILED
 			return ErrHCFailed
 		}
 		reqUrl := dec[1].(string)
@@ -372,7 +324,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 			prefix, err := (abi.Arguments{{Type: tUint32}}).Pack(pLen)
 			if err != nil {
 				log.Warn("MMDBG-HC Legacy-encode failed", "err", err)
-				hc.State = 4
+				hc.State = HC_STATE_FAILED
 				return ErrHCFailed
 			}
 			reqPayload = append(prefix, reqPayload...)
@@ -392,16 +344,41 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 
 			if responseLen.Cmp(big.NewInt(int64(len(responseBytes)))) != 0 {
 				log.Warn("MMDBG-HC Legacy-decode length mismatch", "expected", responseLen, "actual", len(responseBytes))
-				hc.State = 4
+				hc.State = HC_STATE_FAILED
 				return ErrHCFailed
 			}
 		}
 		log.Debug("MMDBG-HC Legacy Request (2)", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
-	case HC_RANDOMSEQ_V1:
+	case HC_OP_OFFCHAIN_V1:
+		// We now expect to have an ABI-encoded (url_string, payload_bytes)
+		dec, err := (abi.Arguments{{Type: tString}, {Type: tBytes}}).Unpack(hc.Request[4:])
+		log.Debug("MMDBG-HC ABI decode (offchain)", "dec", dec, "err", err, "hc", hc)
+
+		if err != nil {
+			log.Warn("MMDBG-HC Request decode failed", "err", err)
+			hc.State = HC_STATE_FAILED
+			return ErrHCFailed
+		}
+		reqUrl := dec[0].(string)
+		reqMethod := hc.Caller
+		reqPayload := dec[1].([]byte)
+
+		hasher.Write([]byte{0xc1, 0xfd, 0x7e, 0x46})
+		hasher.Write(hc.Caller.Bytes())
+		hasher.Write([]byte(reqUrl))
+		hasher.Write(reqPayload)
+
+		log.Debug("MMDBG-HC Request", "reqUrl", reqUrl, "reqMethod", reqMethod)
+		responseBytes, responseCode = DoOffchain(reqUrl, reqMethod, reqPayload)
+		if responseCode != 0 {
+			log.Debug("MMDBG-HC DoOffchain failed", "errCode", responseCode, "response", responseBytes)
+		}
+		log.Debug("MMDBG-HC Request", "responseCode", responseCode, "responseBytes", hexutility.Bytes(responseBytes))
+	case HC_OP_RANDSEQ_V1:
 		dec, err := (abi.Arguments{{Type: tBytes32}, {Type: tBytes32}, {Type: tUint256}}).Unpack(hc.Request[4:])
 		if err != nil {
 			log.Warn("MMDBG-HC Request decode failed", "err", err)
-			hc.State = 4
+			hc.State = HC_STATE_FAILED
 			return ErrHCFailed
 		}
 		log.Debug("MMDBG-HC ABI decode (randomseq)", "dec", dec, "err", err, "BN", blockNumber, "hc", hc)
@@ -435,7 +412,7 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 		log.Debug("MMDBG-HC RandomSeq result", "err", err, "responseBytes", responseBytes)
 	default:
 		log.Debug("MMDBG-HC Unknown opType", "opType", hc.OpType)
-		hc.State = 4
+		hc.State = HC_STATE_FAILED
 		return ErrHCFailed
 	}
 
@@ -454,20 +431,20 @@ func HCRequest(hc *HCContext, blockNumber uint64) error {
 
 	if err != nil {
 		log.Warn("MMDBG-HC Response encode failed", "err", err)
-		hc.State = 4
+		hc.State = HC_STATE_FAILED
 		return ErrHCFailed
 	}
 
 	hc.Response = append(hc.Response, resp...)
 	log.Debug("MMDBG-HC Response", "hcData", hexutility.Bytes(hc.Response))
 
-	hc.State = 2
+	hc.State = HC_STATE_READY
 	return nil
 }
 
 // Called after an EVM run to look for a trigger event
 func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
-	if hc == nil || hc.State != 0 {
+	if hc == nil || hc.State != HC_STATE_NONE {
 		return false
 	}
 	// Check for a revert
@@ -483,22 +460,15 @@ func CheckTrigger(hc *HCContext, input []byte, ret []byte, err error) bool {
 		}
 	}
 	// Check the selector for a recognized method
-	switch {
-	case bytes.Equal(input[:4], []byte{0xc1, 0xfd, 0x7e, 0x46}):
-		hc.OpType = HC_OFFCHAIN_V1
-	case bytes.Equal(input[:4], []byte{0xc6, 0xe4, 0xb0, 0xd3}):
-		hc.OpType = HC_RANDOM_V1
-	case bytes.Equal(input[:4], []byte{0x32, 0xbe, 0x42, 0x8f}):
-		hc.OpType = HC_RANDOMSEQ_V1
-	case bytes.Equal(input[:4], []byte{0x49, 0x3d, 0x57, 0xd6}):
-		hc.OpType = HC_LEGACY_RANDOM
-	case bytes.Equal(input[:4], []byte{0x7d, 0x93, 0x61, 0x6c}):
-		hc.OpType = HC_LEGACY_OFFCHAIN
+	msgSel := binary.BigEndian.Uint32(input[:4])
+	switch msgSel {
+	case HC_OP_LEGACY_RANDOM, HC_OP_LEGACY_OFFCHAIN, HC_OP_OFFCHAIN_V1, HC_OP_RANDSEQ_V1:
+		hc.State = HC_STATE_TRIGGERED
+		hc.OpType = msgSel
+		log.Debug("MMDBG-HC Triggered", "OpType", hc.OpType)
 	default:
 		log.Debug("MMDBG-HC noTrigger", "sel", hexutility.Bytes(input[:4]))
 		return false
 	}
-	hc.State = 1
-	log.Debug("MMDBG-HC Triggered with", "OpType", hc.OpType)
 	return true
 }

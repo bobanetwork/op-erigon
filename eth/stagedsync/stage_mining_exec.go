@@ -430,7 +430,7 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		snap := ibs.Snapshot()
 		logger.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
 		receipt, _, err := core.ApplyTransactionMM(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.DataGasUsed, *vmConfig, hc)
-		if err != nil || (hc != nil && hc.State > 0) {
+		if err != nil || (hc != nil && hc.State != vm.HC_STATE_NONE) {
 			log.Debug("MMDBG-HC miningCommitTx", "err", err, "receipt", receipt, "hc", hc)
 		}
 		if err != nil {
@@ -441,7 +441,7 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 
 		current.Txs = append(current.Txs, txn)
 		current.Receipts = append(current.Receipts, receipt)
-		if hc != nil && hc.State > 0 {
+		if hc != nil && hc.State != vm.HC_STATE_NONE {
 			log.Debug("MMDBG-HC mCT final", "txn", txn, "current", current)
 		}
 		return receipt.Logs, nil
@@ -514,7 +514,7 @@ LOOP:
 		// Retrieve the next transaction and abort if all done
 		txn = txs.Peek()
 		if txn == nil {
-			if len(current.Txs) > 0 {
+			if len(current.Txs) > 1 {
 				last := current.Txs[len(current.Txs)-1]
 				log.Debug("MMDBG-HC stage_mining_exec has no more transactions", "len", len(current.Txs), "lastType", last.Type())
 			}
@@ -551,11 +551,11 @@ LOOP:
 		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
 		// an OffchainTx into the queue ahead of it to populate the on-chain helper
 		hc = vm.HCResponseCache[mh]
-		if hc != nil && hc.State == 2 && len(hc.Response) > 0 {
+		if hc != nil && hc.State == vm.HC_STATE_READY && len(hc.Response) > 0 {
 			log.Debug("MMDBG-HC Found a prepared", "hc.Response", hexutility.Bytes(hc.Response))
 			txn = types.NewOffchainTx(mh, hc.Response)
+			hc.State = vm.HC_STATE_INSERTED // Ensure that OffchainTx is only inserted once
 			log.Debug("MMDBG-HC Inserting OffchainTx", "txn", txn)
-			hc.State = 3 // Ensure that OffchainTx is only inserted once
 			hcOffchain = true
 		}
 
@@ -571,7 +571,7 @@ LOOP:
 
 			vm.HCResponseCache[mh] = hc
 
-			if hc.State == 1 {
+			if hc.State == vm.HC_STATE_TRIGGERED {
 				// This is a first-time trigger for a Txn which didn't go through EstimateGas
 				log.Debug("MMDBG-HC Inserting HCActive in stage_mining_exec", "hc", hc, "mh", mh, "txn", txn)
 				// Need to skip this Tx for now, start a background task to do the offchain stuff,
@@ -590,14 +590,21 @@ LOOP:
 				log.Debug("MMDBG-HC Marking as failed", "hc", hc, "mh", mh)
 				// We inserted an OffchainResponse ahead of this Tx but it still failed.
 				// FIXME - This may leave a cache entry in the helper contract. Should have a way to clean up.
-				hc.State = 4
+				hc.State = vm.HC_STATE_FAILED
 			}
 
 			continue
+		} else if err == nil && hc != nil && hc.State == vm.HC_STATE_INSERTED {
+			hc.State = vm.HC_STATE_COMPLETED
+			log.Debug("MMDBG-HC Setting HC_STATE_COMPLETED", "hc", hc)
 		}
 
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
+			if hc != nil && hc.State != vm.HC_STATE_NONE {
+				log.Warn("MMDBG-HC ErrGasLimitReached with HC transaction", "hc", hc)
+				// FIXME
+			}
 			logger.Debug(fmt.Sprintf("[%s] Gas limit exceeded for env block", logPrefix), "hash", txn.Hash(), "sender", from)
 			txs.Pop()
 		} else if errors.Is(err, core.ErrNonceTooLow) {

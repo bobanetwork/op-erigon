@@ -99,6 +99,10 @@ func (evm *EVM) SetHC(hc *HCContext) {
 	evm.hc = hc
 }
 
+func (evm *EVM) HCContext() *HCContext {
+	return evm.hc
+}
+
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
 // only ever be used *once*.
 func NewEVM(blockCtx evmtypes.BlockContext, txCtx evmtypes.TxContext, state evmtypes.IntraBlockState, chainConfig *chain.Config, vmConfig Config) *EVM {
@@ -303,7 +307,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr libcommon.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
 	ret, leftOverGas, err = evm.call(CALL, caller, addr, input, gas, value, bailout)
-	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.State == 1 {
+	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.State == HC_STATE_TRIGGERED {
 		log.Debug("MMDBG-HC evm.Call setting ErrHCReverted", "prefix", input[:4], "addr", addr, "caller", caller.Address())
 		err = ErrHCReverted
 	}
