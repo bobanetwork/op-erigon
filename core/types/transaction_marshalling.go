@@ -11,7 +11,6 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
-	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
 )
@@ -184,7 +183,6 @@ func UnmarshalTransactionFromJSON(input []byte) (Transaction, error) {
 		}
 		return tx, nil
 	case DepositTxType:
-		log.Info("UnmarshalTransactionFromJSON: DepositTxType")
 		tx := &DepositTransaction{}
 		if err = tx.UnmarshalJSON(input); err != nil {
 			return nil, err
