@@ -91,6 +91,8 @@ type receiptMarshaling struct {
 	BlockNumber       *hexutil.Big
 	TransactionIndex  hexutil.Uint
 	L1Fee             *hexutil.Big
+	L1GasUsed         *hexutil.Big
+	L1GasPrice        *hexutil.Big
 }
 
 // receiptRLP is the consensus encoding of a receipt.
