@@ -491,7 +491,6 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		}
 	case DepositTxType:
 		w.WriteByte(DepositTxType)
-		rlp.Encode(w, data)
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}
