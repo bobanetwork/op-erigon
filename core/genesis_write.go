@@ -104,6 +104,9 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrideShanghaiTime 
 			if config.ChainID.Cmp(params.OptimismGoerliChainConfig.ChainID) == 0 {
 				config.RegolithTime = params.OptimismGoerliChainConfig.RegolithTime
 			}
+			if config.ChainID.Cmp(params.OptimismMainnetChainConfig.ChainID) == 0 {
+				config.RegolithTime = params.OptimismMainnetChainConfig.RegolithTime
+			}
 		}
 	}
 
@@ -434,6 +437,17 @@ func ChiadoGenesisBlock() *types.Genesis {
 	}
 }
 
+func OptimismMainnetGenesisBlock() *types.Genesis {
+	return &types.Genesis{
+		Config:     params.OptimismMainnetChainConfig,
+		Difficulty: big.NewInt(1),
+		Mixhash:    libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		ExtraData:  hexutil.MustDecode("0x000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+		GasLimit:   15000000,
+		Alloc:      readPrealloc("allocs/optimism_mainnet.json"),
+	}
+}
+
 func OptimismGoerliGenesisBlock() *types.Genesis {
 	return &types.Genesis{
 		Config:     params.OptimismGoerliChainConfig,
@@ -633,6 +647,8 @@ func GenesisBlockByChainName(chain string) *types.Genesis {
 		return GnosisGenesisBlock()
 	case networkname.ChiadoChainName:
 		return ChiadoGenesisBlock()
+	case networkname.OptimismMainnetChainName:
+		return OptimismMainnetGenesisBlock()
 	case networkname.OptimismGoerliChainName:
 		return OptimismGoerliGenesisBlock()
 	default:
