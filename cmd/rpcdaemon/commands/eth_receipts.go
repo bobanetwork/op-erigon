@@ -776,7 +776,6 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
 		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
 		fields["l1FeeScalar"] = receipt.FeeScalar.String()
-		fields["l2BobaFee"] = (*hexutil.Big)(receipt.L2BobaFee)
 	}
 
 	if !chainConfig.IsLondon(header.Number.Uint64()) {

@@ -79,7 +79,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	*usedGas += result.UsedGas
 
 	var (
-		legacyReceipt     *types.LegacyReceipt
+		legacyReceipt     *types.LegacyReceiptMarshaling
 		isBobaLegacyBlock bool
 	)
 	if evm.ChainConfig().IsBobaLegacyBlock(header.Number) {
@@ -152,7 +152,6 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 			receipt.L1GasUsed = (*big.Int)(legacyReceipt.L1GasUsed)
 			receipt.L1Fee = (*big.Int)(legacyReceipt.L1Fee)
 			receipt.FeeScalar = legacyReceipt.FeeScalar
-			receipt.L2BobaFee = (*big.Int)(legacyReceipt.L2BobaFee)
 		}
 
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})

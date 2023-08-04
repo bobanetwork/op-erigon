@@ -75,24 +75,6 @@ func (n *BlockNonce) UnmarshalText(input []byte) error {
 // Header represents a block header in the Ethereum blockchain.
 // DESCRIBED: docs/programmers_guide/guide.md#organising-ethereum-state-into-a-merkle-tree
 
-type LegacyHeader struct {
-	ParentHash  libcommon.Hash    `json:"parentHash"       gencodec:"required"`
-	UncleHash   libcommon.Hash    `json:"sha3Uncles"       gencodec:"required"`
-	Coinbase    libcommon.Address `json:"miner"`
-	Root        libcommon.Hash    `json:"stateRoot"        gencodec:"required"`
-	TxHash      libcommon.Hash    `json:"transactionsRoot" gencodec:"required"`
-	ReceiptHash libcommon.Hash    `json:"receiptsRoot"     gencodec:"required"`
-	Bloom       Bloom             `json:"logsBloom"        gencodec:"required"`
-	Difficulty  *big.Int          `json:"difficulty"       gencodec:"required"`
-	Number      *big.Int          `json:"number"           gencodec:"required"`
-	GasLimit    uint64            `json:"gasLimit"         gencodec:"required"`
-	GasUsed     uint64            `json:"gasUsed"          gencodec:"required"`
-	Time        uint64            `json:"timestamp"        gencodec:"required"`
-	Extra       []byte            `json:"extraData"        gencodec:"required"`
-	MixDigest   libcommon.Hash    `json:"mixHash"` // prevRandao after EIP-4399
-	Nonce       BlockNonce        `json:"nonce"`
-}
-
 type Header struct {
 	ParentHash  libcommon.Hash    `json:"parentHash"       gencodec:"required"`
 	UncleHash   libcommon.Hash    `json:"sha3Uncles"       gencodec:"required"`
@@ -531,7 +513,7 @@ type headerMarshaling struct {
 	Hash          libcommon.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
 }
 
-type LegacyHeaderMarshaling struct {
+type HeaderMarshaling struct {
 	GasLimit    hexutil.Big      `json:"gasLimit"`
 	GasUsed     hexutil.Big      `json:"gasUsed"`
 	Difficulty  hexutil.Big      `json:"difficulty"`
@@ -555,29 +537,6 @@ func (h *Header) SetExcessDataGas(v *big.Int) {
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
 func (h *Header) Hash() libcommon.Hash {
-	// The difficult of legacy blocks is 1 or 2
-	if h.Difficulty != nil && h.BaseFee != nil {
-		if (h.Difficulty.Cmp(libcommon.Big1) == 0 || h.Difficulty.Cmp(libcommon.Big2) == 0) && h.BaseFee.Cmp(libcommon.Big0) == 0 {
-			legacyHeader := &LegacyHeader{
-				ParentHash:  h.ParentHash,
-				UncleHash:   h.UncleHash,
-				Coinbase:    h.Coinbase,
-				Root:        h.Root,
-				TxHash:      h.TxHash,
-				ReceiptHash: h.ReceiptHash,
-				Bloom:       h.Bloom,
-				Difficulty:  h.Difficulty,
-				Number:      h.Number,
-				GasLimit:    h.GasLimit,
-				GasUsed:     h.GasUsed,
-				Time:        h.Time,
-				Extra:       h.Extra,
-				MixDigest:   h.MixDigest,
-				Nonce:       h.Nonce,
-			}
-			return rlpHash(legacyHeader)
-		}
-	}
 	return rlpHash(h)
 }
 

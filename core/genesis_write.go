@@ -244,7 +244,11 @@ func write(tx kv.RwTx, g *types.Genesis, tmpDir string) (*types.Block, *state.In
 	if err := config.CheckConfigForkOrder(); err != nil {
 		return nil, nil, err
 	}
-	if err := rawdb.WriteTd(tx, block.Hash(), block.NumberU64(), g.Difficulty); err != nil {
+	difficulty := g.Difficulty
+	if g.Config.IsBobaLegacyBlock(libcommon.Big0) {
+		difficulty = libcommon.Big1
+	}
+	if err := rawdb.WriteTd(tx, block.Hash(), block.NumberU64(), difficulty); err != nil {
 		return nil, nil, err
 	}
 	if err := rawdb.WriteBlock(tx, block); err != nil {
@@ -458,9 +462,11 @@ var genesisDBLock sync.Mutex
 func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.IntraBlockState, error) {
 	_ = g.Alloc //nil-check
 
+	baseFee := g.BaseFee
 	isBobaLegacyBlock := false
 	if g.Config.IsBobaLegacyBlock(libcommon.Big0) {
 		isBobaLegacyBlock = true
+		baseFee = nil
 	}
 
 	// Override the default configurations of the genesis block.
@@ -475,7 +481,7 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		Difficulty:    g.Difficulty,
 		MixDigest:     g.Mixhash,
 		Coinbase:      g.Coinbase,
-		BaseFee:       g.BaseFee,
+		BaseFee:       baseFee,
 		ExcessDataGas: g.ExcessDataGas,
 		AuRaStep:      g.AuRaStep,
 		AuRaSeal:      g.AuRaSeal,
@@ -504,7 +510,6 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		head.Difficulty = big.NewInt(1)
 		head.Extra = common.Hex2Bytes(g.Config.GetBobaGenesisExtraData())
 		head.Coinbase = libcommon.HexToAddress(g.Config.GetBobaGenesisCoinbase())
-		head.BaseFee = big.NewInt(0)
 	}
 
 	var root libcommon.Hash

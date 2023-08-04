@@ -307,10 +307,11 @@ func (s *EthBackendServer) EngineGetBlobsBundleV1(ctx context.Context, in *remot
 // EngineNewPayload validates and possibly executes payload
 func (s *EthBackendServer) EngineNewPayload(ctx context.Context, req *types2.ExecutionPayload) (*remote.EnginePayloadStatus, error) {
 	difficulty := serenity.SerenityDifficulty
-	baseFee := gointerfaces.ConvertH256ToUint256Int(req.BaseFeePerGas).ToBig()
+	var baseFee *big.Int
 	if s.config.IsBobaLegacyBlock(big.NewInt(int64(req.BlockNumber))) {
 		difficulty = libcommon.Big2
-		baseFee = libcommon.Big0
+	} else {
+		baseFee = gointerfaces.ConvertH256ToUint256Int(req.BaseFeePerGas).ToBig()
 	}
 	header := types.Header{
 		ParentHash:  gointerfaces.ConvertH256ToHash(req.ParentHash),
@@ -578,8 +579,14 @@ func (s *EthBackendServer) EngineGetPayload(ctx context.Context, req *remote.Eng
 	}
 	block := blockWithReceipts.Block
 
-	baseFee := new(uint256.Int)
-	baseFee.SetFromBig(block.Header().BaseFee)
+	var (
+		baseFee       *uint256.Int
+		baseFeePerGas *types2.H256
+	)
+	if !s.config.IsBobaLegacyBlock(block.Number()) {
+		baseFee.SetFromBig(block.Header().BaseFee)
+		baseFeePerGas = gointerfaces.ConvertUint256IntToH256(baseFee)
+	}
 
 	encodedTransactions, err := types.MarshalTransactionsBinary(block.Transactions())
 	log.Debug("MMDBG EngineGetPayload response", "err", err, "encoded", encodedTransactions)
@@ -601,7 +608,7 @@ func (s *EthBackendServer) EngineGetPayload(ctx context.Context, req *remote.Eng
 		GasUsed:       block.GasUsed(),
 		BlockNumber:   block.NumberU64(),
 		ExtraData:     block.Extra(),
-		BaseFeePerGas: gointerfaces.ConvertUint256IntToH256(baseFee),
+		BaseFeePerGas: baseFeePerGas,
 		BlockHash:     gointerfaces.ConvertHashToH256(block.Header().Hash()),
 		Transactions:  encodedTransactions,
 	}
@@ -618,10 +625,16 @@ func (s *EthBackendServer) EngineGetPayload(ctx context.Context, req *remote.Eng
 	}
 	log.Debug("MMDBG EngineGetPayload response has", "blockNum", block.NumberU64(), "blockHash", block.Hash(), "blockTime", block.Header().Time, "txes", len(block.Transactions()), "payloadId", req.PayloadId)
 
-	blockValue := blockValue(blockWithReceipts, baseFee)
+	var rBlockValue *uint256.Int
+	if s.config.IsBobaLegacyBlock(block.Number()) {
+		rBlockValue = blockValue(blockWithReceipts, uint256.NewInt(0))
+	} else {
+		rBlockValue = blockValue(blockWithReceipts, baseFee)
+	}
+
 	return &remote.EngineGetPayloadResponse{
 		ExecutionPayload: payload,
-		BlockValue:       gointerfaces.ConvertUint256IntToH256(blockValue),
+		BlockValue:       gointerfaces.ConvertUint256IntToH256(rBlockValue),
 	}, nil
 }
 

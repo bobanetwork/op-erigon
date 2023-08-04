@@ -80,7 +80,6 @@ type Receipt struct {
 	L1GasUsed  *big.Int   `json:"l1GasUsed,omitempty"`
 	L1Fee      *big.Int   `json:"l1Fee,omitempty"`
 	FeeScalar  *big.Float `json:"l1FeeScalar,omitempty"`
-	L2BobaFee  *big.Int   `json:"L2BobaFee,omitempty"`
 }
 
 type receiptMarshaling struct {
@@ -95,30 +94,9 @@ type receiptMarshaling struct {
 	L1GasPrice        *hexutil.Big
 	L1GasUsed         *hexutil.Big
 	FeeScalar         *big.Float
-	L2BobaFee         *hexutil.Big
 }
 
-type ReceiptEncodable struct {
-	Type              uint8             `json:"type,omitempty"`
-	PostState         []byte            `json:"root" codec:"1"`
-	Status            uint64            `json:"status" codec:"2"`
-	CumulativeGasUsed uint64            `json:"cumulativeGasUsed" gencodec:"required" codec:"3"`
-	Bloom             Bloom             `json:"logsBloom"         gencodec:"required" codec:"-"`
-	Logs              Logs              `json:"logs"              gencodec:"required" codec:"-"`
-	TxHash            libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
-	ContractAddress   libcommon.Address `json:"contractAddress" codec:"-"`
-	GasUsed           uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
-	BlockHash         libcommon.Hash    `json:"blockHash,omitempty" codec:"-"`
-	BlockNumber       *big.Int          `json:"blockNumber,omitempty" codec:"-"`
-	TransactionIndex  uint              `json:"transactionIndex" codec:"-"`
-	L1GasPrice        string            `json:"l1GasPrice,omitempty"`
-	L1GasUsed         string            `json:"l1GasUsed,omitempty"`
-	L1Fee             string            `json:"l1Fee,omitempty"`
-	FeeScalar         string            `json:"l1FeeScalar,omitempty"`
-	L2BobaFee         string            `json:"L2BobaFee,omitempty"`
-}
-
-type LegacyReceipt struct {
+type LegacyReceiptMarshaling struct {
 	PostState         hexutility.Bytes   `json:"root"`
 	Status            hexutil.Uint64     `json:"status"`
 	CumulativeGasUsed hexutil.Uint64     `json:"cumulativeGasUsed" gencodec:"required"`
@@ -134,7 +112,6 @@ type LegacyReceipt struct {
 	L1GasUsed         *hexutil.Big       `json:"l1GasUsed" gencodec:"required"`
 	L1Fee             *hexutil.Big       `json:"l1Fee" gencodec:"required"`
 	FeeScalar         *big.Float         `json:"l1FeeScalar" gencodec:"required"`
-	L2BobaFee         *hexutil.Big       `json:"l2BobaFee"`
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -198,7 +175,6 @@ type LegacyBobaReceiptRLP struct {
 	L1GasPrice        *big.Int
 	L1Fee             *big.Int
 	FeeScalar         string
-	L2BobaFee         *big.Int
 }
 
 // NewReceipt creates a barebone transaction receipt, copying the init fields.
@@ -416,7 +392,6 @@ func (r *Receipt) Copy() *Receipt {
 		L1GasUsed:         r.L1GasUsed,
 		L1Fee:             r.L1Fee,
 		FeeScalar:         r.FeeScalar,
-		L2BobaFee:         r.L2BobaFee,
 		DepositNonce:      r.DepositNonce,
 	}
 }
@@ -492,7 +467,6 @@ func decodeLegacyBobaReceiptRLP(r *ReceiptForStorage, blob []byte) error {
 	r.L1GasPrice = stored.L1GasPrice
 	r.L1Fee = stored.L1Fee
 	r.FeeScalar = scalar
-	r.L2BobaFee = stored.L2BobaFee
 	return nil
 }
 
@@ -555,8 +529,6 @@ func decodeV3StoredReceiptRLP(r *ReceiptForStorage, blob []byte) error {
 
 // Receipts implements DerivableList for receipts.
 type Receipts []*Receipt
-
-type ReceiptsEncodable []*ReceiptEncodable
 
 // Len returns the number of receipts in this list.
 func (rs Receipts) Len() int { return len(rs) }
@@ -637,63 +609,4 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 		}
 	}
 	return nil
-}
-
-func (r Receipts) ToReceiptsEncodable() ReceiptsEncodable {
-	receiptsEncodable := make([]*ReceiptEncodable, len(r))
-	for i, receipts := range r {
-		receipt := ReceiptEncodable{
-			Type:              receipts.Type,
-			PostState:         receipts.PostState,
-			Status:            receipts.Status,
-			CumulativeGasUsed: receipts.CumulativeGasUsed,
-			Bloom:             receipts.Bloom,
-			Logs:              receipts.Logs,
-			TxHash:            receipts.TxHash,
-			ContractAddress:   receipts.ContractAddress,
-			GasUsed:           receipts.GasUsed,
-			BlockHash:         receipts.BlockHash,
-			BlockNumber:       receipts.BlockNumber,
-			TransactionIndex:  receipts.TransactionIndex,
-			L1GasPrice:        (*receipts.L1GasPrice).String(),
-			L1GasUsed:         (*receipts.L1GasUsed).String(),
-			L1Fee:             (*receipts.L1Fee).String(),
-			FeeScalar:         (*receipts.FeeScalar).String(),
-			L2BobaFee:         (*receipts.L2BobaFee).String(),
-		}
-		receiptsEncodable[i] = &receipt
-	}
-	return receiptsEncodable
-}
-
-func (re ReceiptsEncodable) ToReceipts() Receipts {
-	receipts := make([]*Receipt, len(re))
-	for i, receiptEncodable := range re {
-		L1GasPrice, _ := new(big.Int).SetString(receiptEncodable.L1GasPrice, 10)
-		L1GasUsed, _ := new(big.Int).SetString(receiptEncodable.L1GasUsed, 10)
-		L1Fee, _ := new(big.Int).SetString(receiptEncodable.L1Fee, 10)
-		FeeScalar, _ := new(big.Float).SetString(receiptEncodable.FeeScalar)
-		L2BobaFee, _ := new(big.Int).SetString(receiptEncodable.L2BobaFee, 10)
-		receipt := Receipt{
-			Type:              receiptEncodable.Type,
-			PostState:         receiptEncodable.PostState,
-			Status:            receiptEncodable.Status,
-			CumulativeGasUsed: receiptEncodable.CumulativeGasUsed,
-			Bloom:             receiptEncodable.Bloom,
-			Logs:              receiptEncodable.Logs,
-			TxHash:            receiptEncodable.TxHash,
-			ContractAddress:   receiptEncodable.ContractAddress,
-			GasUsed:           receiptEncodable.GasUsed,
-			BlockHash:         receiptEncodable.BlockHash,
-			BlockNumber:       receiptEncodable.BlockNumber,
-			TransactionIndex:  receiptEncodable.TransactionIndex,
-			L1GasPrice:        L1GasPrice,
-			L1GasUsed:         L1GasUsed,
-			L1Fee:             L1Fee,
-			FeeScalar:         FeeScalar,
-			L2BobaFee:         L2BobaFee,
-		}
-		receipts[i] = &receipt
-	}
-	return receipts
 }

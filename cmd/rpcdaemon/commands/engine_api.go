@@ -261,10 +261,19 @@ func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *Ex
 	log.Debug("MMDBG >>> NewPayload Request", "payload", payload)
 	log.Debug("Received NewPayload", "version", version, "height", uint64(payload.BlockNumber), "hash", payload.BlockHash)
 
-	baseFee, overflow := uint256.FromBig((*big.Int)(payload.BaseFeePerGas))
-	if overflow {
-		log.Warn("NewPayload BaseFeePerGas overflow")
-		return nil, fmt.Errorf("invalid request")
+	var (
+		baseFee       *uint256.Int
+		baseFeePerGas *types2.H256
+		overflow      bool
+	)
+
+	if payload.BaseFeePerGas != nil {
+		baseFee, overflow = uint256.FromBig((*big.Int)(payload.BaseFeePerGas))
+		if overflow {
+			log.Warn("NewPayload BaseFeePerGas overflow")
+			return nil, fmt.Errorf("invalid request")
+		}
+		baseFeePerGas = gointerfaces.ConvertUint256IntToH256(baseFee)
 	}
 
 	// Convert slice of hexutility.Bytes to a slice of slice of bytes
@@ -285,7 +294,7 @@ func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *Ex
 		GasUsed:       uint64(payload.GasUsed),
 		Timestamp:     uint64(payload.Timestamp),
 		ExtraData:     payload.ExtraData,
-		BaseFeePerGas: gointerfaces.ConvertUint256IntToH256(baseFee),
+		BaseFeePerGas: baseFeePerGas,
 		BlockHash:     gointerfaces.ConvertHashToH256(payload.BlockHash),
 		Transactions:  transactions,
 	}
@@ -316,7 +325,16 @@ func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *Ex
 
 func convertPayloadFromRpc(payload *types2.ExecutionPayload) *ExecutionPayload {
 	var bloom types.Bloom = gointerfaces.ConvertH2048ToBloom(payload.LogsBloom)
-	baseFee := gointerfaces.ConvertH256ToUint256Int(payload.BaseFeePerGas).ToBig()
+
+	var (
+		baseFee       *big.Int
+		baseFeePerGas *hexutil.Big
+	)
+
+	if payload.BaseFeePerGas != nil {
+		baseFee = gointerfaces.ConvertH256ToUint256Int(payload.BaseFeePerGas).ToBig()
+		baseFeePerGas = (*hexutil.Big)(baseFee)
+	}
 
 	// Convert slice of hexutility.Bytes to a slice of slice of bytes
 	transactions := make([]hexutility.Bytes, len(payload.Transactions))
@@ -337,7 +355,7 @@ func convertPayloadFromRpc(payload *types2.ExecutionPayload) *ExecutionPayload {
 		GasUsed:       hexutil.Uint64(payload.GasUsed),
 		Timestamp:     hexutil.Uint64(payload.Timestamp),
 		ExtraData:     payload.ExtraData,
-		BaseFeePerGas: (*hexutil.Big)(baseFee),
+		BaseFeePerGas: baseFeePerGas,
 		BlockHash:     gointerfaces.ConvertH256ToHash(payload.BlockHash),
 		Transactions:  transactions,
 	}
