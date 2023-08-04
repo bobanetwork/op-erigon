@@ -93,30 +93,8 @@ type receiptMarshaling struct {
 	BlockNumber       *hexutil.Big
 	TransactionIndex  hexutil.Uint
 	L1Fee             *hexutil.Big
-	L1GasPrice        *hexutil.Big
 	L1GasUsed         *hexutil.Big
-	FeeScalar         *big.Float
-	L2BobaFee         *hexutil.Big
-}
-
-type ReceiptEncodable struct {
-	Type              uint8             `json:"type,omitempty"`
-	PostState         []byte            `json:"root" codec:"1"`
-	Status            uint64            `json:"status" codec:"2"`
-	CumulativeGasUsed uint64            `json:"cumulativeGasUsed" gencodec:"required" codec:"3"`
-	Bloom             Bloom             `json:"logsBloom"         gencodec:"required" codec:"-"`
-	Logs              Logs              `json:"logs"              gencodec:"required" codec:"-"`
-	TxHash            libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
-	ContractAddress   libcommon.Address `json:"contractAddress" codec:"-"`
-	GasUsed           uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
-	BlockHash         libcommon.Hash    `json:"blockHash,omitempty" codec:"-"`
-	BlockNumber       *big.Int          `json:"blockNumber,omitempty" codec:"-"`
-	TransactionIndex  uint              `json:"transactionIndex" codec:"-"`
-	L1GasPrice        []byte            `json:"l1GasPrice,omitempty"`
-	L1GasUsed         []byte            `json:"l1GasUsed,omitempty"`
-	L1Fee             []byte            `json:"l1Fee,omitempty"`
-	FeeScalar         []byte            `json:"l1FeeScalar,omitempty"`
-	L2BobaFee         []byte            `json:"l2BobaFee,omitempty"`
+	L1GasPrice        *hexutil.Big
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -517,7 +495,6 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		}
 	case DepositTxType:
 		w.WriteByte(DepositTxType)
-		rlp.Encode(w, data)
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}

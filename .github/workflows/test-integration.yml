@@ -6,6 +6,9 @@ on:
       - alpha
       - stable
       - boba-develop
+  pull_request:
+    branches:
+      - boba-develop
   schedule:
     - cron: '20 16 * * *' # daily at 16:20 UTC
   workflow_dispatch:

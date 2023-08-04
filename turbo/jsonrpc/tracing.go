@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -189,6 +190,22 @@ func (api *PrivateDebugAPIImpl) TraceTransaction(ctx context.Context, hash commo
 	if !ok {
 		stream.WriteNil()
 		return nil
+	}
+
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService != nil {
+			treeResult := &GethTrace{}
+			if err := api.historicalRPCService.CallContext(ctx, treeResult, "debug_traceTransaction", hash, config); err != nil {
+				return fmt.Errorf("historical backend failed: %w", err)
+			}
+			result, err := json.Marshal(treeResult)
+			if err != nil {
+				return err
+			}
+			stream.WriteRaw(string(result))
+			return nil
+		}
+		return rpc.ErrNoHistoricalFallback
 	}
 
 	// check pruning to ensure we have history at this block level

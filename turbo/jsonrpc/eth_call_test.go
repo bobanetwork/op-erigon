@@ -24,11 +24,13 @@ import (
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
+	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/ledgerwatch/erigon/turbo/adapter/ethapi"
+	ethapi2 "github.com/ledgerwatch/erigon/turbo/adapter/ethapi"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/erigon/turbo/stages"
 	"github.com/ledgerwatch/erigon/turbo/trie"
@@ -42,7 +44,7 @@ func TestEstimateGas(t *testing.T) {
 	ctx, conn := rpcdaemontest.CreateTestGrpcConn(t, stages.Mock(t))
 	mining := txpool.NewMiningClient(conn)
 	ff := rpchelper.New(ctx, nil, nil, mining, func() {}, m.Log)
-	api := NewEthAPI(NewBaseApi(ff, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
+	api := NewEthAPI(NewBaseApi(ff, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
 	var from = libcommon.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 	var to = libcommon.HexToAddress("0x0d3ab14bbad3d99f4203bd7a11acb94882050e7e")
 	if _, err := api.EstimateGas(context.Background(), &ethapi.CallArgs{
@@ -53,11 +55,71 @@ func TestEstimateGas(t *testing.T) {
 	}
 }
 
+func TestEstimateGasHistoricalRPC(t *testing.T) {
+	m, _, _ := rpcdaemontest.CreateOptimismTestSentry(t)
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
+
+	table := []struct {
+		caseName  string
+		payload   string
+		appendAPI bool
+		isError   bool
+		expected  string
+	}{
+		{
+			caseName:  "missing api",
+			payload:   "",
+			appendAPI: false,
+			isError:   true,
+			expected:  "no historical RPC is available for this historical (pre-bedrock) execution request",
+		},
+		{
+			caseName:  "success",
+			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x1\"}",
+			appendAPI: true,
+			isError:   false,
+			expected:  "0x1",
+		},
+		{
+			caseName:  "failuer",
+			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
+			appendAPI: true,
+			isError:   true,
+			expected:  "historical backend failed: error",
+		},
+	}
+
+	for _, tt := range table {
+		t.Run(tt.caseName, func(t *testing.T) {
+			if tt.appendAPI {
+				s := MockServer{}
+				s.Start()
+				defer s.Stop()
+				historicalRPCService, err := s.GetRPC()
+				if err != nil {
+					t.Errorf("failed to start mock server: %v", err)
+				}
+				api.historicalRPCService = historicalRPCService
+				s.UpdatePayload(tt.payload)
+			}
+			bn := rpc.BlockNumberOrHashWithNumber(0)
+			val, err := api.EstimateGas(m.Ctx, &ethapi2.CallArgs{}, &bn)
+			if tt.isError {
+				require.Error(t, err, tt.caseName)
+				require.Equal(t, tt.expected, fmt.Sprintf("%v", err), tt.caseName)
+			} else {
+				require.NoError(t, err, tt.caseName)
+				require.Equal(t, tt.expected, fmt.Sprintf("%v", val), tt.caseName)
+			}
+		})
+	}
+}
+
 func TestEthCallNonCanonical(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
 	agg := m.HistoryV3Components()
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
-	api := NewEthAPI(NewBaseApi(nil, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
+	api := NewEthAPI(NewBaseApi(nil, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
 	var from = libcommon.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 	var to = libcommon.HexToAddress("0x0d3ab14bbad3d99f4203bd7a11acb94882050e7e")
 	if _, err := api.Call(context.Background(), ethapi.CallArgs{
@@ -210,6 +272,69 @@ func TestGetProof(t *testing.T) {
 					require.NoError(t, err)
 				}
 				require.True(t, found, "did not find storage proof for key=%x", storageKey)
+			}
+		})
+	}
+}
+
+func TestGetProofHistoricalRPC(t *testing.T) {
+	m, _, _ := rpcdaemontest.CreateOptimismTestSentry(t)
+	if m.HistoryV3 {
+		t.Skip("not supported by Erigon3")
+	}
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
+
+	table := []struct {
+		caseName  string
+		payload   string
+		appendAPI bool
+		isError   bool
+		expected  string
+	}{
+		{
+			caseName:  "missing api",
+			payload:   "",
+			appendAPI: false,
+			isError:   true,
+			expected:  "no historical RPC is available for this historical (pre-bedrock) execution request",
+		},
+		{
+			caseName:  "success",
+			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}",
+			appendAPI: true,
+			isError:   false,
+			expected:  fmt.Sprintf("%v", &accounts.AccProofResult{}),
+		},
+		{
+			caseName:  "failuer",
+			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
+			appendAPI: true,
+			isError:   true,
+			expected:  "historical backend failed: error",
+		},
+	}
+
+	for _, tt := range table {
+		t.Run(tt.caseName, func(t *testing.T) {
+			if tt.appendAPI {
+				s := MockServer{}
+				s.Start()
+				defer s.Stop()
+				historicalRPCService, err := s.GetRPC()
+				if err != nil {
+					t.Errorf("failed to start mock server: %v", err)
+				}
+				api.historicalRPCService = historicalRPCService
+				s.UpdatePayload(tt.payload)
+			}
+			bn := rpc.BlockNumberOrHashWithNumber(0)
+			val, err := api.GetProof(m.Ctx, libcommon.HexToAddress("0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead0"), []libcommon.Hash{libcommon.HexToHash("0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddead")}, bn)
+			if tt.isError {
+				require.Error(t, err, tt.caseName)
+				require.Equal(t, tt.expected, fmt.Sprintf("%v", err), tt.caseName)
+			} else {
+				require.NoError(t, err, tt.caseName)
+				require.Equal(t, tt.expected, fmt.Sprintf("%v", val), tt.caseName)
 			}
 		})
 	}
