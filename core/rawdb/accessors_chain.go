@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/gballet/go-verkle"
+	"github.com/ledgerwatch/erigon-lib/chain"
 	common2 "github.com/ledgerwatch/erigon-lib/common"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/cmp"
@@ -785,7 +786,7 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 	if len(data) == 0 {
 		return nil
 	}
-	var receipts types.ReceiptsEncodable
+	var receipts types.Receipts
 	if err := cbor.Unmarshal(&receipts, bytes.NewReader(data)); err != nil {
 		log.Error("receipt unmarshal failed", "err", err)
 		return nil
@@ -820,7 +821,7 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 		}
 	}
 
-	return receipts.ToReceipts()
+	return receipts
 }
 
 // ReadReceipts retrieves all the transaction receipts belonging to a block, including
@@ -830,7 +831,7 @@ func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
 // The current implementation populates these metadata fields by reading the receipts'
 // corresponding block body, so if the block body is not found it will return nil even
 // if the receipt itself is stored.
-func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) types.Receipts {
+func ReadReceipts(config *chain.Config, db kv.Tx, block *types.Block, senders []libcommon.Address) types.Receipts {
 	if block == nil {
 		return nil
 	}
@@ -844,7 +845,7 @@ func ReadReceipts(db kv.Tx, block *types.Block, senders []libcommon.Address) typ
 	} else {
 		senders = block.Body().SendersFromTxs()
 	}
-	if err := receipts.DeriveFields(block.Hash(), block.NumberU64(), block.Transactions(), senders); err != nil {
+	if err := receipts.DeriveFields(config, block.Hash(), block.NumberU64(), block.Time(), block.Transactions(), senders); err != nil {
 		log.Error("Failed to derive block receipts fields", "hash", block.Hash(), "number", block.NumberU64(), "err", err, "stack", dbg.Stack())
 		return nil
 	}
@@ -871,7 +872,7 @@ func WriteReceipts(tx kv.Putter, number uint64, receipts types.Receipts) error {
 	}
 
 	buf.Reset()
-	err := cbor.Marshal(buf, receipts.ToReceiptsEncodable())
+	err := cbor.Marshal(buf, receipts)
 	if err != nil {
 		return fmt.Errorf("encode block receipts for block %d: %w", number, err)
 	}
@@ -903,7 +904,7 @@ func AppendReceipts(tx kv.StatelessWriteTx, blockNumber uint64, receipts types.R
 	}
 
 	buf.Reset()
-	err := cbor.Marshal(buf, receipts.ToReceiptsEncodable())
+	err := cbor.Marshal(buf, receipts)
 	if err != nil {
 		return fmt.Errorf("encode block receipts for block %d: %w", blockNumber, err)
 	}

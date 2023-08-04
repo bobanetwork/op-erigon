@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/common"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
@@ -21,13 +23,13 @@ import (
 )
 
 func TestGetReceipts(t *testing.T) {
-	m, _, _ := rpcdaemontest.CreateTestSentry(t)
+	m, _, _ := rpcdaemontest.CreateOptimismTestSentry(t)
 	agg := m.HistoryV3Components()
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
 	ctx, conn := rpcdaemontest.CreateTestGrpcConn(t, stages.Mock(t))
 	mining := txpool.NewMiningClient(conn)
 	ff := rpchelper.New(ctx, nil, nil, mining, func() {}, m.Log)
-	api := NewEthAPI(NewBaseApi(ff, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
+	api := NewEthAPI(NewBaseApi(ff, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), m.DB, nil, nil, nil, 5000000, 100_000, log.New())
 
 	db := memdb.New("")
 	defer db.Close()
@@ -55,10 +57,23 @@ func TestGetReceipts(t *testing.T) {
 	require.NoError(t, err)
 	defer tx.Rollback()
 
-	tx1 := types.NewTransaction(1, libcommon.HexToAddress("0x1"), u256.Num1, 1, u256.Num1, nil)
+	var (
+		bedrockBlock = common.Big0.Add(m.ChainConfig.BedrockBlock, big.NewInt(1))
+
+		l1BaseFee = uint256.NewInt(1000).Bytes32()
+		overhead  = uint256.NewInt(100).Bytes32()
+		scalar    = uint256.NewInt(100).Bytes32()
+		fscalar   = new(big.Float).SetInt(new(uint256.Int).SetBytes(scalar[:]).ToBig())
+		fdivisor  = new(big.Float).SetUint64(1_000_000)
+		feeScalar = new(big.Float).Quo(fscalar, fdivisor)
+	)
+
+	systemTx := buildSystemTx(l1BaseFee, overhead, scalar)
+
+	tx1 := types.NewTransaction(1, libcommon.HexToAddress("0x1"), u256.Num1, 1, u256.Num1, systemTx)
 	tx2 := types.NewTransaction(2, libcommon.HexToAddress("0x2"), u256.Num2, 2, u256.Num2, nil)
 
-	header = &types.Header{Number: big.NewInt(2), Difficulty: big.NewInt(100)}
+	header = &types.Header{Number: bedrockBlock, Difficulty: big.NewInt(100)}
 	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}
 
 	receipt1 := &types.Receipt{
@@ -72,7 +87,6 @@ func TestGetReceipts(t *testing.T) {
 		ContractAddress: libcommon.BytesToAddress([]byte{0x01, 0x11, 0x11}),
 		GasUsed:         111111,
 		L1Fee:           big.NewInt(7),
-		L2BobaFee:       big.NewInt(8),
 	}
 	receipt2 := &types.Receipt{
 		PostState:         libcommon.Hash{2}.Bytes(),
@@ -90,11 +104,11 @@ func TestGetReceipts(t *testing.T) {
 
 	rawdb.WriteCanonicalHash(tx, header.Hash(), header.Number.Uint64())
 	rawdb.WriteHeader(tx, header)
-	require.NoError(t, rawdb.WriteBody(tx, header.Hash(), 2, body))
-	require.NoError(t, rawdb.WriteSenders(tx, header.Hash(), 2, body.SendersFromTxs()))
+	require.NoError(t, rawdb.WriteBody(tx, header.Hash(), header.Number.Uint64(), body))
+	require.NoError(t, rawdb.WriteSenders(tx, header.Hash(), header.Number.Uint64(), body.SendersFromTxs()))
 
 	br := m.BlockReader
-	b, senders, err := br.BlockWithSenders(ctx, tx, header.Hash(), 2)
+	b, senders, err := br.BlockWithSenders(ctx, tx, header.Hash(), header.Number.Uint64())
 	require.NoError(t, err)
 
 	require.NoError(t, rawdb.WriteBlock(tx, b))
@@ -109,8 +123,30 @@ func TestGetReceipts(t *testing.T) {
 	receipts, err = api.getReceipts(m.Ctx, rTx, m.ChainConfig, b, senders)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(receipts))
-	require.Equal(t, receipt1.L1Fee, receipts[0].L1Fee)
-	require.Equal(t, receipt1.L2BobaFee, receipts[0].L2BobaFee)
-	require.Equal(t, receipt2.L1Fee, receipts[1].L1Fee)
-	require.Equal(t, receipt2.L2BobaFee, receipts[1].L2BobaFee)
+
+	require.Equal(t, new(uint256.Int).SetBytes(l1BaseFee[:]).ToBig(), receipts[0].L1GasPrice)
+	rollupDataGas1 := types.RollupDataGas(tx1)
+	require.Equal(t, new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas1), new(uint256.Int).SetBytes(overhead[:]).ToBig()), receipts[0].L1GasUsed)
+	require.Equal(t, types.L1Cost(rollupDataGas1, new(uint256.Int).SetBytes(l1BaseFee[:]), new(uint256.Int).SetBytes(overhead[:]), new(uint256.Int).SetBytes(scalar[:])).ToBig(), receipts[0].L1Fee)
+	require.Equal(t, feeScalar, receipts[0].FeeScalar)
+
+	require.Equal(t, new(uint256.Int).SetBytes(l1BaseFee[:]).ToBig(), receipts[1].L1GasPrice)
+	rollupDataGas2 := types.RollupDataGas(tx2)
+	require.Equal(t, new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas2), new(uint256.Int).SetBytes(overhead[:]).ToBig()), receipts[1].L1GasUsed)
+	require.Equal(t, types.L1Cost(rollupDataGas2, new(uint256.Int).SetBytes(l1BaseFee[:]), new(uint256.Int).SetBytes(overhead[:]), new(uint256.Int).SetBytes(scalar[:])).ToBig(), receipts[1].L1Fee)
+	require.Equal(t, feeScalar, receipts[1].FeeScalar)
+}
+
+func buildSystemTx(l1BaseFee, overhead, scalar [32]byte) []byte {
+	systemInfo := []byte{0, 0, 0, 0}
+	zeroBytes := uint256.NewInt(0).Bytes32()
+	systemInfo = append(systemInfo, zeroBytes[:]...) // 4 - 4 + 32
+	systemInfo = append(systemInfo, zeroBytes[:]...) // 4 + 1 * 32 - 4 + 2 * 32
+	systemInfo = append(systemInfo, l1BaseFee[:]...) // 4 + 2 * 32 - 4 + 3 * 32 - l1Basefee
+	systemInfo = append(systemInfo, zeroBytes[:]...) // 4 + 3 * 32 - 4 + 4 * 32
+	systemInfo = append(systemInfo, zeroBytes[:]...) // 4 + 4 * 32 - 4 + 5 * 32
+	systemInfo = append(systemInfo, zeroBytes[:]...) // 4 + 5 * 32 - 4 + 6 * 32
+	systemInfo = append(systemInfo, overhead[:]...)  // 4 + 6 * 32 - 4 + 7 * 32 - overhead
+	systemInfo = append(systemInfo, scalar[:]...)    // 4 + 7 * 32 - 4 + 8 * 32 - scalar
+	return systemInfo
 }

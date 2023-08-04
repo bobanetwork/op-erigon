@@ -55,7 +55,6 @@ func (r Receipt) MarshalJSON() ([]byte, error) {
 	enc.L1GasUsed = (*hexutil.Big)(r.L1GasUsed)
 	enc.L1Fee = (*hexutil.Big)(r.L1Fee)
 	enc.FeeScalar = r.FeeScalar
-	enc.L2BobaFee = (*hexutil.Big)(r.L2BobaFee)
 	return json.Marshal(&enc)
 }
 
@@ -80,6 +79,10 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 		L1GasUsed         *hexutil.Big      `json:"l1GasUsed,omitempty"`
 		L1Fee             *hexutil.Big      `json:"l1Fee,omitempty"`
 		FeeScalar         *big.Float        `json:"l1FeeScalar,omitempty"`
+	}
+	var dec Receipt
+	if err := json.Unmarshal(input, &dec); err != nil {
+		return err
 	}
 	if dec.Type != nil {
 		r.Type = uint8(*dec.Type)
@@ -139,9 +142,6 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 	}
 	if dec.FeeScalar != nil {
 		r.FeeScalar = dec.FeeScalar
-	}
-	if dec.L2BobaFee != nil {
-		r.L2BobaFee = (*big.Int)(dec.L2BobaFee)
 	}
 	return nil
 }

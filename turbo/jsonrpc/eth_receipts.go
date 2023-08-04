@@ -40,7 +40,7 @@ import (
 func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chain.Config, block *types.Block, senders []common.Address) (types.Receipts, error) {
 	// FIXME disabling the cached receipt path to avoid wiring L1 Fee stuff for
 	// the moment
-	cached := rawdb.ReadReceipts(tx, block, senders)
+	cached := rawdb.ReadReceipts(chainConfig, tx, block, senders)
 	if cached != nil && len(cached) != 0 {
 		log.Info("MMDBG returning cached receipts")
 		return cached, nil
@@ -766,11 +766,6 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	}
 	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositNonce != nil {
 		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
-	}
-	if chainConfig.Optimism != nil && !chainConfig.IsBedrock(header.Number.Uint64()) {
-		if receipt.L2BobaFee != nil {
-			fields["l2BobaFee"] = (*hexutil.Big)(receipt.L2BobaFee)
-		}
 	}
 
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
