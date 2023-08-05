@@ -294,7 +294,7 @@ func CheckEip1559TxGasFeeCap(from libcommon.Address, gasFeeCap, tip, baseFee *ui
 // DESCRIBED: docs/programmers_guide/guide.md#nonce
 func (st *StateTransition) preCheck(gasBailout bool) error {
 	if st.msg.IsDepositTx() {
-		log.Debug("MMDBG preCheck for Deposit txn", "mint", st.msg.Mint(), "systemTx", st.msg.IsSystemTx(), "from", st.msg.From(), "to", st.msg.To())
+		log.Debug("preCheck for Deposit txn", "from", st.msg.From(), "to", st.msg.To(), "mint", st.msg.Mint(), "value", st.msg.Mint())
 
 		// Following section copied from Optimism patchset
 
@@ -548,13 +548,6 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		)
 	}
 
-	log.Info(
-		"MMDBG Accounting for base fee and l1 fee",
-		"isOptimism", st.evm.ChainConfig().Optimism != nil,
-		"isBedrock", rules.IsBedrock,
-		"gasUsed", st.gasUsed,
-		"baseFee", st.evm.Context().BaseFee,
-	)
 	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
 	// Note optimismConfig will not be nil if rules.IsOptimismBedrock is true
 	if optimismConfig := st.evm.ChainConfig().Optimism; optimismConfig != nil && rules.IsBedrock {
@@ -563,7 +556,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 			log.Error("Expected L1CostFunc to be set, but it is not")
 		}
 		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
-		log.Info("MMDBG Cost for l1 is", "cost", cost)
+		log.Info("Calculated Optimism fees", "gasUsed", st.gasUsed, "baseFee", st.evm.Context().BaseFee, "L1Cost", cost)
 		if cost != nil {
 			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
 		}

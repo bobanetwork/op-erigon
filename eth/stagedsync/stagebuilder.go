@@ -30,7 +30,6 @@ func MiningStages(
 			ID:          stages.MiningCreateBlock,
 			Description: "Mining: construct new block from tx pool",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx, logger log.Logger) error {
-				log.Debug("MMDBG stagebuilder stages.MiningCreateBlock", "cfg", createBlockCfg)
 				return SpawnMiningCreateBlockStage(s, tx, createBlockCfg, ctx.Done(), logger)
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx, logger log.Logger) error { return nil },
@@ -40,7 +39,6 @@ func MiningStages(
 			ID:          stages.MiningExecution,
 			Description: "Mining: construct new block from tx pool",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx, logger log.Logger) error {
-				log.Debug("MMDBG stagebuilder stages.MiningExecution", "tx", tx)
 				return SpawnMiningExecStage(s, tx, execCfg, ctx.Done(), logger)
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx, logger log.Logger) error { return nil },
@@ -73,7 +71,6 @@ func MiningStages(
 			ID:          stages.MiningFinish,
 			Description: "Mining: create and propagate valid block",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx, logger log.Logger) error {
-				log.Debug("MMDBG stagebuilder stages.MiningFinish")
 				return SpawnMiningFinishStage(s, tx, finish, ctx.Done(), logger)
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx, logger log.Logger) error { return nil },

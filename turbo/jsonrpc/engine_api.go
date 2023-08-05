@@ -197,19 +197,18 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 		log.Info("Received ForkchoiceUpdated [build]", "version", version,
 			"head", forkChoiceState.HeadHash, "safe", forkChoiceState.SafeBlockHash, "finalized", forkChoiceState.FinalizedBlockHash,
 			"timestamp", payloadAttributes.Timestamp, "prevRandao", payloadAttributes.PrevRandao, "suggestedFeeRecipient", payloadAttributes.SuggestedFeeRecipient,
-			"withdrawals", withdrawalValues(payloadAttributes.Withdrawals))
+			"withdrawals", withdrawalValues(payloadAttributes.Withdrawals),
+			"numTransactions", len(payloadAttributes.Transactions),
+			"gasLimit", (*uint64)(payloadAttributes.GasLimit), "NoTxPool", payloadAttributes.NoTxPool)
 	}
 
 	var attributes *engine.EnginePayloadAttributes
 	if payloadAttributes != nil {
-		log.Debug("MMDBG Preparing payloadAttributes", "tLen", len(payloadAttributes.Transactions))
-
 		// Could move this to erigon-lib/gointerfaces/type_utils.go but there's a problem
 		// importing hexutils into erigon-lib.
 		transactions := make([][]byte, len(payloadAttributes.Transactions))
 		for i, transaction := range payloadAttributes.Transactions {
 			transactions[i] = ([]byte)(transaction)
-			// log.Debug("MMDBG  -> ", "idx", i, "in", transaction, "out", transactions[i])
 		}
 		attributes = &engine.EnginePayloadAttributes{
 			Version:               1,
@@ -251,7 +250,7 @@ func (e *EngineImpl) forkchoiceUpdated(version uint32, ctx context.Context, fork
 		binary.BigEndian.PutUint64(encodedPayloadId, reply.PayloadId)
 		json["payloadId"] = hexutility.Bytes(encodedPayloadId)
 	}
-	log.Debug("MMDBG <<< ForkchoiceUpdatedV1 Response", "json", json)
+	log.Debug("Sending ForkchoiceUpdatedV1 Response", "json", json)
 	addPayloadId(json, reply.PayloadId)
 
 	return json, nil
@@ -277,7 +276,6 @@ func (e *EngineImpl) NewPayloadV3(ctx context.Context, payload *ExecutionPayload
 }
 
 func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *ExecutionPayload) (map[string]interface{}, error) {
-	log.Debug("MMDBG >>> NewPayload Request", "payload", payload)
 	log.Debug("Received NewPayload", "version", version, "height", uint64(payload.BlockNumber), "hash", payload.BlockHash)
 
 	baseFee, overflow := uint256.FromBig((*big.Int)(payload.BaseFeePerGas))
@@ -325,7 +323,7 @@ func (e *EngineImpl) newPayload(version uint32, ctx context.Context, payload *Ex
 		log.Warn("NewPayload", "err", err)
 		return nil, err
 	}
-	log.Debug("MMDBG <<< NewPayload Response", "BN", uint64(payload.BlockNumber), "res", res)
+	log.Debug("Returning NewPayload Response", "BN", uint64(payload.BlockNumber), "res", res)
 	return convertPayloadStatus(ctx, e.db, res)
 }
 
@@ -339,7 +337,7 @@ func convertPayloadFromRpc(payload *types2.ExecutionPayload) *ExecutionPayload {
 		transactions[i] = transaction
 	}
 
-	log.Debug("MMDBG <<< convertPayloadFromRpc Response", "payload", payload, "Transactions", transactions)
+	log.Debug("Building convertPayloadFromRpc response", "payload", payload, "numTransactions", len(transactions))
 	res := &ExecutionPayload{
 		ParentHash:    gointerfaces.ConvertH256ToHash(payload.ParentHash),
 		FeeRecipient:  gointerfaces.ConvertH160toAddress(payload.Coinbase),
@@ -369,8 +367,6 @@ func convertPayloadFromRpc(payload *types2.ExecutionPayload) *ExecutionPayload {
 }
 
 func (e *EngineImpl) GetPayloadV1(ctx context.Context, payloadID hexutility.Bytes) (*ExecutionPayload, error) {
-	log.Debug("MMDBG >>> GetPayloadV1 Request", "id", payloadID)
-
 	decodedPayloadId := binary.BigEndian.Uint64(payloadID)
 	log.Info("Received GetPayloadV1", "payloadId", decodedPayloadId)
 

@@ -130,9 +130,9 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 				l1GasUsed := uint256.NewInt(msg.RollupDataGas())
 				receipt.L1GasUsed = l1GasUsed.Add(l1GasUsed, &overhead).ToBig()
 				receipt.L1GasPrice = l1BaseFee.ToBig()
-				log.Info("MMDBG Set L1Fee for receipt", "fee", receipt.L1Fee, "feeScalar", feeScalar, "l1GasPrice", receipt.L1GasPrice, "l1GasUsed", receipt.L1GasUsed, "txhash", tx.Hash())
+				log.Debug("Set L1Fee for receipt", "fee", receipt.L1Fee, "feeScalar", feeScalar, "l1GasPrice", receipt.L1GasPrice, "l1GasUsed", receipt.L1GasUsed, "txhash", tx.Hash())
 			} else {
-				log.Warn("MMDBG No cost function set in context", "txhash", tx.Hash())
+				log.Warn("No L1 cost function set in context", "txhash", tx.Hash())
 			}
 		}
 	}
@@ -148,7 +148,7 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
 	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config,
 ) (*types.Receipt, []byte, error) {
-	log.Info("MMDBG ApplyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
+	log.Debug("ApplyTransaction called for", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
 
 	// Add addresses to access list if applicable

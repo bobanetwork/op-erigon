@@ -839,7 +839,7 @@ func (m callMsg) IsSystemTx() bool              { return false }
 func (m callMsg) Mint() *uint256.Int            { return new(uint256.Int) }
 func (m callMsg) IsDepositTx() bool             { return false }
 func (m callMsg) RollupDataGas() uint64 {
-	log.Warn("MMDBG call_data rollup data gas returning 0")
+	log.Warn("simulated.go callMsg.RollupDataGas() returning 0")
 	return 0 /* FIXME */
 }
 

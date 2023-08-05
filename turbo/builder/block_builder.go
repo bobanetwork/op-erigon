@@ -75,7 +75,7 @@ func (b *BlockBuilder) Block() *types.BlockWithReceipts {
 	defer b.syncCond.L.Unlock()
 
 	if b.err != nil {
-		log.Warn("MMDBG NewBlockBuilder returning block but has error", "err", b.err)
+		log.Warn("NewBlockBuilder returning block with error", "err", b.err)
 	}
 
 	if b.result == nil {

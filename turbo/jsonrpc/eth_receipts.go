@@ -42,10 +42,10 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	// the moment
 	cached := rawdb.ReadReceipts(tx, block, senders)
 	if cached != nil && len(cached) == 0 {
-		log.Info("MMDBG returning cached receipts")
+		log.Debug("Returning cached receipts", "block", block.Number(), "len", len(cached))
 		return cached, nil
 	} else {
-		log.Info("MMDBG skipped cached receipts", "cached", cached)
+		log.Debug("Skipped cached receipts", "block", block.Number())
 	}
 	engine := api.engine()
 
@@ -73,7 +73,7 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	for i, txn := range block.Transactions() {
 		ibs.SetTxContext(txn.Hash(), block.Hash(), i)
 		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, usedDataGas, vm.Config{})
-		log.Info("MMDBG computed receipt for tx", "txhash", txn.Hash(), "l1Fee", receipt.L1Fee)
+		log.Debug("Computed receipt for tx", "txhash", txn.Hash(), "l1Fee", receipt.L1Fee)
 		if err != nil {
 			return nil, err
 		}
