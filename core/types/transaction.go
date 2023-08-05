@@ -153,7 +153,7 @@ func RollupDataGas(tx binMarshalable, rules *chain.Rules) uint64 {
 		onesGas = (ones + 68) * params.TxDataNonZeroGasEIP2028
 	}
 	total := zeroesGas + onesGas
-	log.Info("MMDBG computing rollupDataGas", "total", total, "tx", tx)
+	log.Debug("Computed rollupDataGas", "total", total, "tx", tx)
 	return total
 }
 
@@ -163,7 +163,6 @@ type binMarshalable interface {
 
 func DecodeRLPTransaction(s *rlp.Stream) (Transaction, error) {
 	kind, size, err := s.Kind()
-	//log.Debug("MMDBG transaction.go DecodeTransaction", "kind", kind, "size", size, "err", err)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +243,6 @@ func UnmarshalTransactionFromBinary(data []byte) (Transaction, error) {
 		return t, nil
 	case DepositTxType:
 		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
-		log.Debug("MMDBG transaction.go Decoding as DepositTxType")
 		t := &DepositTransaction{}
 		if err := t.DecodeRLP(s); err != nil {
 			return nil, err
@@ -286,7 +284,6 @@ func MarshalTransactionsBinary(txs Transactions) ([][]byte, error) {
 		}
 		buf.Reset()
 		err = txs[i].MarshalBinary(&buf)
-		//log.Debug("MMDBG transaction MarshalBinary", "i", i, "err", err, "buf", buf)
 		if err != nil {
 			return nil, err
 		}

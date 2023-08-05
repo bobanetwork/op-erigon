@@ -17,6 +17,8 @@
 package core
 
 import (
+	"math/big"
+
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -115,6 +117,24 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 			ibs.GetState(types.L1BlockAddr, &types.L1BaseFeeSlot, &l1BaseFee)
 			ibs.GetState(types.L1BlockAddr, &types.OverheadSlot, &overhead)
 			ibs.GetState(types.L1BlockAddr, &types.ScalarSlot, &scalar)
+			//Bedrock
+			if l1CostFunc := evm.Context().L1CostFunc; l1CostFunc != nil {
+				l1Fee := l1CostFunc(evm.Context().BlockNumber, msg)
+				if l1Fee != nil {
+					receipt.L1Fee = l1Fee.ToBig()
+				} else {
+					receipt.L1Fee = &big.Int{}
+				}
+				feeScalar := new(big.Float).SetInt(scalar.ToBig())
+				receipt.FeeScalar = feeScalar.Quo(feeScalar, big.NewFloat(1e6))
+				l1GasUsed := uint256.NewInt(msg.RollupDataGas())
+				receipt.L1GasUsed = l1GasUsed.Add(l1GasUsed, &overhead).ToBig()
+				receipt.L1GasPrice = l1BaseFee.ToBig()
+				log.Debug("Set L1Fee for receipt", "fee", receipt.L1Fee, "feeScalar", feeScalar, "l1GasPrice", receipt.L1GasPrice, "l1GasUsed", receipt.L1GasUsed, "txhash", tx.Hash())
+			} else {
+				log.Warn("No L1 cost function set in context", "txhash", tx.Hash())
+			}
+			//Bedrock
 		}
 	}
 
@@ -129,7 +149,7 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
 	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config,
 ) (*types.Receipt, []byte, error) {
-	log.Info("MMDBG ApplyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
+	log.Debug("ApplyTransaction called for", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
 
 	// Add addresses to access list if applicable

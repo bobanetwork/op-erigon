@@ -108,16 +108,13 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	// But if we disable empty precommit already, ignore it. Since
 	// empty block is necessary to keep the liveness of the network.
 	if noempty {
-		log.Debug("MMDBG SpawnMiningExecStage", "txs", txs, "Deposits", current.Deposits, "NoTxPool", current.NoTxPool)
+		log.Debug("Starting SpawnMiningExecStage", "txs", txs, "numDeposits", len(current.Deposits), "NoTxPool", current.NoTxPool)
 
 		if len(current.Deposits) > 0 {
 			var txs []types.Transaction
 			for i := range current.Deposits {
-				//s := rlp.NewStream(bytes.NewReader(current.Deposits[i]), uint64(len(current.Deposits[i])))
-				log.Debug("MMDBG Candidate transaction", "i", i, "tx", current.Deposits[i])
-
 				transaction, err := types.UnmarshalTransactionFromBinary(current.Deposits[i])
-				log.Debug("MMDBG Decoded", "err", err, "tx", transaction)
+				log.Debug("Decoded Deposit transaction", "i", i, "err", err, "tx", transaction)
 				if err == io.EOF {
 					continue
 				}
@@ -129,7 +126,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			depTS := types.NewTransactionsFixedOrder(txs)
 
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
-			log.Debug("MMDBG addTransactionsToMiningBlock (deposit)", "err", err, "logs", logs)
+			log.Debug("addTransactionsToMiningBlock (deposit) result", "err", err, "logs", logs)
 			if err != nil {
 				return err
 			}
@@ -137,7 +134,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 
 		if txs != nil && !txs.Empty() {
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
-			log.Debug("MMDBG addTransactionsToMiningBlock (txs)", "err", err, "logs", logs)
+			log.Debug("addTransactionsToMiningBlock (txs) result", "err", err, "logs", logs)
 			if err != nil {
 				return err
 			}
@@ -159,14 +156,13 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 					break
 				}
 				txs, y, err := getNextTransactions(cfg, chainID, current.Header, 50, executionAt, simulationTx, yielded, logger)
-				log.Debug("MMDBG addTransactionsToMiningBlock getNextTransactions", "txs", txs, "y", y, "err", err)
 				if err != nil {
 					return err
 				}
 
 				if !txs.Empty() {
 					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
-					log.Debug("MMDBG addTransactionsToMiningBlock (regular)", "err", err, "logs", logs, "stop", stop)
+					log.Debug("addTransactionsToMiningBlock (regular)", "err", err, "logs", logs, "stop", stop)
 					if err != nil {
 						return err
 					}
@@ -275,7 +271,6 @@ func getNextTransactions(
 }
 
 func filterBadTransactions(transactions []types.Transaction, config chain.Config, blockNumber uint64, baseFee *big.Int, simulationTx *memdb.MemoryMutation, logger log.Logger) ([]types.Transaction, error) {
-	log.Debug("MMDBG entering filterBadTransactions", "num", len(transactions))
 	initialCnt := len(transactions)
 	var filtered []types.Transaction
 	gasBailout := false
@@ -290,8 +285,6 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 	overflowCnt := 0
 	for len(transactions) > 0 && missedTxs != len(transactions) {
 		transaction := transactions[0]
-		log.Debug("MMDBG filterBadTransactions evaluating", "tx", transaction)
-
 		sender, ok := transaction.GetSender()
 		if !ok {
 			transactions = transactions[1:]
@@ -310,7 +303,7 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 		}
 		if int(transaction.Type()) == types.DepositTxType {
 			// FIXME - may need to include some of the later checks
-			log.Debug("MMDBG bypassing filterBadTransactions for Deposit tx")
+			log.Debug("Bypassing filterBadTransactions for Deposit tx", "transaction", transaction)
 			filtered = append(filtered, transaction)
 			transactions = transactions[1:]
 			continue
@@ -398,7 +391,6 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 		filtered = append(filtered, transaction)
 		transactions = transactions[1:]
 	}
-	log.Debug("MMDBG leaving filterBadTransactions", "filtered", filtered)
 	logger.Debug("Filtration", "initial", initialCnt, "no sender", noSenderCnt, "no account", noAccountCnt, "nonce too low", nonceTooLowCnt, "nonceTooHigh", missedTxs, "sender not EOA", notEOACnt, "fee too low", feeTooLowCnt, "overflow", overflowCnt, "balance too low", balanceTooLowCnt, "filtered", len(filtered))
 	return filtered, nil
 }
@@ -419,7 +411,6 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		gasSnap := gasPool.Gas()
 		dataGasSnap := gasPool.DataGas()
 		snap := ibs.Snapshot()
-		logger.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
 		receipt, _, err := core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.DataGasUsed, *vmConfig)
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
