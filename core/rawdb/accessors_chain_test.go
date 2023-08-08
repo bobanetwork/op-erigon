@@ -503,7 +503,7 @@ func TestBlockReceiptStorage(t *testing.T) {
 	b, senders, err := br.BlockWithSenders(ctx, tx, hash, 1)
 	require.NoError(err)
 	require.NotNil(b)
-	if rs := rawdb.ReadReceipts(tx, b, senders); len(rs) == 0 {
+	if rs := rawdb.ReadReceipts(params.TestChainConfig, tx, b, senders); len(rs) == 0 {
 		t.Fatalf("no receipts returned")
 	} else {
 		if err := checkReceiptsRLP(rs, receipts); err != nil {
@@ -519,7 +519,7 @@ func TestBlockReceiptStorage(t *testing.T) {
 	b, senders, err = br.BlockWithSenders(ctx, tx, hash, 1)
 	require.NoError(err)
 	require.Nil(b)
-	if rs := rawdb.ReadReceipts(tx, b, senders); rs != nil {
+	if rs := rawdb.ReadReceipts(params.TestChainConfig, tx, b, senders); rs != nil {
 		t.Fatalf("receipts returned when body was deleted: %v", rs)
 	}
 	// Ensure that receipts without metadata can be returned without the block body too
@@ -533,7 +533,7 @@ func TestBlockReceiptStorage(t *testing.T) {
 	b, senders, err = br.BlockWithSenders(ctx, tx, hash, 1)
 	require.NoError(err)
 	require.NotNil(b)
-	if rs := rawdb.ReadReceipts(tx, b, senders); len(rs) != 0 {
+	if rs := rawdb.ReadReceipts(params.TestChainAuraConfig, tx, b, senders); len(rs) != 0 {
 		t.Fatalf("deleted receipts returned: %v", rs)
 	}
 }
