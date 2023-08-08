@@ -74,13 +74,13 @@ cd v3-erigon
 --http.port=9545 \
 --http.corsdomain="*" \
 --http.vhosts="*" \
---authrpc.addr=0.0.0.0 \ 
+--authrpc.addr=0.0.0.0 \
 --authrpc.port=8551 \
 --authrpc.vhosts="*" \
---authrpc.jwtsecret=JWT_TOKEN_DIRECTORY \
---rollup.disabletxpoolgossip=true \ 
+--authrpc.jwtsecret=JWT_TOKEN_PATH \
+--rollup.disabletxpoolgossip=true \
 --chain=optimism-goerli \
---nodiscover\
+--nodiscover \
 ```
 
 `op-node`
@@ -90,7 +90,7 @@ cd v3-anchorage/op-node
 ./bin/op-node \
 --l1=https://ethereum-goerli.publicnode.com \
 --l2=http://localhost:8551 \
---l2.jwt-secret=JWT_TOKEN_DIRECTORY \
+--l2.jwt-secret=JWT_TOKEN_PATH \
 --network=goerli \
 --rpc.addr=localhost \
 --rpc.port=8547 \
@@ -117,4 +117,4 @@ INFO [08-04|16:36:01.265] inserted block                           hash=ee61ee..
 
 ### Note
 
-It is best to run `boba-erigon` first and shut it down last.
+It must run `boba-erigon` first and shut it down last.
