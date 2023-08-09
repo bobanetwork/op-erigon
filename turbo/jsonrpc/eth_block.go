@@ -202,6 +202,15 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 		return nil, err
 	}
 	defer tx.Rollback()
+
+	chainConfig, err := api.chainConfig(tx)
+	if err != nil {
+		return nil, err
+	}
+	if chainConfig.IsOptimism() && number == rpc.PendingBlockNumber {
+		number = rpc.LatestBlockNumber
+	}
+
 	b, err := api.blockByNumber(ctx, number, tx)
 	log.Debug("MMDBG eth_block GetBlockByNumber", "n", number, "fullTx", fullTx, "err", err, "b", b)
 	if err != nil {
@@ -219,10 +228,6 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 		additionalFields["totalDifficulty"] = (*hexutil.Big)(td)
 	}
 
-	chainConfig, err := api.chainConfig(tx)
-	if err != nil {
-		return nil, err
-	}
 	var borTx types.Transaction
 	var borTxHash common.Hash
 	if chainConfig.Bor != nil {
