@@ -149,7 +149,6 @@ func (args *CallArgs) ToMessage(globalGasCap uint64, baseFee *uint256.Int) (type
 	if args.AccessList != nil {
 		accessList = *args.AccessList
 	}
-
 	msg := types.NewMessage(addr, args.To, 0, value, gas, gasPrice, gasFeeCap, gasTipCap, data, accessList, false /* checkNonce */, false /* isFree */, maxFeePerDataGas, 0 /* rollupDataGas */)
 	return msg, nil
 }
@@ -478,6 +477,8 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		result.IsSystemTx = t.IsSystemTx
 		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
 		result.Nonce = 0
+	case *types.OffchainTransaction:
+		result.SourceHash = t.SourceHash
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	var err error
