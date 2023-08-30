@@ -134,7 +134,7 @@ func RollupDataGas(tx binMarshalable) uint64 {
 	var buf bytes.Buffer
 	if err := tx.MarshalBinary(&buf); err != nil {
 		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
-		log.Error("failed to encode tx for L1 cost computation", "err", err)
+		//log.Error("failed to encode tx for L1 cost computation", "err", err)
 		return 0
 	}
 	var zeroes uint64
@@ -242,6 +242,13 @@ func UnmarshalTransactionFromBinary(data []byte) (Transaction, error) {
 		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
 		log.Debug("MMDBG transaction.go Decoding as DepositTxType")
 		t := &DepositTransaction{}
+		if err := t.DecodeRLP(s); err != nil {
+			return nil, err
+		}
+		return t, nil
+	case OffchainTxType:
+		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
+		t := &OffchainTransaction{}
 		if err := t.DecodeRLP(s); err != nil {
 			return nil, err
 		}
@@ -601,6 +608,7 @@ func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amo
 	return m
 }
 
+func (m Message) SourceHash() *libcommon.Hash   { return m.sourceHash }
 func (m Message) From() libcommon.Address       { return m.from }
 func (m Message) To() *libcommon.Address        { return m.to }
 func (m Message) GasPrice() *uint256.Int        { return &m.gasPrice }
@@ -609,7 +617,7 @@ func (m Message) Tip() *uint256.Int             { return &m.tip }
 func (m Message) Value() *uint256.Int           { return &m.amount }
 func (m Message) Mint() *uint256.Int            { return &m.mint }
 func (m Message) IsDepositTx() bool             { return m.txType == DepositTxType }
-func (m Message) RollupDataGas() uint64         { return m.rollupDataGas }
+func (m Message) GetType() byte                 { return m.txType }
 func (m Message) Gas() uint64                   { return m.gasLimit }
 func (m Message) Nonce() uint64                 { return m.nonce }
 func (m Message) Data() []byte                  { return m.data }
@@ -621,6 +629,9 @@ func (m *Message) SetCheckNonce(checkNonce bool) {
 func (m Message) IsFree() bool { return m.isFree }
 func (m *Message) SetIsFree(isFree bool) {
 	m.isFree = isFree
+}
+func (m Message) RollupDataGas() uint64 {
+	return m.rollupDataGas
 }
 
 func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
@@ -642,6 +653,33 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 func (m Message) DataGas() uint64 { return chain.DataGasPerBlob * uint64(len(m.dataHashes)) }
 func (m Message) MaxFeePerDataGas() *uint256.Int {
 	return &m.maxFeePerDataGas
+}
+
+func (m Message) EstimateRDG() uint64 {
+	// Needed for eth_estimateGas to work with hybrid compute.
+	// Actual Tx will have Signature fields in addition to what's here.
+	var rdg uint64
+
+	if m.rollupDataGas == 0 {
+		var tmpTx DynamicFeeTransaction = DynamicFeeTransaction{
+			CommonTx: CommonTx{
+				Nonce: m.nonce,
+				Gas:   m.gasLimit,
+				To:    m.to,
+				Value: &m.amount,
+				Data:  m.data,
+			},
+			ChainID:    &uint256.Int{},
+			Tip:        &m.tip,
+			FeeCap:     &m.feeCap,
+			AccessList: m.accessList,
+		}
+		rdg = RollupDataGas(tmpTx)
+		log.Debug("HC Estimated RollupDataGas", "msgType", m.GetType(), "m.rollupDataGas", m.rollupDataGas, "calculated", rdg)
+	} else {
+		rdg = m.rollupDataGas
+	}
+	return rdg
 }
 
 func (m Message) IsSystemTx() bool { return m.isSystemTx }

@@ -845,6 +845,7 @@ func (m callMsg) RollupDataGas() uint64 {
 	log.Warn("MMDBG call_data rollup data gas returning 0")
 	return 0 /* FIXME */
 }
+func (m callMsg) EstimateRDG() uint64 { return 0 }
 
 func (m callMsg) DataGas() uint64                { return misc.GetDataGasUsed(len(m.CallMsg.DataHashes)) }
 func (m callMsg) MaxFeePerDataGas() *uint256.Int { return m.CallMsg.MaxFeePerDataGas }

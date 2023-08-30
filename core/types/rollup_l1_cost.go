@@ -26,6 +26,7 @@ import (
 
 type RollupMessage interface {
 	RollupDataGas() uint64
+	EstimateRDG() uint64
 	IsDepositTx() bool
 }
 
@@ -35,7 +36,7 @@ type StateGetter interface {
 
 // L1CostFunc is used in the state transition to determine the cost of a rollup message.
 // Returns nil if there is no cost.
-type L1CostFunc func(blockNum uint64, msg RollupMessage) *uint256.Int
+type L1CostFunc func(blockNum uint64, msg RollupMessage, extra uint64) *uint256.Int
 
 var (
 	L1BaseFeeSlot = libcommon.BigToHash(big.NewInt(1))
@@ -51,8 +52,16 @@ var L1BlockAddr = libcommon.HexToAddress("0x420000000000000000000000000000000000
 func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 	cacheBlockNum := ^uint64(0)
 	var l1BaseFee, overhead, scalar *uint256.Int
-	return func(blockNum uint64, msg RollupMessage) *uint256.Int {
-		rollupDataGas := msg.RollupDataGas() // Only fake txs for RPC view-calls are 0.
+	return func(blockNum uint64, msg RollupMessage, extra uint64) *uint256.Int {
+		var rollupDataGas uint64
+
+		if extra != 0 {
+			// For Hybrid Compute. In an eth_call, msg.rollupDataGas is not
+			// populated for the incomplete transaction, so we have to estimate it
+			rollupDataGas = msg.EstimateRDG()
+		} else {
+			rollupDataGas = msg.RollupDataGas()
+		}
 		if config.Optimism == nil || msg.IsDepositTx() || rollupDataGas == 0 {
 			return nil
 		}
@@ -63,7 +72,7 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 			statedb.GetState(L1BlockAddr, &ScalarSlot, scalar)
 			cacheBlockNum = blockNum
 		}
-		return L1Cost(rollupDataGas, l1BaseFee, overhead, scalar)
+		return L1Cost(rollupDataGas+extra, l1BaseFee, overhead, scalar)
 	}
 }
 
