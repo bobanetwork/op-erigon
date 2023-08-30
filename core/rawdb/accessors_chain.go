@@ -777,7 +777,6 @@ func TruncateTd(tx kv.RwTx, blockFrom uint64) error {
 // The receipt metadata fields are not guaranteed to be populated, so they
 // should not be used. Use ReadReceipts instead if the metadata is needed.
 func ReadRawReceipts(db kv.Tx, blockNum uint64) types.Receipts {
-	log.Warn("MMDBG called read raw receipts for", "blockNum", blockNum)
 	// Retrieve the flattened receipt slice
 	data, err := db.GetOne(kv.Receipts, hexutility.EncodeTs(blockNum))
 	if err != nil {
