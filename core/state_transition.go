@@ -28,6 +28,7 @@ import (
 	cmath "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus/misc"
+	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -73,11 +74,13 @@ type StateTransition struct {
 	sharedBuyGas        *uint256.Int
 	sharedBuyGasBalance *uint256.Int
 
-	isBor bool
+	isBor    bool
+	extraGas *[2]uint64
 }
 
 // Message represents a message sent to a contract.
 type Message interface {
+	SourceHash() *libcommon.Hash
 	From() libcommon.Address
 	To() *libcommon.Address
 
@@ -98,6 +101,7 @@ type Message interface {
 	IsFree() bool
 	IsSystemTx() bool
 	IsDepositTx() bool
+	GetType() byte
 	RollupDataGas() uint64
 	EstimateRDG() uint64
 	Mint() *uint256.Int
@@ -157,8 +161,11 @@ func IntrinsicGas(data []byte, accessList types2.AccessList, isContractCreation 
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTransition {
+func NewStateTransitionHC(evm vm.VMInterface, msg Message, gp *GasPool, extraGas *[2]uint64) *StateTransition {
 	isBor := evm.ChainConfig().Bor != nil
+	if extraGas == nil {
+		extraGas = new([2]uint64) // values will be populated but ignored
+	}
 	return &StateTransition{
 		gp:        gp,
 		evm:       evm,
@@ -173,8 +180,14 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 		sharedBuyGas:        uint256.NewInt(0),
 		sharedBuyGasBalance: uint256.NewInt(0),
 
-		isBor: isBor,
+		isBor:    isBor,
+		extraGas: extraGas,
 	}
+}
+
+// NewStateTransition initialises and returns a new state transition object.
+func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTransition {
+	return NewStateTransitionHC(evm, msg, gp, nil)
 }
 
 // ApplyMessage computes the new state by applying the given message
@@ -187,8 +200,16 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 // `refunds` is false when it is not required to apply gas refunds
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
 // for trace_call to replicate OE/Pariry behaviour
+func ApplyMessageHC(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool, extra *[2]uint64) (*ExecutionResult, error) {
+	result, err := NewStateTransitionHC(evm, msg, gp, extra).TransitionDb(refunds, gasBailout)
+	if err == nil && result != nil && result.Err == vm.ErrHCReverted {
+		err = vm.ErrHCReverted
+	}
+	return result, err
+}
+
 func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
-	return NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
+	return ApplyMessageHC(evm, msg, gp, refunds, gasBailout, nil)
 }
 
 // to returns the recipient of the message.
@@ -203,12 +224,13 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 	mgval := st.sharedBuyGas
 	mgval.SetUint64(st.msg.Gas())
 	mgval, overflow := mgval.MulOverflow(mgval, st.gasPrice)
+	log.Debug("HC entering buyGas", "msg.Gas", st.msg.Gas(), "st.gas", st.gas, "gp", st.gp, "extra", st.extraGas, "mgval", mgval)
 	if overflow {
 		return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 	}
 	var l1Cost *uint256.Int
 	if optimismConfig := st.evm.ChainConfig().Optimism; optimismConfig != nil && st.evm.ChainRules().IsBedrock {
-		l1Cost = st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg, 0)
+		l1Cost = st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg, st.extraGas[0])
 		if l1Cost != nil {
 			if _, overflow = mgval.AddOverflow(mgval, l1Cost); overflow {
 				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
@@ -247,7 +269,7 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 			return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 		}
 		if l1Cost != nil {
-			balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, l1Cost) // FIXME - combine with dgval below
+			balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, l1Cost)
 			if overflow {
 				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 			}
@@ -272,6 +294,15 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 	}
 	st.gas += st.msg.Gas()
 	st.initialGas = st.msg.Gas()
+
+	if st.extraGas[1] > 0 {
+		if st.gas > st.extraGas[1] {
+			st.gas -= st.extraGas[1]
+		} else {
+			st.gas = 0
+		}
+	}
+	log.Debug("HC buyGas final values", "msg.Gas", st.msg.Gas(), "st.gas", st.gas, "subBalance", subBalance, "mgval", mgval, "dgval", dgval)
 
 	if subBalance {
 		st.state.SubBalance(st.msg.From(), mgval)
@@ -312,6 +343,11 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 			return nil
 		}
 		return st.gp.SubGas(st.msg.Gas()) // gas used by deposits may not be used by other txs
+	}
+	if st.msg.GetType() == types2.OffchainTxType {
+		st.initialGas = st.msg.Gas()
+		st.gas += st.msg.Gas()
+		return nil
 	}
 
 	// Make sure this transaction's nonce is correct.
@@ -474,6 +510,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	// - reset transient storage(eip 1153)
 	st.state.Prepare(rules, msg.From(), coinbase, msg.To(), vm.ActivePrecompiles(rules), msg.AccessList())
 
+	preGas := st.gas
 	var (
 		ret   []byte
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
@@ -487,7 +524,13 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	} else {
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
+		if st.msg.GetType() != types.DepositTxType {
+			log.Debug("HC innerTransition before evm call", "st.gas", st.gas, "used", st.gasUsed(), "bailout", bailout)
+		}
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value, bailout)
+	}
+	if st.msg.GetType() != types.DepositTxType {
+		log.Debug("HC innerTransition after evm call", "st.gas", st.gas, "vmUsed", preGas-st.gas, "st.gasUsed", st.gasUsed(), "refunds", refunds, "vmerr", vmerr, "ret", ret)
 	}
 	if refunds {
 
@@ -553,7 +596,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		"MMDBG Accounting for base fee and l1 fee",
 		"isOptimism", st.evm.ChainConfig().Optimism != nil,
 		"isBedrock", rules.IsBedrock,
-		"gasUsed", st.gasUsed,
+		"gasUsed", st.gasUsed(),
 		"baseFee", st.evm.Context().BaseFee,
 	)
 	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
@@ -563,13 +606,19 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		if st.evm.Context().L1CostFunc == nil {
 			log.Error("Expected L1CostFunc to be set, but it is not")
 		}
-		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg, 0)
+		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg, st.extraGas[0])
 		log.Info("MMDBG Cost for l1 is", "cost", cost)
-		if cost != nil {
+		if cost != nil && msg.GetType() != types.OffchainTxType {
+			log.Debug("HC innerTransition AddBalance", "cost", *cost)
 			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
 		}
 	}
 
+	if st.msg.GetType() == types2.OffchainTxType && st.extraGas != nil {
+		log.Debug("OffchainTx gas transfer", "st.gasUsed", st.gasUsed(), "prevExtra", st.extraGas)
+		st.extraGas[0] = msg.RollupDataGas()
+		st.extraGas[1] = st.gasUsed()
+	}
 	return &ExecutionResult{
 		UsedGas:    st.gasUsed(),
 		Err:        vmerr,

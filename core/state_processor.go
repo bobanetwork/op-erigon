@@ -65,7 +65,25 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		nonce = ibs.GetNonce(msg.From())
 	}
 
-	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
+	// This is used to transfer the L1 storage costs for an Offchain Tx to the associated user Tx.
+	extra := ibs.ExtraHC()
+	if extra != nil && msg.GetType() != types.OffchainTxType {
+		log.Debug("HC applyTransaction got extraGas", "gas", extra, "hc", evm.HCContext())
+		ibs.ClearExtraHC()
+	} else if extra == nil {
+		extra = new([2]uint64)
+	}
+	if msg.GetType() != types.DepositTxType || extra[0] != 0 {
+		log.Debug("HC ExtraGas before ApplyMessageHC", "type", msg.GetType(), "extra", extra, "msg", msg)
+	}
+	result, err := ApplyMessageHC(evm, &msg, gp, true /* refunds */, false /* gasBailout */, extra)
+	if err != nil || extra[0] != 0 {
+		log.Debug("HC ExtraGas after ApplyMessageHC", "type", msg.GetType(), "extra", extra, "err", err, "result", result)
+	}
+	if msg.GetType() == types.OffchainTxType && result != nil {
+		ibs.SetExtraHC(extra)
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -125,9 +143,9 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader,
+func ApplyTransactionHC(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader,
 	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
-	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config,
+	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config, hc *vm.HCContext,
 ) (*types.Receipt, []byte, error) {
 	log.Info("MMDBG ApplyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
@@ -139,6 +157,13 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	l1CostFunc := types.NewL1CostFunc(config, ibs)
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, l1CostFunc)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
+	vmenv.SetHC(hc)
 
 	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedDataGas, vmenv, cfg)
+}
+func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader,
+	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
+	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config,
+) (*types.Receipt, []byte, error) {
+	return ApplyTransactionHC(config, blockHashFunc, engine, author, gp, ibs, stateWriter, header, tx, usedGas, usedDataGas, cfg, nil)
 }
