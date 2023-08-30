@@ -23,6 +23,72 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/services"
 )
 
+// Shared section of DoCall() and DoCallWithNewGas(), with hybrid compute support.
+func CallHC(hcs *vm.HCService, evm vm.VMInterface, msg core.Message, gp *core.GasPool, refunds bool, gasBailout bool) (result *core.ExecutionResult, err error) {
+
+	var hc *vm.HCContext
+
+	mh := vm.HCKey(msg.From(), msg.To(), msg.Nonce(), msg.Data())
+	if hcs != nil {
+		hc = hcs.GetHC(mh)
+	}
+	if hc == nil {
+		hc = new(vm.HCContext)
+	}
+	evm.SetHC(hc)
+
+	var extra [2]uint64
+	if len(hc.Response) > 0 && hc.State < vm.HC_STATE_INSERTED { // FIXME
+		// A cached response is available from a prior run
+
+		txn := types.NewOffchainTx(mh, hc.Response, msg.Gas())
+		log.Debug("HC CallHC inserting prepared response", "hcState", hc.State, "mh", mh, "txn", txn)
+
+		var msg2 types.Message
+		msg2, err = txn.AsMessage(types.Signer{}, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		result, err = core.ApplyMessageHC(evm, msg2, gp, false /* refunds */, gasBailout, &extra)
+		log.Debug("HC CallHC after ApplyMessage (offchain)", "err", err, "result", result, "extra", extra)
+		if err != nil {
+			if err != vm.ErrOutOfGas {
+				hc.State = vm.HC_STATE_FAILED
+			}
+			return nil, err
+		}
+
+		// This must be called for the total gas usage in an eth_etimateGas() call to match that of the submitted Tx
+		ibs := evm.IntraBlockState()
+		ibs.FakeFinalizeTx(evm.ChainRules())
+	}
+
+	result, err = core.ApplyMessageHC(evm, msg, gp, refunds, gasBailout, &extra)
+	log.Debug("HC CallHC after ApplyMessageHC", "err", err, "gp", gp, "result", result, "msg", msg)
+
+	if err == vm.ErrHCReverted && hcs != nil {
+		if hcs.GetHC(mh) == nil {
+			log.Debug("HC CallHC triggered Hybrid Compute", "mh", mh, "hc", hc)
+
+			err2 := vm.HCRequest(hcs, hc, evm.Context().BlockNumber)
+			if err2 != nil {
+				log.Warn("HC Request failed", "err", err)
+				return nil, vm.ErrHCFailed
+			}
+
+			hcs.PutHC(mh, hc)
+			// the caller will get the ErrHCReverted as a signal to retry with the cached response
+		} else {
+			hc.State = vm.HC_STATE_FAILED
+			log.Warn("HC got an unexpected ErrHCReverted")
+			return nil, vm.ErrHCFailed
+		}
+	}
+
+	return result, err
+}
+
 func DoCall(
 	ctx context.Context,
 	engine consensus.EngineReader,
@@ -36,6 +102,7 @@ func DoCall(
 	stateReader state.StateReader,
 	headerReader services.HeaderReader,
 	callTimeout time.Duration,
+	hcs *vm.HCService,
 ) (*core.ExecutionResult, error) {
 	// todo: Pending state is only known by the miner
 	/*
@@ -95,7 +162,7 @@ func DoCall(
 	}()
 
 	gp := new(core.GasPool).AddGas(msg.Gas()).AddDataGas(msg.DataGas())
-	result, err := core.ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
+	result, err := CallHC(hcs, evm, msg, gp, true /* refunds */, false /* gasBailout */)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +206,7 @@ type ReusableCaller struct {
 func (r *ReusableCaller) DoCallWithNewGas(
 	ctx context.Context,
 	newGas uint64,
+	hcs *vm.HCService,
 ) (*core.ExecutionResult, error) {
 	var cancel context.CancelFunc
 	if r.callTimeout > 0 {
@@ -166,7 +234,7 @@ func (r *ReusableCaller) DoCallWithNewGas(
 
 	gp := new(core.GasPool).AddGas(r.message.Gas()).AddDataGas(r.message.DataGas())
 
-	result, err := core.ApplyMessage(r.evm, r.message, gp, true /* refunds */, false /* gasBailout */)
+	result, err := CallHC(hcs, r.evm, r.message, gp, true, false)
 	if err != nil {
 		return nil, err
 	}

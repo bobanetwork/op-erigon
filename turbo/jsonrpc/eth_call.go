@@ -87,7 +87,7 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, blockNrOrHa
 		return nil, err
 	}
 	header := block.HeaderNoCopy()
-	result, err := transactions.DoCall(ctx, engine, args, tx, blockNrOrHash, header, overrides, api.GasCap, chainConfig, stateReader, api._blockReader, api.evmCallTimeout)
+	result, err := transactions.DoCall(ctx, engine, args, tx, blockNrOrHash, header, overrides, api.GasCap, chainConfig, stateReader, api._blockReader, api.evmCallTimeout, api.hybridComputeService)
 	if err != nil {
 		return nil, err
 	}
@@ -286,13 +286,16 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 
 	// Create a helper to check if a gas allowance results in an executable transaction
 	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
-		result, err := caller.DoCallWithNewGas(ctx, gas)
+		result, err := caller.DoCallWithNewGas(ctx, gas, api.hybridComputeService)
+		log.Debug("HC estimateGas", "err", err, "gas", gas, "result", result)
+		if err == vm.ErrHCReverted {
+			result, err = caller.DoCallWithNewGas(ctx, gas, api.hybridComputeService)
+		}
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
 				// Special case, raise gas limit
 				return true, nil, nil
 			}
-
 			// Bail out
 			return true, nil, err
 		}
