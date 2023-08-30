@@ -149,6 +149,7 @@ var DefaultFlags = []cli.Flag{
 	&utils.RollupHistoricalRPCFlag,
 	&utils.RollupHistoricalRPCTimeoutFlag,
 	&utils.RollupDisableTxPoolGossipFlag,
+	&utils.HybridComputeEnabledFlag,
 
 	&utils.ConfigFlag,
 

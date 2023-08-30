@@ -253,6 +253,7 @@ type Config struct {
 	RollupHistoricalRPC        string
 	RollupHistoricalRPCTimeout time.Duration
 	RollupDisableTxPoolGossip  bool
+	HybridComputeEnabled       bool
 }
 
 type Sync struct {

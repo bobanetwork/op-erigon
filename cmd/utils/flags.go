@@ -792,6 +792,10 @@ var (
 		Name:  "rollup.disabletxpoolgossip",
 		Usage: "Disable transaction pool gossip.",
 	}
+	HybridComputeEnabledFlag = cli.BoolFlag{
+		Name:  "rollup.hybridcompute",
+		Usage: "Enable Hybrid Compute.",
+	}
 )
 
 var MetricFlags = []cli.Flag{&MetricsEnabledFlag, &MetricsHTTPFlag, &MetricsPortFlag}
@@ -1607,6 +1611,7 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 		cfg.RollupDisableTxPoolGossip = ctx.Bool(RollupDisableTxPoolGossipFlag.Name)
 	}
 	cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
+	cfg.HybridComputeEnabled = ctx.Bool(HybridComputeEnabledFlag.Name)
 }
 
 // SetDNSDiscoveryDefaults configures DNS discovery with the given URL if

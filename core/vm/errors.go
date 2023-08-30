@@ -41,6 +41,8 @@ var (
 	ErrReturnStackExceeded      = errors.New("return stack limit reached")
 	ErrInvalidCode              = errors.New("invalid code")
 	ErrNonceUintOverflow        = errors.New("nonce uint64 overflow")
+	ErrHCReverted               = errors.New("hybrid compute reverted") // Triggers the HC mechanism
+	ErrHCFailed                 = errors.New("hybrid compute failed")
 
 	// errStopToken is an internal token indicating interpreter loop termination,
 	// never returned to outside callers.
