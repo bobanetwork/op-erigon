@@ -111,4 +111,5 @@ type IntraBlockState interface {
 	Snapshot() int
 
 	AddLog(*types.Log)
+	FakeFinalizeTx(chainRules *chain.Rules) error // Used by Hybrid Compute
 }

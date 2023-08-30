@@ -89,6 +89,7 @@ type IntraBlockState struct {
 	nextRevisionID int
 	trace          bool
 	balanceInc     map[libcommon.Address]*BalanceIncrease // Map of balance increases (without first reading the account)
+	hcExtra        *[2]uint64
 }
 
 // Create a new state from a given trie
@@ -450,6 +451,33 @@ func (sdb *IntraBlockState) GetTransientState(addr libcommon.Address, key libcom
 	return sdb.transientStorage.Get(addr, key)
 }
 
+// Hybrid Compute extension
+func (sdb *IntraBlockState) SetExtraHC(val *[2]uint64) {
+	sdb.hcExtra = val
+}
+
+func (sdb *IntraBlockState) ClearExtraHC() {
+	sdb.hcExtra = nil
+}
+
+func (sdb *IntraBlockState) ExtraHC() *[2]uint64 {
+	return sdb.hcExtra
+}
+
+func (sdb *IntraBlockState) ExtraL1() uint64 {
+	if sdb.hcExtra != nil {
+		return sdb.hcExtra[0]
+	}
+	return 0
+}
+
+func (sdb *IntraBlockState) ExtraL2() uint64 {
+	if sdb.hcExtra != nil {
+		return sdb.hcExtra[1]
+	}
+	return 0
+}
+
 func (sdb *IntraBlockState) getStateObject(addr libcommon.Address) (stateObject *stateObject) {
 	// Prefer 'live' objects.
 	if obj := sdb.stateObjects[addr]; obj != nil {
@@ -664,6 +692,36 @@ func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter Stat
 		}
 
 		if err := updateAccount(chainRules.IsSpuriousDragon, chainRules.IsAura, stateWriter, addr, so, true); err != nil {
+			return err
+		}
+
+		sdb.stateObjectsDirty[addr] = struct{}{}
+	}
+	// Invalidate journal because reverting across transactions is not allowed.
+	sdb.clearJournalAndRefund()
+	return nil
+}
+
+func (sdb *IntraBlockState) FakeFinalizeTx(chainRules *chain.Rules) error {
+	noop := NewNoopWriter()
+	for addr, bi := range sdb.balanceInc {
+		if !bi.transferred {
+			sdb.getStateObject(addr)
+		}
+	}
+	for addr := range sdb.journal.dirties {
+		so, exist := sdb.stateObjects[addr]
+		if !exist {
+			// ripeMD is 'touched' at block 1714175, in tx 0x1237f737031e40bcde4a8b7e717b2d15e3ecadfe49bb1bbc71ee9deb09c6fcf2
+			// That tx goes out of gas, and although the notion of 'touched' does not exist there, the
+			// touch-event will still be recorded in the journal. Since ripeMD is a special snowflake,
+			// it will persist in the journal even though the journal is reverted. In this special circumstance,
+			// it may exist in `sdb.journal.dirties` but not in `sdb.stateObjects`.
+			// Thus, we can safely ignore it here
+			continue
+		}
+
+		if err := updateAccount(chainRules.IsSpuriousDragon, chainRules.IsAura, noop, addr, so, true); err != nil {
 			return err
 		}
 
