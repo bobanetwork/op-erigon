@@ -15,6 +15,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/memdb"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
@@ -131,7 +132,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			}
 			depTS := types.NewTransactionsFixedOrder(txs)
 
-			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger, cfg.hcService)
 			log.Debug("MMDBG addTransactionsToMiningBlock (deposit)", "err", err, "logs", logs)
 			if err != nil {
 				return err
@@ -139,7 +140,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 		}
 
 		if txs != nil && !txs.Empty() {
-			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger, cfg.hcService)
 			log.Debug("MMDBG addTransactionsToMiningBlock (txs)", "err", err, "logs", logs)
 			if err != nil {
 				return err
@@ -168,7 +169,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 				}
 
 				if !txs.Empty() {
-					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger, cfg.hcService)
 					log.Debug("MMDBG addTransactionsToMiningBlock (regular)", "err", err, "logs", logs, "stop", stop)
 					if err != nil {
 						return err
@@ -318,6 +319,12 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 			transactions = transactions[1:]
 			continue
 		}
+		if int(transaction.Type()) == types.OffchainTxType {
+			log.Debug("HC bypassing filterBadTransactions for Offchain tx")
+			filtered = append(filtered, transaction)
+			transactions = transactions[1:]
+			continue
+		}
 		// Check transaction nonce
 		if account.Nonce > transaction.GetNonce() {
 			transactions = transactions[1:]
@@ -408,7 +415,7 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 
 func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainConfig chain.Config, vmConfig *vm.Config, getHeader func(hash libcommon.Hash, number uint64) *types.Header,
 	engine consensus.Engine, txs types.TransactionsStream, coinbase libcommon.Address, ibs *state.IntraBlockState, quit <-chan struct{},
-	interrupt *int32, payloadId uint64, logger log.Logger) (types.Logs, bool, error) {
+	interrupt *int32, payloadId uint64, logger log.Logger, hcs *vm.HCService) (types.Logs, bool, error) {
 	header := current.Header
 	tcount := 0
 	gasPool := new(core.GasPool).AddGas(header.GasLimit - header.GasUsed)
@@ -417,13 +424,16 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	var coalescedLogs types.Logs
 	noop := state.NewNoopWriter()
 
-	var miningCommitTx = func(txn types.Transaction, coinbase libcommon.Address, vmConfig *vm.Config, chainConfig chain.Config, ibs *state.IntraBlockState, current *MiningBlock) ([]*types.Log, error) {
+	var miningCommitTx = func(txn types.Transaction, coinbase libcommon.Address, vmConfig *vm.Config, chainConfig chain.Config, ibs *state.IntraBlockState, current *MiningBlock, hc *vm.HCContext) ([]*types.Log, error) {
 		ibs.SetTxContext(txn.Hash(), libcommon.Hash{}, tcount)
 		gasSnap := gasPool.Gas()
 		dataGasSnap := gasPool.DataGas()
 		snap := ibs.Snapshot()
 		logger.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
-		receipt, _, err := core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.DataGasUsed, *vmConfig)
+		receipt, _, err := core.ApplyTransactionHC(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.DataGasUsed, *vmConfig, hc)
+		if err != nil || (hc != nil && hc.State != vm.HC_STATE_NONE) {
+			log.Debug("HC miningCommitTx result", "err", err, "hc", hc)
+		}
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
 			gasPool = new(core.GasPool).AddGas(gasSnap).AddDataGas(dataGasSnap) // restore gasPool as well as ibs
@@ -443,6 +453,8 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	}()
 
 	done := false
+	var hcOffchain bool
+	var hc *vm.HCContext
 
 LOOP:
 	for {
@@ -468,18 +480,37 @@ LOOP:
 		// If we don't have enough gas for any further transactions then we're done
 		if gasPool.Gas() < params.TxGas {
 			logger.Debug(fmt.Sprintf("[%s] Not enough gas for further transactions", logPrefix), "have", gasPool, "want", params.TxGas)
+			log.Debug("HC stage_mining_exec has reached gas limit", "len", len(current.Txs), "gpGas", gasPool.Gas(), "txGas", params.TxGas)
+			if len(current.Txs) > 0 {
+				last := current.Txs[len(current.Txs)-1]
+				if last.Type() == types.OffchainTxType {
+					log.Warn("HC Block ends on Offchain Tx", "last", last, "current", current)
+					// FIXME - remove it, reset hc state so it can try again in the next block
+					//panic("not implemented")
+				}
+			}
 			done = true
 			break
 		}
 
+		var txn types.Transaction
+		var from libcommon.Address
+		var err error
+
+		hcOffchain = false
+
 		// Retrieve the next transaction and abort if all done
-		txn := txs.Peek()
+		txn = txs.Peek()
 		if txn == nil {
+			if len(current.Txs) > 1 {
+				last := current.Txs[len(current.Txs)-1]
+				log.Debug("HC stage_mining_exec has no more transactions", "len", len(current.Txs), "lastType", last.Type())
+			}
 			break
 		}
 
 		// We use the eip155 signer regardless of the env hf.
-		from, err := txn.Sender(*signer)
+		from, err = txn.Sender(*signer)
 		if err != nil {
 			logger.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
 			txs.Pop()
@@ -495,11 +526,73 @@ LOOP:
 			continue
 		}
 
+		// Check for pending Hybrid Compute
+		txnFrom, _ := txn.GetSender()
+		mh := vm.HCKey(txnFrom, txn.GetTo(), txn.GetNonce(), txn.GetData())
+
+		if hcs != nil && hcs.HCActive[mh] != nil {
+			log.Debug("HC Skipping txn in HCActive map", " mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", hcs.HCActive[mh])
+			txs.Pop()
+			continue
+		}
+
+		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
+		// an OffchainTx into the queue ahead of it to populate the on-chain helper
+		if hcs != nil {
+			hc = hcs.GetHC(mh)
+		}
+		if hc != nil && hc.State == vm.HC_STATE_READY && len(hc.Response) > 0 {
+			log.Debug("HC Found a prepared response", "hc.Response", hexutility.Bytes(hc.Response))
+			txnGas := txn.GetGas()
+			txn = types.NewOffchainTx(mh, hc.Response, txnGas)
+			hc.State = vm.HC_STATE_INSERTED
+			log.Debug("HC Inserting OffchainTx", "txn", txn)
+			hcOffchain = true
+		}
+
+		if hcs != nil && hc == nil {
+			hc = new(vm.HCContext)
+		}
+
 		// Start executing the transaction
-		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current)
+		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, hc)
+
+		if err == vm.ErrHCReverted && hcs != nil {
+			hcs.PutHC(mh, hc)
+
+			if hc.State == vm.HC_STATE_TRIGGERED {
+				// This is a first-time trigger for a Txn which didn't go through EstimateGas
+				log.Debug("HC Inserting HCActive in stage_mining_exec", "hc", hc, "mh", mh, "txn", txn)
+				// Need to skip this Tx for now, start a background task to do the offchain stuff,
+				// then re-insert it into the txpool.
+				hcs.HCActive[mh] = hc
+				go func(mh libcommon.Hash, hc *vm.HCContext) {
+					log.Debug("HC Doing background Offchain request", "mh", mh)
+					ocErr := vm.HCRequest(hcs, hc, header.Number.Uint64())
+					log.Debug("HC Got background Offchain result", "mh", mh, "err", ocErr)
+					delete(hcs.HCActive, mh)
+				}(mh, hc)
+				txs.Pop()
+
+				continue
+			} else {
+				log.Warn("HC got an unexpected ErrHCReverted", "hc", hc, "mh", mh)
+				// We inserted an OffchainResponse ahead of this Tx but it still failed.
+				// FIXME - This may leave a cache entry in the helper contract. Should have a way to clean up.
+				hc.State = vm.HC_STATE_FAILED
+			}
+
+			continue
+		} else if err == nil && hc != nil && hc.State == vm.HC_STATE_INSERTED {
+			hc.State = vm.HC_STATE_COMPLETED
+		}
 
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
+			if hc != nil && hc.State != vm.HC_STATE_NONE {
+				log.Warn("HC ErrGasLimitReached", "hc", hc)
+				// FIXME
+			}
 			logger.Debug(fmt.Sprintf("[%s] Gas limit exceeded for env block", logPrefix), "hash", txn.Hash(), "sender", from)
 			txs.Pop()
 		} else if errors.Is(err, core.ErrNonceTooLow) {
@@ -515,7 +608,16 @@ LOOP:
 			logger.Debug(fmt.Sprintf("[%s] addTransactionsToMiningBlock Successful", logPrefix), "sender", from, "nonce", txn.GetNonce(), "payload", payloadId)
 			coalescedLogs = append(coalescedLogs, logs...)
 			tcount++
-			txs.Shift()
+			if hcOffchain {
+				log.Debug("HC Offchain transaction OK", "tcount", tcount)
+			} else {
+				if hcs != nil {
+					txnFrom, _ := txn.GetSender()
+					mh := vm.HCKey(txnFrom, txn.GetTo(), txn.GetNonce(), txn.GetData())
+					hcs.PutHC(mh, nil)
+				}
+				txs.Shift()
+			}
 		} else {
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
