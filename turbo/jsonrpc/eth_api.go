@@ -31,6 +31,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/types/accounts"
+	"github.com/ledgerwatch/erigon/core/vm" // for Hybrid Compute
 	ethFilters "github.com/ledgerwatch/erigon/eth/filters"
 	"github.com/ledgerwatch/erigon/ethdb/prune"
 	"github.com/ledgerwatch/erigon/rpc"
@@ -127,9 +128,14 @@ type BaseAPI struct {
 	// Optimism specific field
 	seqRPCService        *rpc.Client
 	historicalRPCService *rpc.Client
+	hybridComputeService *vm.HCService
 }
 
 func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, dirs datadir.Dirs, seqRPCService, historicalRPCService *rpc.Client) *BaseAPI {
+	return NewBaseApiHC(f, stateCache, blockReader, agg, singleNodeMode, evmCallTimeout, engine, dirs, seqRPCService, historicalRPCService, nil)
+}
+
+func NewBaseApiHC(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader, agg *libstate.AggregatorV3, singleNodeMode bool, evmCallTimeout time.Duration, engine consensus.EngineReader, dirs datadir.Dirs, seqRPCService, historicalRPCService *rpc.Client, hybridComputeService *vm.HCService) *BaseAPI {
 	blocksLRUSize := 128 // ~32Mb
 	if !singleNodeMode {
 		blocksLRUSize = 512
@@ -139,7 +145,7 @@ func NewBaseApi(f *rpchelper.Filters, stateCache kvcache.Cache, blockReader serv
 		panic(err)
 	}
 
-	return &BaseAPI{filters: f, stateCache: stateCache, blocksLRU: blocksLRU, _blockReader: blockReader, _txnReader: blockReader, _agg: agg, evmCallTimeout: evmCallTimeout, _engine: engine, dirs: dirs, seqRPCService: seqRPCService, historicalRPCService: historicalRPCService}
+	return &BaseAPI{filters: f, stateCache: stateCache, blocksLRU: blocksLRU, _blockReader: blockReader, _txnReader: blockReader, _agg: agg, evmCallTimeout: evmCallTimeout, _engine: engine, dirs: dirs, seqRPCService: seqRPCService, historicalRPCService: historicalRPCService, hybridComputeService: hybridComputeService}
 }
 
 func (api *BaseAPI) chainConfig(tx kv.Tx) (*chain.Config, error) {
@@ -350,7 +356,6 @@ func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpoo
 	if gascap == 0 {
 		gascap = uint64(math.MaxUint64 / 2)
 	}
-
 	return &APIImpl{
 		BaseAPI:         base,
 		db:              db,

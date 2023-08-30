@@ -46,6 +46,7 @@ type MiningExecCfg struct {
 	payloadId   uint64
 	txPool2     TxPoolForMining
 	txPool2DB   kv.RoDB
+	hcService   *vm.HCService
 }
 
 type TxPoolForMining interface {
@@ -59,6 +60,7 @@ func StageMiningExecCfg(
 	tmpdir string, interrupt *int32, payloadId uint64,
 	txPool2 TxPoolForMining, txPool2DB kv.RoDB,
 	blockReader services.FullBlockReader,
+	hcService *vm.HCService,
 ) MiningExecCfg {
 	return MiningExecCfg{
 		db:          db,
@@ -73,6 +75,7 @@ func StageMiningExecCfg(
 		payloadId:   payloadId,
 		txPool2:     txPool2,
 		txPool2DB:   txPool2DB,
+		hcService:   hcService,
 	}
 }
 
@@ -468,6 +471,7 @@ LOOP:
 			done = true
 			break
 		}
+
 		// Retrieve the next transaction and abort if all done
 		txn := txs.Peek()
 		if txn == nil {

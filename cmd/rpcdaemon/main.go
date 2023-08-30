@@ -59,7 +59,7 @@ func main() {
 
 		// TODO: Replace with correct consensus Engine
 		engine := ethash.NewFaker()
-		apiList := jsonrpc.APIList(db, borDb, backend, engineBackend, txPool, mining, ff, stateCache, blockReader, agg, *cfg, engine, seqRPCService, historicalRPCService, logger)
+		apiList := jsonrpc.APIList(db, borDb, backend, engineBackend, txPool, mining, ff, stateCache, blockReader, agg, *cfg, engine, seqRPCService, historicalRPCService, nil, logger)
 		if err := cli.StartRpcServer(ctx, *cfg, apiList, nil, logger); err != nil {
 			logger.Error(err.Error())
 			return nil
