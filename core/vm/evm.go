@@ -90,6 +90,15 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+	hc          *HCContext
+}
+
+func (evm *EVM) SetHC(hc *HCContext) {
+	evm.hc = hc
+}
+
+func (evm *EVM) HCContext() *HCContext {
+	return evm.hc
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -260,6 +269,11 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 			readOnly = true
 		}
 		ret, err = run(evm, contract, input, readOnly)
+		if addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") && CheckTrigger(evm.hc, input, ret, err) {
+			evm.hc.Caller = caller.Address()
+			evm.hc.Request = make([]byte, len(input))
+			copy(evm.hc.Request, input)
+		}
 		gas = contract.Gas
 	}
 	// When an error was returned by the EVM or when setting the creation code
@@ -282,7 +296,11 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr libcommon.Address, input []byte, gas uint64, value *uint256.Int, bailout bool) (ret []byte, leftOverGas uint64, err error) {
-	return evm.call(CALL, caller, addr, input, gas, value, bailout)
+	ret, leftOverGas, err = evm.call(CALL, caller, addr, input, gas, value, bailout)
+	if err == ErrExecutionReverted && evm.hc != nil && evm.hc.State == HC_STATE_TRIGGERED {
+		err = ErrHCReverted
+	}
+	return ret, leftOverGas, err
 }
 
 // CallCode executes the contract associated with the addr with the given input

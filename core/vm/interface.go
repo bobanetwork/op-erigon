@@ -51,6 +51,8 @@ type VMInterface interface {
 	Context() evmtypes.BlockContext
 	IntraBlockState() evmtypes.IntraBlockState
 	TxContext() evmtypes.TxContext
+	HCContext() *HCContext
+	SetHC(*HCContext)
 }
 
 // VMInterpreter exposes additional EVM methods for use in the interpreter.
