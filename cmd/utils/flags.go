@@ -366,6 +366,11 @@ var (
 		Usage: "Maximum number of bytes returned from eth_call or similar invocations",
 		Value: 100_000,
 	}
+	RpcMaxGetProofRewindBlockCount = cli.IntFlag{
+		Name:  "rpc.maxgetproofrewindblockcount.limit",
+		Usage: "Max GetProof rewind block count",
+		Value: 100_000,
+	}
 	HTTPTraceFlag = cli.BoolFlag{
 		Name:  "http.trace",
 		Usage: "Trace HTTP requests with INFO level",

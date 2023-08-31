@@ -61,11 +61,11 @@ type HttpCfg struct {
 	LogDirVerbosity string
 	LogDirPath      string
 
-	BatchLimit      int // Maximum number of requests in a batch
-	ReturnDataLimit int // Maximum number of bytes returned from calls (like eth_call)
-
-	RollupSequencerHTTP        string
-	RollupHistoricalRPC        string
-	RollupHistoricalRPCTimeout time.Duration
-	RollupDisableTxPoolGossip  bool
+	BatchLimit                  int // Maximum number of requests in a batch
+	ReturnDataLimit             int // Maximum number of bytes returned from calls (like eth_call)
+	MaxGetProofRewindBlockCount int //Max GetProof rewind block count
+	RollupSequencerHTTP         string
+	RollupHistoricalRPC         string
+	RollupHistoricalRPCTimeout  time.Duration
+	RollupDisableTxPoolGossip   bool
 }
