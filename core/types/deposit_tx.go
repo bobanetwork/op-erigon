@@ -123,7 +123,11 @@ func (tx DepositTransaction) EncodeRLP(w io.Writer) error {
 	idx1 := buf.List()
 	buf.WriteBytes(tx.SourceHash.Bytes())
 	buf.WriteBytes(tx.From.Bytes())
-	buf.WriteBytes(tx.To.Bytes())
+	if tx.To != nil {
+		buf.WriteBytes(tx.To.Bytes())
+	} else {
+		buf.WriteBytes([]byte{})
+	}
 	buf.WriteBytes(tx.Mint.Bytes())
 	buf.WriteBytes(tx.Value.Bytes())
 	buf.WriteUint64(tx.GasLimit)
@@ -162,11 +166,15 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read To: %w", err)
 	}
-	if len(b) != 20 {
+	switch len(b) {
+	case 20:
+		tx.To = &libcommon.Address{}
+		copy((*tx.To)[:], b)
+	case 0:
+		// contract creation
+	default:
 		return fmt.Errorf("wrong size for To: %d", len(b))
 	}
-	tx.To = &libcommon.Address{}
-	copy((*tx.To)[:], b)
 
 	if b, err = s.Uint256Bytes(); err != nil {
 		return fmt.Errorf("read Mint: %w", err)
