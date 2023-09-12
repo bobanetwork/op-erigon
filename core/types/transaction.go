@@ -129,7 +129,7 @@ func (tm TransactionMisc) From() *atomic.Value {
 	return &tm.from
 }
 
-func rollupDataGas(tx binMarshalable) uint64 {
+func RollupDataGas(tx binMarshalable) uint64 {
 	var buf bytes.Buffer
 	if err := tx.MarshalBinary(&buf); err != nil {
 		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.

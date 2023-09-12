@@ -85,6 +85,8 @@ type SimulatedBackend struct {
 	rmLogsFeed event.Feed
 	chainFeed  event.Feed
 	logsFeed   event.Feed
+
+	chainConfig *chain.Config
 }
 
 // NewSimulatedBackend creates a new binding backend using a simulated blockchain
@@ -106,6 +108,7 @@ func NewSimulatedBackendWithConfig(alloc types.GenesisAlloc, config *chain.Confi
 			}
 			return h
 		},
+		chainConfig: config,
 	}
 	backend.emptyPendingBlock()
 	return backend
@@ -272,7 +275,7 @@ func (b *SimulatedBackend) TransactionReceipt(ctx context.Context, txHash libcom
 		return nil, err
 	}
 	// Read all the receipts from the block and return the one with the matching hash
-	receipts := rawdb.ReadReceipts(tx, block, nil)
+	receipts := rawdb.ReadReceipts(b.chainConfig, tx, block, nil)
 	for _, receipt := range receipts {
 		if receipt.TxHash == txHash {
 			return receipt, nil

@@ -22,7 +22,6 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
-	"github.com/ledgerwatch/log/v3"
 )
 
 type RollupMessage interface {
@@ -55,7 +54,6 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 	return func(blockNum uint64, msg RollupMessage) *uint256.Int {
 		rollupDataGas := msg.RollupDataGas() // Only fake txs for RPC view-calls are 0.
 		if config.Optimism == nil || msg.IsDepositTx() || rollupDataGas == 0 {
-			log.Info("MMDBG Skipping L1 Cost", "blockNum", blockNum, "optimism", config.Optimism, "isDepositTx", msg.IsDepositTx(), "rollupDataGas", rollupDataGas)
 			return nil
 		}
 		if blockNum != cacheBlockNum {
@@ -65,7 +63,6 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 			statedb.GetState(L1BlockAddr, &ScalarSlot, scalar)
 			cacheBlockNum = blockNum
 		}
-		log.Info("MMDBG L1Cost", "blockNum", blockNum, "rollupDataGas", rollupDataGas, "l1BaseFee", l1BaseFee, "overhead", overhead, "scalar", scalar)
 		return L1Cost(rollupDataGas, l1BaseFee, overhead, scalar)
 	}
 }

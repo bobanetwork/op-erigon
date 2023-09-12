@@ -23,6 +23,8 @@ import (
 	"io"
 	"math/big"
 
+	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 
@@ -91,6 +93,8 @@ type receiptMarshaling struct {
 	BlockNumber       *hexutil.Big
 	TransactionIndex  hexutil.Uint
 	L1Fee             *hexutil.Big
+	L1GasUsed         *hexutil.Big
+	L1GasPrice        *hexutil.Big
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -489,7 +493,6 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		}
 	case DepositTxType:
 		w.WriteByte(DepositTxType)
-		rlp.Encode(w, data)
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}
@@ -502,7 +505,7 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 
 // DeriveFields fills the receipts with their computed fields based on consensus
 // data and contextual infos like containing block and transactions.
-func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transactions, senders []libcommon.Address) error {
+func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number uint64, time uint64, txs Transactions, senders []libcommon.Address) error {
 	logIndex := uint(0) // logIdx is unique within the block and starts from 0
 	if len(txs) != len(r) {
 		return fmt.Errorf("transaction and receipt count mismatch, tx count = %d, receipts count = %d", len(txs), len(r))
@@ -543,6 +546,28 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 			r[i].Logs[j].TxIndex = uint(i)
 			r[i].Logs[j].Index = logIndex
 			logIndex++
+		}
+	}
+	if config.IsOptimismBedrock(number) && len(txs) >= 2 { // need at least an info tx and a non-info tx
+		if data := txs[0].GetData(); len(data) >= 4+32*8 { // function selector + 8 arguments to setL1BlockValues
+			l1Basefee := new(uint256.Int).SetBytes(data[4+32*2 : 4+32*3]) // arg index 2
+			overhead := new(uint256.Int).SetBytes(data[4+32*6 : 4+32*7])  // arg index 6
+			scalar := new(uint256.Int).SetBytes(data[4+32*7 : 4+32*8])    // arg index 7
+			fscalar := new(big.Float).SetInt(scalar.ToBig())              // legacy: format fee scalar as big Float
+			fdivisor := new(big.Float).SetUint64(1_000_000)               // 10**6, i.e. 6 decimals
+			feeScalar := new(big.Float).Quo(fscalar, fdivisor)
+			for i := 0; i < len(r); i++ {
+				if !txs[i].IsDepositTx() {
+					rollupDataGas := RollupDataGas(txs[i]) // Only fake txs for RPC view-calls are 0.
+					r[i].L1GasPrice = l1Basefee.ToBig()
+					// GasUsed reported in receipt should include the overhead
+					r[i].L1GasUsed = new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas), overhead.ToBig())
+					r[i].L1Fee = L1Cost(rollupDataGas, l1Basefee, overhead, scalar).ToBig()
+					r[i].FeeScalar = feeScalar
+				}
+			}
+		} else {
+			return fmt.Errorf("L1 info tx only has %d bytes, cannot read gas price parameters", len(data))
 		}
 	}
 	return nil
