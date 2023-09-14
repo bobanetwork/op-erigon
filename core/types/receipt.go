@@ -548,7 +548,8 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 			logIndex++
 		}
 	}
-	if config.IsOptimismBedrock(number) && len(txs) >= 2 { // need at least an info tx and a non-info tx
+	rules := config.Rules(number, time)
+	if rules.IsBedrock && len(txs) >= 2 { // need at least an info tx and a non-info tx
 		if data := txs[0].GetData(); len(data) >= 4+32*8 { // function selector + 8 arguments to setL1BlockValues
 			l1Basefee := new(uint256.Int).SetBytes(data[4+32*2 : 4+32*3]) // arg index 2
 			overhead := new(uint256.Int).SetBytes(data[4+32*6 : 4+32*7])  // arg index 6
@@ -558,7 +559,7 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 			feeScalar := new(big.Float).Quo(fscalar, fdivisor)
 			for i := 0; i < len(r); i++ {
 				if !txs[i].IsDepositTx() {
-					rollupDataGas := RollupDataGas(txs[i]) // Only fake txs for RPC view-calls are 0.
+					rollupDataGas := RollupDataGas(txs[i], rules) // Only fake txs for RPC view-calls are 0.
 					r[i].L1GasPrice = l1Basefee.ToBig()
 					// GasUsed reported in receipt should include the overhead
 					r[i].L1GasUsed = new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas), overhead.ToBig())
