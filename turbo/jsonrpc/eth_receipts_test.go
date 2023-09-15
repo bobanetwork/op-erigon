@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
@@ -125,13 +126,13 @@ func TestGetReceipts(t *testing.T) {
 	require.Equal(t, 2, len(receipts))
 
 	require.Equal(t, new(uint256.Int).SetBytes(l1BaseFee[:]).ToBig(), receipts[0].L1GasPrice)
-	rollupDataGas1 := types.RollupDataGas(tx1)
+	rollupDataGas1 := types.RollupDataGas(tx1, &chain.Rules{IsBedrock: true})
 	require.Equal(t, new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas1), new(uint256.Int).SetBytes(overhead[:]).ToBig()), receipts[0].L1GasUsed)
 	require.Equal(t, types.L1Cost(rollupDataGas1, new(uint256.Int).SetBytes(l1BaseFee[:]), new(uint256.Int).SetBytes(overhead[:]), new(uint256.Int).SetBytes(scalar[:])).ToBig(), receipts[0].L1Fee)
 	require.Equal(t, feeScalar, receipts[0].FeeScalar)
 
 	require.Equal(t, new(uint256.Int).SetBytes(l1BaseFee[:]).ToBig(), receipts[1].L1GasPrice)
-	rollupDataGas2 := types.RollupDataGas(tx2)
+	rollupDataGas2 := types.RollupDataGas(tx2, &chain.Rules{IsBedrock: true})
 	require.Equal(t, new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas2), new(uint256.Int).SetBytes(overhead[:]).ToBig()), receipts[1].L1GasUsed)
 	require.Equal(t, types.L1Cost(rollupDataGas2, new(uint256.Int).SetBytes(l1BaseFee[:]), new(uint256.Int).SetBytes(overhead[:]), new(uint256.Int).SetBytes(scalar[:])).ToBig(), receipts[1].L1Fee)
 	require.Equal(t, feeScalar, receipts[1].FeeScalar)

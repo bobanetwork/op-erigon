@@ -206,7 +206,7 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 		return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 	}
 	var l1Cost *uint256.Int
-	if optimismConfig := st.evm.ChainConfig().Optimism; optimismConfig != nil && st.evm.ChainRules().IsBedrock {
+	if st.evm.ChainRules().IsBedrock {
 		l1Cost = st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
 		if l1Cost != nil {
 			if _, overflow = mgval.AddOverflow(mgval, l1Cost); overflow {
@@ -304,7 +304,7 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 		st.gas += st.msg.Gas() // Add gas here in order to be able to execute calls.
 		// Don't touch the gas pool for system transactions
 		if st.msg.IsSystemTx() {
-			if st.evm.ChainConfig().IsOptimismRegolith(st.evm.Context().Time) {
+			if st.evm.ChainRules().IsOptimismRegolith {
 				return fmt.Errorf("%w: address %v", ErrSystemTxNotSupported,
 					st.msg.From().Hex())
 			}
@@ -491,7 +491,8 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	if refunds {
 
 		// if deposit: skip refunds, skip tipping coinbase
-		if st.msg.IsDepositTx() {
+		// Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
+		if st.msg.IsDepositTx() && !rules.IsOptimismRegolith {
 			// Record deposits as using all their gas (matches the gas pool)
 			// System Transactions are special & are not recorded as using any gas (anywhere)
 			gasUsed := st.msg.Gas()
@@ -504,13 +505,24 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 				ReturnData: ret,
 			}, nil
 		}
-
+		// Note for deposit tx there is no ETH refunded for unused gas, but that's taken care of by the fact that gasPrice
+		// is always 0 for deposit tx. So calling refundGas will ensure the gasUsed accounting is correct without actually
+		// changing the sender's balance
 		if rules.IsLondon {
 			// After EIP-3529: refunds are capped to gasUsed / 5
 			st.refundGas(params.RefundQuotientEIP3529)
 		} else {
 			// Before EIP-3529: refunds were capped to gasUsed / 2
 			st.refundGas(params.RefundQuotient)
+		}
+
+		if st.msg.IsDepositTx() && rules.IsOptimismRegolith {
+			// Skip coinbase payments for deposit tx in Regolith
+			return &ExecutionResult{
+				UsedGas:    st.gasUsed(),
+				Err:        vmerr,
+				ReturnData: ret,
+			}, nil
 		}
 	}
 	effectiveTip := st.gasPrice
@@ -550,14 +562,13 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 
 	log.Info(
 		"MMDBG Accounting for base fee and l1 fee",
-		"isOptimism", st.evm.ChainConfig().Optimism != nil,
+		"isOptimism", st.evm.ChainConfig().IsOptimism(),
 		"isBedrock", rules.IsBedrock,
 		"gasUsed", st.gasUsed,
 		"baseFee", st.evm.Context().BaseFee,
 	)
 	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
-	// Note optimismConfig will not be nil if rules.IsOptimismBedrock is true
-	if optimismConfig := st.evm.ChainConfig().Optimism; optimismConfig != nil && rules.IsBedrock {
+	if rules.IsBedrock {
 		st.state.AddBalance(params.OptimismBaseFeeRecipient, new(uint256.Int).Mul(uint256.NewInt(st.gasUsed()), st.evm.Context().BaseFee))
 		if st.evm.Context().L1CostFunc == nil {
 			log.Error("Expected L1CostFunc to be set, but it is not")

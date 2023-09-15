@@ -129,7 +129,7 @@ func (tm TransactionMisc) From() *atomic.Value {
 	return &tm.from
 }
 
-func RollupDataGas(tx binMarshalable) uint64 {
+func RollupDataGas(tx binMarshalable, rules *chain.Rules) uint64 {
 	var buf bytes.Buffer
 	if err := tx.MarshalBinary(&buf); err != nil {
 		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
@@ -146,7 +146,12 @@ func RollupDataGas(tx binMarshalable) uint64 {
 		}
 	}
 	zeroesGas := zeroes * params.TxDataZeroGas
-	onesGas := (ones + 68) * params.TxDataNonZeroGasEIP2028
+	var onesGas uint64
+	if rules.IsOptimismRegolith {
+		onesGas = ones * params.TxDataNonZeroGasEIP2028
+	} else {
+		onesGas = (ones + 68) * params.TxDataNonZeroGasEIP2028
+	}
 	total := zeroesGas + onesGas
 	log.Info("MMDBG computing rollupDataGas", "total", total, "tx", tx)
 	return total
