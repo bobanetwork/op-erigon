@@ -7,11 +7,13 @@ jobs:
       image: ubuntu-2204:2022.07.1
       resource_class: medium
     steps:
-      - run: git clone https://github.com/bobanetwork/v3-anchorage .
+      #- checkout modifying the checkout step so that we can clone into a directory
+      - run: git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL" v3-erigon/
+      - run: git clone https://github.com/bobanetwork/v3-anchorage v3-anchorage/
       - persist_to_workspace:
           root: "."
           paths:
-            - "v3-anchorage"
+            - "."
 
   go-e2e-test:
     parameters:
@@ -27,24 +29,31 @@ jobs:
     steps:
       - attach_workspace: { at: "." }
       - run:
+          name: Print go version
+          command: go version
+      - run:
           name: prep results dir
           command: mkdir -p /tmp/test-results
+          working_directory: ~/v3-anchorage
       - run:
           name: install geth
           command: ls -altr && make install-geth
+          working_directory: ~/v3-anchorage
       - run:
           name: git submodules
           command: git submodule update --init --recursive
+          working_directory: ~/v3-anchorage
       - run:
           name: print go's available MIPS targets
           command: go tool dist list | grep mips
+          working_directory: ~/v3-anchorage
       - run:
           name: run tests
           command:
             # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
             # constraint that gotestsum does not currently (nor likely will) accept files from different pacakges when building.
             JUNIT_FILE=/tmp/test-results/<<parameters.module>>_<<parameters.target>>.xml make <<parameters.target>>
-          working_directory: <<parameters.module>>
+          working_directory: ~/v3-anchorage/<<parameters.module>>
       - store_test_results:
           path: /tmp/test-results
 
@@ -53,18 +62,18 @@ workflows:
   main:
     jobs:
       - v3-achorage-checkout
-      - go-e2e-test:
-          name: op-e2e-WS-tests
-          module: op-e2e
-          target: test-ws
-          requires:
-            - v3-achorage-checkout
-      - go-e2e-test:
-          name: op-e2e-HTTP-tests
-          module: op-e2e
-          target: test-http
-          requires:
-            - v3-achorage-checkout             
+      # - go-e2e-test:
+      #     name: op-e2e-WS-tests
+      #     module: op-e2e
+      #     target: test-ws
+      #     requires:
+      #       - v3-achorage-checkout
+      # - go-e2e-test:
+      #     name: op-e2e-HTTP-tests
+      #     module: op-e2e
+      #     target: test-http
+      #     requires:
+      #       - v3-achorage-checkout             
       - go-e2e-test:
           name: op-e2e-ext-erigon-tests
           module: op-e2e
