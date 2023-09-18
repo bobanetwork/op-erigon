@@ -1,26 +1,73 @@
 version: 2.1
 
-# this allows you to use CircleCI's dynamic configuration feature
-setup: true
-
-# the continuation orb is required in order to use dynamic configuration
-orbs:
-  continuation: circleci/continuation@0.1.2
-
 # our defined job, and its steps
 jobs:
-  setup:
-    executor: continuation/default
+  v3-achorage-checkout:
+    machine:
+      image: ubuntu-2204:2022.07.1
+      resource_class: medium
     steps:
-      - checkout 
-      - run: 
-          name: Pull v3-anchorage
-          command: git clone https://github.com/bobanetwork/v3-anchorage
-      - continuation/continue:
-          configuration_path: v3-anchorage/.circleci/config.yml # use newly generated config to continue
+      - run: git clone https://github.com/bobanetwork/v3-anchorage .
+      - persist_to_workspace:
+          root: "."
+          paths:
+            - "v3-anchorage"
+
+  go-e2e-test:
+    parameters:
+      module:
+        description: Go Module Name
+        type: string
+      target:
+        description: The make target to execute
+        type: string
+    docker:
+      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:latest
+    resource_class: xlarge
+    steps:
+      - attach_workspace: { at: "." }
+      - run:
+          name: prep results dir
+          command: mkdir -p /tmp/test-results
+      - run:
+          name: install geth
+          command: ls -altr && make install-geth
+      - run:
+          name: git submodules
+          command: git submodule update --init --recursive
+      - run:
+          name: print go's available MIPS targets
+          command: go tool dist list | grep mips
+      - run:
+          name: run tests
+          command:
+            # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
+            # constraint that gotestsum does not currently (nor likely will) accept files from different pacakges when building.
+            JUNIT_FILE=/tmp/test-results/<<parameters.module>>_<<parameters.target>>.xml make <<parameters.target>>
+          working_directory: <<parameters.module>>
+      - store_test_results:
+          path: /tmp/test-results
 
 # our single workflow, that triggers the setup job defined above
 workflows:
-  setup:
+  main:
     jobs:
-      - setup
+      - v3-achorage-checkout
+      - go-e2e-test:
+          name: op-e2e-WS-tests
+          module: op-e2e
+          target: test-ws
+          requires:
+            - v3-achorage-checkout
+      - go-e2e-test:
+          name: op-e2e-HTTP-tests
+          module: op-e2e
+          target: test-http
+          requires:
+            - v3-achorage-checkout             
+      - go-e2e-test:
+          name: op-e2e-ext-erigon-tests
+          module: op-e2e
+          target: test-external-erigon
+          requires:
+            - v3-achorage-checkout    
