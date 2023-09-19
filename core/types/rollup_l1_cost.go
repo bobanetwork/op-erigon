@@ -22,6 +22,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/log/v3"
 )
 
 type RollupMessage interface {
@@ -45,6 +46,7 @@ var (
 
 var L1BlockAddr = libcommon.HexToAddress("0x4200000000000000000000000000000000000015")
 
+// Bedrock
 // NewL1CostFunc returns a function used for calculating L1 fee cost.
 // This depends on the oracles because gas costs can change over time.
 // It returns nil if there is no applicable cost function.
@@ -63,6 +65,7 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 			statedb.GetState(L1BlockAddr, &ScalarSlot, scalar)
 			cacheBlockNum = blockNum
 		}
+		log.Debug("L1CostFunc calculation", "blockNum", blockNum, "rollupDataGas", rollupDataGas, "l1BaseFee", l1BaseFee, "overhead", overhead, "scalar", scalar)
 		return L1Cost(rollupDataGas, l1BaseFee, overhead, scalar)
 	}
 }

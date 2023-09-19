@@ -212,7 +212,6 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 	}
 
 	b, err := api.blockByNumber(ctx, number, tx)
-	log.Debug("MMDBG eth_block GetBlockByNumber", "n", number, "fullTx", fullTx, "err", err, "b", b)
 	if err != nil {
 		return nil, err
 	}
@@ -250,14 +249,11 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 			response[field] = nil
 		}
 	}
-	log.Debug("MMDBG eth_block GetBlockByNumber returning", "err", err, "resp", response)
 	return response, err
 }
 
 // GetBlockByHash implements eth_getBlockByHash. Returns information about a block given the block's hash.
 func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNumberOrHash, fullTx bool) (map[string]interface{}, error) {
-	log.Debug("MMDBG starting eth_block GetBlockByHash")
-
 	if numberOrHash.BlockHash == nil {
 		// some web3.js based apps (like ethstats client) for some reason call
 		// eth_getBlockByHash with a block number as a parameter
@@ -323,7 +319,6 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 			response[field] = nil
 		}
 	}
-	log.Debug("MMDBG eth_block GetBlockByHash returning", "err", err, "response", response)
 	return response, err
 }
 
