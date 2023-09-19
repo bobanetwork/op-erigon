@@ -53,6 +53,8 @@ var (
 	accountSlots uint64
 	priceBump    uint64
 
+	noTxGossip bool
+
 	commitEvery time.Duration
 )
 
@@ -76,6 +78,7 @@ func init() {
 	rootCmd.PersistentFlags().Uint64Var(&accountSlots, "txpool.accountslots", txpoolcfg.DefaultConfig.AccountSlots, "Minimum number of executable transaction slots guaranteed per account")
 	rootCmd.PersistentFlags().Uint64Var(&priceBump, "txpool.pricebump", txpoolcfg.DefaultConfig.PriceBump, "Price bump percentage to replace an already existing transaction")
 	rootCmd.PersistentFlags().DurationVar(&commitEvery, utils.TxPoolCommitEveryFlag.Name, utils.TxPoolCommitEveryFlag.Value, utils.TxPoolCommitEveryFlag.Usage)
+	rootCmd.PersistentFlags().BoolVar(&noTxGossip, "txpool.disabletxpoolgossip", txpoolcfg.DefaultConfig.NoTxGossip, "Disable transaction pool gossip")
 	rootCmd.Flags().StringSliceVar(&traceSenders, utils.TxPoolTraceSendersFlag.Name, []string{}, utils.TxPoolTraceSendersFlag.Usage)
 }
 
@@ -140,6 +143,7 @@ func doTxpool(ctx context.Context, logger log.Logger) error {
 	cfg.MinFeeCap = priceLimit
 	cfg.AccountSlots = accountSlots
 	cfg.PriceBump = priceBump
+	cfg.NoTxGossip = noTxGossip
 
 	cacheConfig := kvcache.DefaultCoherentConfig
 	cacheConfig.MetricsLabel = "txpool"

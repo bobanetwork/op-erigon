@@ -509,6 +509,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		}
 		backend.historicalRPCService = client
 	}
+	config.TxPool.NoTxGossip = config.RollupDisableTxPoolGossip
 
 	var miningRPC txpool_proto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)
