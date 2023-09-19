@@ -392,7 +392,7 @@ func (s *EngineServer) EngineGetPayload(ctx context.Context, req *engine.EngineG
 	baseFee.SetFromBig(header.BaseFee)
 
 	encodedTransactions, err := types.MarshalTransactionsBinary(block.Transactions())
-	log.Debug("MMDBG EngineGetPayload response", "err", err, "encoded", encodedTransactions)
+	log.Debug("Building EngineGetPayload response", "err", err, "encodedTransactions", encodedTransactions)
 	if err != nil {
 		return nil, err
 	}
@@ -468,8 +468,6 @@ func (s *EngineServer) EngineForkChoiceUpdated(ctx context.Context, req *engine.
 		SafeBlockHash:      gointerfaces.ConvertH256ToHash(req.ForkchoiceState.SafeBlockHash),
 		FinalizedBlockHash: gointerfaces.ConvertH256ToHash(req.ForkchoiceState.FinalizedBlockHash),
 	}
-
-	log.Debug("MMDBG >>> ethbackend.go EngineForkChoiceUpdated got", "req", req)
 	var status *engine_helpers.PayloadStatus
 	var err error
 	// In the Optimism case, we allow arbitrary rewinding of the safe block
@@ -480,7 +478,6 @@ func (s *EngineServer) EngineForkChoiceUpdated(ctx context.Context, req *engine.
 			return nil, err
 		}
 	}
-	log.Debug("MMDBG ethbackend.go getQuickPayloadStatusIfPossible", "err", err, "status", status)
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -497,7 +494,6 @@ func (s *EngineServer) EngineForkChoiceUpdated(ctx context.Context, req *engine.
 			return nil, status.CriticalError
 		}
 	}
-	log.Info("MMDBG EngineForkChoiceUpdated Payload", "status", status.Status, "attrs", req.PayloadAttributes)
 
 	// No need for payload building
 	payloadAttributes := req.PayloadAttributes
@@ -541,13 +537,13 @@ func (s *EngineServer) EngineForkChoiceUpdated(ctx context.Context, req *engine.
 		headHash = forkChoice.HeadBlockHash
 		headNumber = rawdb.ReadHeaderNumber(tx3, headHash)
 		if headNumber == nil {
-			s.logger.Warn("MMDBG Optimism asked to re-org to header we do not have", "blockHash", headHash)
+			s.logger.Warn("Optimism asked to re-org to header we do not have", "blockHash", headHash)
 			return &engine.EngineForkChoiceUpdatedResponse{PayloadStatus: convertPayloadStatus(status)}, nil
 		}
 		headHeader = rawdb.ReadHeader(tx3, headHash, *headNumber)
 		tx3.Rollback()
 	}
-	log.Debug("MMDBG continuing EngineForkChoiceUpdated", "headNumber", *headNumber, "headHash", headHash)
+	log.Debug("Continuing EngineForkChoiceUpdated", "headNumber", *headNumber, "headHash", headHash, "numDeposits", len(payloadAttributes.Transactions))
 
 	if headHeader.Time >= payloadAttributes.Timestamp {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
@@ -571,8 +567,6 @@ func (s *EngineServer) EngineForkChoiceUpdated(ctx context.Context, req *engine.
 	}
 
 	// Initiate payload building
-	log.Debug("MMDBG ethbackend.go Initiate payload building", "len", len(payloadAttributes.Transactions), "depositTx", payloadAttributes.Transactions)
-
 	// First check if we're already building a block with the requested parameters
 	if reflect.DeepEqual(s.lastParameters, &param) {
 		s.logger.Info("[ForkChoiceUpdated] duplicate build request")
@@ -596,7 +590,7 @@ func (s *EngineServer) EngineForkChoiceUpdated(ctx context.Context, req *engine.
 	s.builders[s.payloadId] = bldr
 	s.logger.Info("[ForkChoiceUpdated] BlockBuilder added", "payload", s.payloadId)
 
-	log.Debug("MMDBG waiting before EngineForkChoiceUpdatedReply", "param", param, "builder", s.builders[s.payloadId])
+	log.Debug("Waiting before EngineForkChoiceUpdatedReply", "payloadId", s.payloadId)
 	if s.config.Optimism != nil {
 		blockAndReceipts, err := bldr.WaitForBlock()
 		if err != nil {
@@ -609,7 +603,7 @@ func (s *EngineServer) EngineForkChoiceUpdated(ctx context.Context, req *engine.
 			}, nil
 		}
 		block := blockAndReceipts.Block
-		log.Debug("MMDBG Optimism BlockBuilder added", "payload", s.payloadId, "blockHash", block.Hash(), "blockNum", block.NumberU64(), "txes", len(block.Transactions()))
+		log.Debug("Optimism BlockBuilder added", "payload", s.payloadId, "blockHash", block.Hash(), "blockNum", block.NumberU64(), "txes", len(block.Transactions()))
 	}
 
 	return &engine.EngineForkChoiceUpdatedResponse{

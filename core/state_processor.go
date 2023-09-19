@@ -129,7 +129,7 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
 	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config,
 ) (*types.Receipt, []byte, error) {
-	log.Info("MMDBG ApplyTransaction", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
+	log.Debug("ApplyTransaction called for", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
 
 	// Add addresses to access list if applicable

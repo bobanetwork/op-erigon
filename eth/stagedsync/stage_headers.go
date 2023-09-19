@@ -270,7 +270,6 @@ func writeForkChoiceHashes(
 	if forkChoice.FinalizedBlockHash != (libcommon.Hash{}) {
 		rawdb.WriteForkchoiceFinalized(tx, forkChoice.FinalizedBlockHash)
 	}
-	log.Info("MMDBG wrote forkchoices", "safe", forkChoice.SafeBlockHash, "finalized", forkChoice.FinalizedBlockHash)
 
 	return true, nil
 }
@@ -383,7 +382,6 @@ func startHandlingForkChoice(
 	if err != nil {
 		return nil, err
 	}
-	log.Info("MMDBG Forking point is", "blockNumber", forkingPoint)
 	isBedrockBlock := cfg.chainConfig.Optimism != nil && cfg.chainConfig.IsBedrock(header.Number.Uint64())
 	if forkingPoint < preProgress && (isBedrockBlock || cfg.chainConfig.Optimism == nil) {
 
