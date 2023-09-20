@@ -13,6 +13,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common/fixedgas"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/bitmapdb"
@@ -55,8 +56,8 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	}
 
 	usedGas := new(uint64)
-	usedDataGas := new(uint64)
-	gp := new(core.GasPool).AddGas(block.GasLimit()).AddDataGas(chain.MaxDataGasPerBlock)
+	usedBlobGas := new(uint64)
+	gp := new(core.GasPool).AddGas(block.GasLimit()).AddBlobGas(fixedgas.MaxBlobGasPerBlock)
 
 	noopWriter := state.NewNoopWriter()
 
@@ -72,7 +73,7 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	header := block.Header()
 	for i, txn := range block.Transactions() {
 		ibs.SetTxContext(txn.Hash(), block.Hash(), i)
-		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, usedDataGas, vm.Config{})
+		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, usedBlobGas, vm.Config{})
 		log.Debug("Computed receipt for tx", "txhash", txn.Hash(), "l1Fee", receipt.L1Fee)
 		if err != nil {
 			return nil, err
@@ -525,7 +526,7 @@ func (e *intraBlockExec) execTx(txNum uint64, txIndex int, txn types.Transaction
 	txHash := txn.Hash()
 	e.ibs.Reset()
 	e.ibs.SetTxContext(txHash, e.blockHash, txIndex)
-	gp := new(core.GasPool).AddGas(txn.GetGas()).AddDataGas(txn.GetDataGas())
+	gp := new(core.GasPool).AddGas(txn.GetGas()).AddBlobGas(txn.GetBlobGas())
 	msg, err := txn.AsMessage(*e.signer, e.header.BaseFee, e.rules)
 	if err != nil {
 		return nil, nil, err
@@ -597,7 +598,7 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 	var blockNum uint64
 	var ok bool
 
-	blockNum, ok, err = api.txnLookup(ctx, tx, txnHash)
+	blockNum, ok, err = api.txnLookup(tx, txnHash)
 	if err != nil {
 		return nil, err
 	}
@@ -625,7 +626,7 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 		blockNum = *blockNumPtr
 	}
 
-	block, err := api.blockByNumberWithSenders(ctx, tx, blockNum)
+	block, err := api.blockByNumberWithSenders(tx, blockNum)
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +646,7 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 
 	var borTx types.Transaction
 	if txn == nil {
-		borTx, _, _, _ = rawdb.ReadBorTransactionForBlock(tx, block)
+		borTx = rawdb.ReadBorTransactionForBlock(tx, blockNum)
 		if borTx == nil {
 			return nil, nil
 		}
@@ -675,19 +676,18 @@ func (api *APIImpl) GetTransactionReceipt(ctx context.Context, txnHash common.Ha
 }
 
 // GetBlockReceipts - receipts for individual block
-// func (api *APIImpl) GetBlockReceipts(ctx context.Context, number rpc.BlockNumber) ([]map[string]interface{}, error) {
-func (api *APIImpl) GetBlockReceipts(ctx context.Context, number rpc.BlockNumber) ([]map[string]interface{}, error) {
+func (api *APIImpl) GetBlockReceipts(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) ([]map[string]interface{}, error) {
 	tx, err := api.db.BeginRo(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	blockNum, blockHash, _, err := rpchelper.GetBlockNumber(rpc.BlockNumberOrHashWithNumber(number), tx, api.filters)
+	blockNum, blockHash, _, err := rpchelper.GetBlockNumber(numberOrHash, tx, api.filters)
 	if err != nil {
 		return nil, err
 	}
-	block, err := api.blockWithSenders(ctx, tx, blockHash, blockNum)
+	block, err := api.blockWithSenders(tx, blockHash, blockNum)
 	if err != nil {
 		return nil, err
 	}
@@ -709,9 +709,9 @@ func (api *APIImpl) GetBlockReceipts(ctx context.Context, number rpc.BlockNumber
 	}
 
 	if chainConfig.Bor != nil {
-		borTx, _, _, _ := rawdb.ReadBorTransactionForBlock(tx, block)
+		borTx := rawdb.ReadBorTransactionForBlock(tx, blockNum)
 		if borTx != nil {
-			borReceipt, err := rawdb.ReadBorReceipt(tx, block.Hash(), block.NumberU64(), receipts)
+			borReceipt, err := rawdb.ReadBorReceipt(tx, block.Hash(), blockNum, receipts)
 			if err != nil {
 				return nil, err
 			}
@@ -785,17 +785,17 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		fields["contractAddress"] = receipt.ContractAddress
 	}
 	// Set derived blob related fields
-	numBlobs := len(txn.GetDataHashes())
+	numBlobs := len(txn.GetBlobHashes())
 	if numBlobs > 0 {
-		if header.ExcessDataGas == nil {
-			log.Warn("excess data gas not set when trying to marshal blob tx")
+		if header.ExcessBlobGas == nil {
+			log.Warn("excess blob gas not set when trying to marshal blob tx")
 		} else {
-			dataGasPrice, err := misc.GetDataGasPrice(*header.ExcessDataGas)
+			blobGasPrice, err := misc.GetBlobGasPrice(*header.ExcessBlobGas)
 			if err != nil {
 				log.Error(err.Error())
 			}
-			fields["dataGasPrice"] = dataGasPrice
-			fields["dataGasUsed"] = misc.GetDataGasUsed(numBlobs)
+			fields["blobGasPrice"] = blobGasPrice
+			fields["blobGasUsed"] = hexutil.Uint64(misc.GetBlobGasUsed(numBlobs))
 		}
 	}
 	return fields

@@ -25,18 +25,23 @@ import (
 
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/consensus"
-	"github.com/ledgerwatch/erigon/consensus/bor/clerk"
+	"github.com/ledgerwatch/erigon/consensus/bor/heimdall"
 	"github.com/ledgerwatch/erigon/consensus/bor/heimdall/span"
 	"github.com/ledgerwatch/erigon/consensus/bor/statefull"
 	"github.com/ledgerwatch/erigon/consensus/bor/valset"
 	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core/state"
+	"github.com/ledgerwatch/erigon/core/systemcontracts"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/crypto/cryptopool"
+	"github.com/ledgerwatch/erigon/eth/borfinality"
+	"github.com/ledgerwatch/erigon/eth/borfinality/flags"
+	"github.com/ledgerwatch/erigon/eth/borfinality/whitelist"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/erigon/rpc"
+	"github.com/ledgerwatch/erigon/turbo/services"
 )
 
 const (
@@ -66,7 +71,6 @@ var (
 	// diffNoTurn = big.NewInt(1) // Block difficulty for out-of-turn signatures
 
 	validatorHeaderBytesLength = length.Addr + 20 // address + power
-	// systemAddress              = libcommon.HexToAddress("0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE")
 )
 
 // Various error messages to mark blocks invalid. These should be private to
@@ -125,6 +129,8 @@ var (
 
 	errUncleDetected     = errors.New("uncles not allowed")
 	errUnknownValidators = errors.New("unknown validators")
+
+	errUnknownSnapshot = errors.New("unknown snapshot")
 )
 
 // SignerFn is a signer callback function to request a header to be signed by a
@@ -234,6 +240,7 @@ type Bor struct {
 	chainConfig *chain.Config    // Chain config
 	config      *chain.BorConfig // Consensus engine configuration parameters for bor consensus
 	DB          kv.RwDB          // Database to store and retrieve snapshot checkpoints
+	blockReader services.FullBlockReader
 
 	recents    *lru.ARCCache[libcommon.Hash, *Snapshot]         // Snapshots for recent block to speed up reorgs
 	signatures *lru.ARCCache[libcommon.Hash, libcommon.Address] // Signatures of recent blocks to speed up mining
@@ -244,7 +251,7 @@ type Bor struct {
 
 	spanner                Spanner
 	GenesisContractsClient GenesisContract
-	HeimdallClient         IHeimdallClient
+	HeimdallClient         heimdall.IHeimdallClient
 
 	// scope event.SubscriptionScope
 	// The fields below are for testing only
@@ -253,6 +260,7 @@ type Bor struct {
 
 	closeOnce sync.Once
 	logger    log.Logger
+	closeCh   chan struct{} // Channel to signal the background processes to exit
 }
 
 type signer struct {
@@ -260,12 +268,102 @@ type signer struct {
 	signFn SignerFn          // Signer function to authorize hashes with
 }
 
+type sprint struct {
+	from, size uint64
+}
+
+type sprints []sprint
+
+func (s sprints) Len() int {
+	return len(s)
+}
+
+func (s sprints) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s sprints) Less(i, j int) bool {
+	return s[i].from < s[j].from
+}
+
+func asSprints(configSprints map[string]uint64) sprints {
+	sprints := make(sprints, len(configSprints))
+
+	i := 0
+	for key, value := range configSprints {
+		sprints[i].from, _ = strconv.ParseUint(key, 10, 64)
+		sprints[i].size = value
+		i++
+	}
+
+	sort.Sort(sprints)
+
+	return sprints
+}
+
+func CalculateSprintCount(config *chain.BorConfig, from, to uint64) int {
+
+	switch {
+	case from > to:
+		return 0
+	case from < to:
+		to--
+	}
+
+	sprints := asSprints(config.Sprint)
+
+	count := uint64(0)
+	startCalc := from
+
+	zeroth := func(boundary uint64, size uint64) uint64 {
+		if boundary%size == 0 {
+			return 1
+		}
+
+		return 0
+	}
+
+	for i := 0; i < len(sprints)-1; i++ {
+		if startCalc >= sprints[i].from && startCalc < sprints[i+1].from {
+			if to >= sprints[i].from && to < sprints[i+1].from {
+				if startCalc == to {
+					return int(count + zeroth(startCalc, sprints[i].size))
+				}
+				return int(count + zeroth(startCalc, sprints[i].size) + (to-startCalc)/sprints[i].size)
+			} else {
+				endCalc := sprints[i+1].from - 1
+				count += zeroth(startCalc, sprints[i].size) + (endCalc-startCalc)/sprints[i].size
+				startCalc = endCalc + 1
+			}
+		}
+	}
+
+	if startCalc == to {
+		return int(count + zeroth(startCalc, sprints[len(sprints)-1].size))
+	}
+
+	return int(count + zeroth(startCalc, sprints[len(sprints)-1].size) + (to-startCalc)/sprints[len(sprints)-1].size)
+}
+
+func CalculateSprint(config *chain.BorConfig, number uint64) uint64 {
+	sprints := asSprints(config.Sprint)
+
+	for i := 0; i < len(sprints)-1; i++ {
+		if number >= sprints[i].from && number < sprints[i+1].from {
+			return sprints[i].size
+		}
+	}
+
+	return sprints[len(sprints)-1].size
+}
+
 // New creates a Matic Bor consensus engine.
 func New(
 	chainConfig *chain.Config,
 	db kv.RwDB,
+	blockReader services.FullBlockReader,
 	spanner Spanner,
-	heimdallClient IHeimdallClient,
+	heimdallClient heimdall.IHeimdallClient,
 	genesisContracts GenesisContract,
 	logger log.Logger,
 ) *Bor {
@@ -284,6 +382,7 @@ func New(
 		chainConfig:            chainConfig,
 		config:                 borConfig,
 		DB:                     db,
+		blockReader:            blockReader,
 		recents:                recents,
 		signatures:             signatures,
 		spanner:                spanner,
@@ -292,6 +391,7 @@ func New(
 		spanCache:              btree.New(32),
 		execCtx:                context.Background(),
 		logger:                 logger,
+		closeCh:                make(chan struct{}),
 	}
 
 	c.authorizedSigner.Store(&signer{
@@ -555,7 +655,6 @@ func (c *Bor) snapshot(chain consensus.ChainHeaderReader, number uint64, hash li
 		// If an in-memory snapshot was found, use that
 		if s, ok := c.recents.Get(hash); ok {
 			snap = s
-
 			break
 		}
 
@@ -565,7 +664,6 @@ func (c *Bor) snapshot(chain consensus.ChainHeaderReader, number uint64, hash li
 				c.logger.Trace("Loaded snapshot from disk", "number", number, "hash", hash)
 
 				snap = s
-
 				break
 			}
 		}
@@ -582,24 +680,36 @@ func (c *Bor) snapshot(chain consensus.ChainHeaderReader, number uint64, hash li
 			parents = parents[:len(parents)-1]
 		} else {
 			// No explicit parents (or no more left), reach out to the database
+			if chain == nil {
+				break
+			}
+
 			header = chain.GetHeader(hash, number)
+
 			if header == nil {
 				return nil, consensus.ErrUnknownAncestor
 			}
 		}
 
-		headers = append(headers, header)
-		number, hash = number-1, header.ParentHash
-		if number <= chain.FrozenBlocks() {
+		if number == 0 {
 			break
 		}
+
+		headers = append(headers, header)
+		number, hash = number-1, header.ParentHash
+
+		if chain != nil && number < chain.FrozenBlocks() {
+			break
+		}
+
 		select {
 		case <-logEvery.C:
 			log.Info("Gathering headers for validator proposer prorities (backwards)", "blockNum", number)
 		default:
 		}
 	}
-	if snap == nil && number <= chain.FrozenBlocks() {
+
+	if snap == nil && chain != nil && number <= chain.FrozenBlocks() {
 		// Special handling of the headers in the snapshot
 		zeroHeader := chain.GetHeaderByNumber(0)
 		if zeroHeader != nil {
@@ -642,7 +752,7 @@ func (c *Bor) snapshot(chain consensus.ChainHeaderReader, number uint64, hash li
 
 	// check if snapshot is nil
 	if snap == nil {
-		return nil, fmt.Errorf("unknown error while retrieving snapshot at block number %v", number)
+		return nil, fmt.Errorf("%w at block number %v", errUnknownSnapshot, number)
 	}
 
 	// Previous snapshot found, apply any pending headers on top of it
@@ -663,14 +773,12 @@ func (c *Bor) snapshot(chain consensus.ChainHeaderReader, number uint64, hash li
 			return nil, err
 		}
 
-		c.logger.Trace("Stored snapshot to disk", "number", snap.Number, "hash", snap.Hash)
+		c.logger.Info("Stored proposer snapshot to disk", "number", snap.Number, "hash", snap.Hash)
 	}
 
 	return snap, err
 }
 
-// VerifyUncles implements consensus.Engine, always returning an error for any
-// uncles as this consensus mechanism doesn't permit uncles.
 // VerifyUncles implements consensus.Engine, always returning an error for any
 // uncles as this consensus mechanism doesn't permit uncles.
 func (c *Bor) VerifyUncles(_ consensus.ChainReader, _ *types.Header, uncles []*types.Header) error {
@@ -800,8 +908,8 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 
 	var succession int
 	// if signer is not empty
-	if !bytes.Equal(c.authorizedSigner.Load().signer.Bytes(), libcommon.Address{}.Bytes()) {
-		succession, err = snap.GetSignerSuccessionNumber(c.authorizedSigner.Load().signer)
+	if signer := c.authorizedSigner.Load().signer; !bytes.Equal(signer.Bytes(), libcommon.Address{}.Bytes()) {
+		succession, err = snap.GetSignerSuccessionNumber(signer)
 		if err != nil {
 			return err
 		}
@@ -824,7 +932,7 @@ func (c *Bor) CalculateRewards(config *chain.Config, header *types.Header, uncle
 // rewards given.
 func (c *Bor) Finalize(config *chain.Config, header *types.Header, state *state.IntraBlockState,
 	txs types.Transactions, uncles []*types.Header, r types.Receipts, withdrawals []*types.Withdrawal,
-	chain consensus.ChainHeaderReader, syscall consensus.SystemCall,
+	chain consensus.ChainReader, syscall consensus.SystemCall, logger log.Logger,
 ) (types.Transactions, types.Receipts, error) {
 	var err error
 
@@ -838,7 +946,7 @@ func (c *Bor) Finalize(config *chain.Config, header *types.Header, state *state.
 			return nil, types.Receipts{}, err
 		}
 
-		if c.HeimdallClient != nil {
+		if c.blockReader != nil {
 			// commit states
 			if err = c.CommitStates(state, header, cx, syscall); err != nil {
 				c.logger.Error("Error while committing states", "err", err)
@@ -899,7 +1007,7 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state *state.Intra
 // nor block rewards given, and returns the final block.
 func (c *Bor) FinalizeAndAssemble(chainConfig *chain.Config, header *types.Header, state *state.IntraBlockState,
 	txs types.Transactions, uncles []*types.Header, receipts types.Receipts, withdrawals []*types.Withdrawal,
-	chain consensus.ChainHeaderReader, syscall consensus.SystemCall, call consensus.Call,
+	chain consensus.ChainReader, syscall consensus.SystemCall, call consensus.Call, logger log.Logger,
 ) (*types.Block, types.Transactions, types.Receipts, error) {
 	// stateSyncData := []*types.StateSyncData{}
 
@@ -948,7 +1056,8 @@ func (c *Bor) GenerateSeal(chain consensus.ChainHeaderReader, currnt, parent *ty
 }
 
 func (c *Bor) Initialize(config *chain.Config, chain consensus.ChainHeaderReader, header *types.Header,
-	state *state.IntraBlockState, txs []types.Transaction, uncles []*types.Header, syscall consensus.SysCallCustom) {
+	state *state.IntraBlockState, syscall consensus.SysCallCustom, logger log.Logger) {
+	systemcontracts.UpgradeBuildInSystemContract(config, header.Number, state, logger)
 }
 
 // Authorize injects a private key into the consensus engine to mint new blocks
@@ -1010,7 +1119,7 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
 
 	// Wait until sealing is terminated or delay timeout.
-	c.logger.Info("Waiting for slot to sign and propagate", "number", number, "hash", header.Hash, "delay-in-sec", uint(delay), "delay", common.PrettyDuration(delay))
+	c.logger.Info("Waiting for slot to sign and propagate", "number", number, "hash", header.Hash, "delay", common.PrettyDuration(delay), "TxCount", block.Transactions().Len(), "Signer", signer)
 
 	go func() {
 		select {
@@ -1020,19 +1129,22 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 		case <-time.After(delay):
 			if wiggle > 0 {
 				c.logger.Info(
-					"Sealing out-of-turn",
+					"Sealed out-of-turn",
 					"number", number,
 					"wiggle", common.PrettyDuration(wiggle),
-					"in-turn-signer", snap.ValidatorSet.GetProposer().Address.Hex(),
+					"delay", delay,
+					"headerDifficulty", header.Difficulty,
+					"signer", signer.Hex(),
+				)
+			} else {
+				c.logger.Info(
+					"Sealed in-turn",
+					"number", number,
+					"delay", delay,
+					"headerDifficulty", header.Difficulty,
+					"signer", signer.Hex(),
 				)
 			}
-
-			c.logger.Info(
-				"Sealing successful",
-				"number", number,
-				"delay", delay,
-				"headerDifficulty", header.Difficulty,
-			)
 		}
 		select {
 		case results <- block.WithSeal(header):
@@ -1043,17 +1155,56 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 	return nil
 }
 
+// IsValidator returns true if this instance is the validator for this block
+func (c *Bor) IsValidator(header *types.Header) (bool, error) {
+	number := header.Number.Uint64()
+
+	if number == 0 {
+		return false, nil
+	}
+
+	snap, err := c.snapshot(nil, number-1, header.ParentHash, nil)
+
+	if err != nil {
+		if errors.Is(err, errUnknownSnapshot) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	currentSigner := c.authorizedSigner.Load()
+
+	return snap.ValidatorSet.HasAddress(currentSigner.signer), nil
+}
+
+// IsProposer returns true if this instance is the proposer for this block
+func (c *Bor) IsProposer(header *types.Header) (bool, error) {
+	number := header.Number.Uint64()
+
+	if number == 0 {
+		return false, nil
+	}
+
+	snap, err := c.snapshot(nil, number-1, header.ParentHash, nil)
+	if err != nil {
+		return false, err
+	}
+
+	currentSigner := c.authorizedSigner.Load()
+
+	if !snap.ValidatorSet.HasAddress(currentSigner.signer) {
+		return false, nil
+	}
+
+	successionNumber, err := snap.GetSignerSuccessionNumber(currentSigner.signer)
+
+	return successionNumber == 0, err
+}
+
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 // that a new block should have based on the previous blocks in the chain and the
 // current signer.
-// func (c *Bor) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-// 	snap, err := c.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-// 	if err != nil {
-// 		return nil
-// 	}
-// 	return new(big.Int).SetUint64(snap.Difficulty(c.signer))
-// }
-
 func (c *Bor) CalcDifficulty(chain consensus.ChainHeaderReader, _, _ uint64, _ *big.Int, parentNumber uint64, parentHash, _ libcommon.Hash, _ uint64) *big.Int {
 	snap, err := c.snapshot(chain, parentNumber, parentHash, nil)
 	if err != nil {
@@ -1083,12 +1234,36 @@ func (c *Bor) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 	}}
 }
 
-// Close implements consensus.Engine. It's a noop for bor as there are no background threads.
+type FinalityAPI interface {
+	GetRootHash(start uint64, end uint64) (string, error)
+}
+
+func (c *Bor) Start(apiList []rpc.API, chainDB kv.RwDB, blockReader services.FullBlockReader) {
+	if flags.Milestone {
+		borDB := c.DB
+
+		whitelist.RegisterService(borDB)
+
+		var borAPI borfinality.BorAPI
+
+		for _, api := range apiList {
+			if api.Namespace == "bor" {
+				borAPI = api.Service.(FinalityAPI)
+				break
+			}
+		}
+
+		borfinality.Whitelist(c.HeimdallClient, borDB, chainDB, blockReader, c.logger, borAPI, c.closeCh)
+	}
+}
+
 func (c *Bor) Close() error {
 	c.closeOnce.Do(func() {
 		if c.HeimdallClient != nil {
 			c.HeimdallClient.Close()
 		}
+		// Close all bg processes
+		close(c.closeCh)
 	})
 
 	return nil
@@ -1216,89 +1391,16 @@ func (c *Bor) CommitStates(
 	chain statefull.ChainContext,
 	syscall consensus.SystemCall,
 ) error {
-	fetchStart := time.Now()
-	number := header.Number.Uint64()
-
-	var (
-		lastStateIDBig *big.Int
-		from           uint64
-		to             time.Time
-		err            error
-	)
-
-	// Explicit condition for Indore fork won't be needed for fetching this
-	// as erigon already performs this call on the IBS (Intra block state) of
-	// the incoming chain.
-	lastStateIDBig, err = c.GenesisContractsClient.LastStateId(syscall)
-	if err != nil {
-		return err
-	}
-
-	if c.config.IsIndore(number) {
-		stateSyncDelay := c.config.CalculateStateSyncDelay(number)
-		to = time.Unix(int64(header.Time-stateSyncDelay), 0)
-	} else {
-		to = time.Unix(int64(chain.Chain.GetHeaderByNumber(number-c.config.CalculateSprint(number)).Time), 0)
-	}
-
-	lastStateID := lastStateIDBig.Uint64()
-	from = lastStateID + 1
-
-	c.logger.Info(
-		"Fetching state updates from Heimdall",
-		"fromID", from,
-		"to", to.Format(time.RFC3339),
-	)
-
-	eventRecords, err := c.HeimdallClient.StateSyncEvents(c.execCtx, lastStateID+1, to.Unix())
-	if err != nil {
-		return err
-	}
-
-	if c.config.OverrideStateSyncRecords != nil {
-		if val, ok := c.config.OverrideStateSyncRecords[strconv.FormatUint(number, 10)]; ok {
-			eventRecords = eventRecords[0:val]
-		}
-	}
-
-	fetchTime := time.Since(fetchStart)
-	processStart := time.Now()
-	chainID := c.chainConfig.ChainID.String()
-
-	for _, eventRecord := range eventRecords {
-		if eventRecord.ID <= lastStateID {
-			continue
-		}
-
-		if err := validateEventRecord(eventRecord, number, to, lastStateID, chainID); err != nil {
-			c.logger.Error("while validating event record", "block", number, "to", to, "stateID", lastStateID+1, "error", err.Error())
-			break
-		}
-
-		if err := c.GenesisContractsClient.CommitState(eventRecord, syscall); err != nil {
+	events := chain.Chain.BorEventsByBlock(header.Hash(), header.Number.Uint64())
+	for _, event := range events {
+		if err := c.GenesisContractsClient.CommitState(event, syscall); err != nil {
 			return err
 		}
-
-		lastStateID++
 	}
-
-	processTime := time.Since(processStart)
-
-	c.logger.Info("StateSyncData", "number", number, "lastStateID", lastStateID, "total records", len(eventRecords), "fetch time", int(fetchTime.Milliseconds()), "process time", int(processTime.Milliseconds()))
-
 	return nil
 }
 
-func validateEventRecord(eventRecord *clerk.EventRecordWithTime, number uint64, to time.Time, lastStateID uint64, chainID string) error {
-	// event id should be sequential and event.Time should lie in the range [from, to)
-	if lastStateID+1 != eventRecord.ID || eventRecord.ChainID != chainID || !eventRecord.Time.Before(to) {
-		return &InvalidStateReceivedError{number, lastStateID, &to, eventRecord}
-	}
-
-	return nil
-}
-
-func (c *Bor) SetHeimdallClient(h IHeimdallClient) {
+func (c *Bor) SetHeimdallClient(h heimdall.IHeimdallClient) {
 	c.HeimdallClient = h
 }
 

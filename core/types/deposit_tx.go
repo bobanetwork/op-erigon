@@ -53,7 +53,7 @@ type DepositTransaction struct {
 	Data       []byte
 }
 
-func (tx DepositTransaction) GetDataGas() uint64      { return 0 } // FIXME - do we need this?
+func (tx DepositTransaction) GetBlobGas() uint64      { return 0 } // FIXME - do we need this?
 func (tx DepositTransaction) GetGas() uint64          { return tx.GasLimit }
 func (tx DepositTransaction) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx DepositTransaction) GetTip() *uint256.Int    { return uint256.NewInt(0) }
@@ -76,7 +76,7 @@ func (tx DepositTransaction) GetAccessList() types2.AccessList {
 func (tx DepositTransaction) GetData() []byte {
 	return tx.Data
 }
-func (tx DepositTransaction) GetDataHashes() []libcommon.Hash {
+func (tx DepositTransaction) GetBlobHashes() []libcommon.Hash {
 	// Only blob txs have data hashes
 	return []libcommon.Hash{}
 }
