@@ -68,7 +68,7 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 	if res.Imported[0] != txPoolProto.ImportResult_SUCCESS {
 		return hash, fmt.Errorf("%s: %s", txPoolProto.ImportResult_name[int32(res.Imported[0])], res.Errors[0])
 	}
-	api.logger.Debug("MMDBG SendRawTransaction", "hash", hash, "txn", txn)
+	api.logger.Debug("SendRawTransaction submitted", "hash", hash, "txn", txn)
 
 	return txn.Hash(), nil
 }

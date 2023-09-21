@@ -130,7 +130,7 @@ func (tm TransactionMisc) From() *atomic.Value {
 	return &tm.from
 }
 
-func RollupDataGas(tx binMarshalable) uint64 {
+func RollupDataGas(tx binMarshalable, rules *chain.Rules) uint64 {
 	var buf bytes.Buffer
 	if err := tx.MarshalBinary(&buf); err != nil {
 		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
@@ -147,9 +147,14 @@ func RollupDataGas(tx binMarshalable) uint64 {
 		}
 	}
 	zeroesGas := zeroes * params.TxDataZeroGas
-	onesGas := (ones + 68) * params.TxDataNonZeroGasEIP2028
+	var onesGas uint64
+	if rules.IsOptimismRegolith {
+		onesGas = ones * params.TxDataNonZeroGasEIP2028
+	} else {
+		onesGas = (ones + 68) * params.TxDataNonZeroGasEIP2028
+	}
 	total := zeroesGas + onesGas
-	log.Info("MMDBG computing rollupDataGas", "total", total, "tx", tx)
+	log.Debug("Computed rollupDataGas", "total", total, "tx", tx)
 	return total
 }
 
@@ -159,7 +164,6 @@ type binMarshalable interface {
 
 func DecodeRLPTransaction(s *rlp.Stream) (Transaction, error) {
 	kind, size, err := s.Kind()
-	//log.Debug("MMDBG transaction.go DecodeTransaction", "kind", kind, "size", size, "err", err)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +244,6 @@ func UnmarshalTransactionFromBinary(data []byte) (Transaction, error) {
 		return t, nil
 	case DepositTxType:
 		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
-		log.Debug("MMDBG transaction.go Decoding as DepositTxType")
 		t := &DepositTransaction{}
 		if err := t.DecodeRLP(s); err != nil {
 			return nil, err
@@ -289,7 +292,6 @@ func MarshalTransactionsBinary(txs Transactions) ([][]byte, error) {
 		}
 		buf.Reset()
 		err = txs[i].MarshalBinary(&buf)
-		//log.Debug("MMDBG transaction MarshalBinary", "i", i, "err", err, "buf", buf)
 		if err != nil {
 			return nil, err
 		}
@@ -655,7 +657,7 @@ func (m Message) MaxFeePerDataGas() *uint256.Int {
 	return &m.maxFeePerDataGas
 }
 
-func (m Message) EstimateRDG() uint64 {
+func (m Message) EstimateRDG(rules *chain.Rules) uint64 {
 	// Needed for eth_estimateGas to work with hybrid compute.
 	// Actual Tx will have Signature fields in addition to what's here.
 	var rdg uint64
@@ -674,7 +676,7 @@ func (m Message) EstimateRDG() uint64 {
 			FeeCap:     &m.feeCap,
 			AccessList: m.accessList,
 		}
-		rdg = RollupDataGas(tmpTx)
+		rdg = RollupDataGas(tmpTx, rules)
 		log.Debug("HC Estimated RollupDataGas", "msgType", m.GetType(), "m.rollupDataGas", m.rollupDataGas, "calculated", rdg)
 	} else {
 		rdg = m.rollupDataGas

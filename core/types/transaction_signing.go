@@ -29,7 +29,6 @@ import (
 
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/crypto"
-	"github.com/ledgerwatch/log/v3"
 )
 
 var ErrInvalidChainId = errors.New("invalid chain id for signer")
@@ -271,7 +270,6 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 		R, S = &t.R, &t.S
 	case *DepositTransaction:
 		// This type contains an explicit From: field
-		log.Debug("MMDBG transaction_signing DepositTransaction handler")
 		sender, _ := tx.GetSender()
 		return sender, nil
 	case *OffchainTransaction:

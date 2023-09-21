@@ -510,6 +510,7 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		}
 		backend.historicalRPCService = client
 	}
+	config.TxPool.NoTxGossip = config.RollupDisableTxPoolGossip
 
 	if config.HybridComputeEnabled {
 		backend.hybridComputeService, err = vm.NewHCService()
@@ -570,8 +571,6 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 
 	// proof-of-stake mining
 	assembleBlockPOS := func(param *core.BlockBuilderParameters, interrupt *int32) (*types.BlockWithReceipts, error) {
-		log.Debug("MMDBG assembleBlockPOS", "param", param)
-
 		miningStatePos := stagedsync.NewProposingState(&config.Miner)
 		miningStatePos.MiningConfig.Etherbase = param.SuggestedFeeRecipient
 		proposingSync := stagedsync.New(
@@ -584,11 +583,11 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 			), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder,
 			logger)
 		// We start the mining step
-		log.Debug("MMDBG backend.go Start mining step", "param", param, "proposingSync", proposingSync)
+		log.Debug("Starting assembleBlockPOS mining step", "payloadId", param.PayloadId)
 		if err := stages2.MiningStep(ctx, backend.chainDB, proposingSync, tmpdir); err != nil {
 			return nil, err
 		}
-		log.Debug("MMDBG backend.go Done mining step")
+		log.Debug("Finished assembleBlockPOS mining step", "payloadId", param.PayloadId)
 		block := <-miningStatePos.MiningResultPOSCh
 		return block, nil
 	}

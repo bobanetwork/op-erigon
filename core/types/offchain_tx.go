@@ -195,7 +195,7 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 }
 
 // AsMessage returns the transaction as a core.Message.
-func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
+func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
 		txType:        OffchainTxType,
 		sourceHash:    tx.SourceHash,
@@ -205,7 +205,7 @@ func (tx OffchainTransaction) AsMessage(_ Signer, _ *big.Int, _ *chain.Rules) (M
 		data:          tx.Data,
 		accessList:    nil,
 		checkNonce:    true,
-		rollupDataGas: RollupDataGas(tx),
+		rollupDataGas: RollupDataGas(tx, rules),
 	}
 	return msg, nil
 }
