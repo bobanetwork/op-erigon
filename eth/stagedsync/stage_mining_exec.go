@@ -421,7 +421,7 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 		gasSnap := gasPool.Gas()
 		dataGasSnap := gasPool.DataGas()
 		snap := ibs.Snapshot()
-		receipt, _, err := core.ApplyTransaction(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.DataGasUsed, *vmConfig)
+		receipt, _, err := core.ApplyTransactionHC(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.DataGasUsed, *vmConfig, hc)
 		if err != nil || (hc != nil && hc.State != vm.HC_STATE_NONE) {
 			log.Debug("HC miningCommitTx result", "err", err, "hc", hc)
 		}

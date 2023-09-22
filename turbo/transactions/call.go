@@ -45,7 +45,7 @@ func CallHC(hcs *vm.HCService, evm vm.VMInterface, msg core.Message, gp *core.Ga
 		log.Debug("HC CallHC inserting prepared response", "hcState", hc.State, "mh", mh, "txn", txn)
 
 		var msg2 types.Message
-		msg2, err = txn.AsMessage(types.Signer{}, nil, nil)
+		msg2, err = txn.AsMessage(types.Signer{}, nil, evm.ChainRules())
 		if err != nil {
 			return nil, err
 		}

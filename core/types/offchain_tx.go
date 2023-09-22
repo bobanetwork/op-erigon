@@ -49,6 +49,9 @@ type OffchainTransaction struct {
 	Data       []byte
 }
 
+// Address of the HCHelper contract
+const HC_PREDEPLOY = "0x42000000000000000000000000000000000003E9"
+
 func (tx OffchainTransaction) GetDataGas() uint64      { return 0 } // FIXME - do we need this?
 func (tx OffchainTransaction) GetGas() uint64          { return tx.GasLimit }
 func (tx OffchainTransaction) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
@@ -290,7 +293,7 @@ func (tx *OffchainTransaction) SetSender(addr libcommon.Address) {
 
 func NewOffchainTx(hcHash libcommon.Hash, data []byte, gasLimit uint64) *OffchainTransaction {
 	hcFrom := libcommon.HexToAddress("0xdEAddEadDeaDDEaDDeadDeAddeadDEaddeaD9901")
-	hcHelper := libcommon.HexToAddress("0x42000000000000000000000000000000000000Fd")
+	hcHelper := libcommon.HexToAddress(HC_PREDEPLOY)
 
 	ret := &OffchainTransaction{
 		SourceHash: &hcHash,

@@ -25,6 +25,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
 	"github.com/ledgerwatch/erigon/common/u256"
+	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
@@ -269,7 +270,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 			readOnly = true
 		}
 		ret, err = run(evm, contract, input, readOnly)
-		if addr == libcommon.HexToAddress("0x42000000000000000000000000000000000000FD") && CheckTrigger(evm.hc, input, ret, err) {
+		if addr == libcommon.HexToAddress(types.HC_PREDEPLOY) && CheckTrigger(evm.hc, input, ret, err) {
 			evm.hc.Caller = caller.Address()
 			evm.hc.Request = make([]byte, len(input))
 			copy(evm.hc.Request, input)

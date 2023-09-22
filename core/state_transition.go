@@ -605,13 +605,6 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		)
 	}
 
-	log.Info(
-		"MMDBG-HC Accounting for base fee and l1 fee",
-		"isOptimism", st.evm.ChainConfig().Optimism != nil,
-		"isBedrock", rules.IsBedrock,
-		"gasUsed", st.gasUsed(),
-		"baseFee", st.evm.Context().BaseFee,
-	)
 	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
 	if rules.IsBedrock {
 		st.state.AddBalance(params.OptimismBaseFeeRecipient, new(uint256.Int).Mul(uint256.NewInt(st.gasUsed()), st.evm.Context().BaseFee))
