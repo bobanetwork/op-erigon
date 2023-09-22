@@ -52,6 +52,9 @@ jobs:
     environment:
       DOCKER_BUILDKIT: 1
     parameters:
+      project_number:
+        type: env_var_name
+        default: GCP_PROJECT_NUMBER
       docker_name:
         description: Docker image name
         type: string
@@ -84,12 +87,13 @@ jobs:
             gcloud auth configure-docker <<parameters.registry>>
       - run:
           name: Build and push
+          no_output_timeout: 30m
           command: |
             RAW_TAGS="<<parameters.docker_tags>>"
             if [ "$CIRCLE_BRANCH" = "optimism" ]; then
               RAW_TAGS="$RAW_TAGS,optimism"
             fi
-            IMAGE_BASE="<<parameters.registry>>/<<parameters.repo>>/<<parameters.docker_name>>"
+            IMAGE_BASE="<<parameters.registry>>/${GCP_PROJECT_ID}/<<parameters.repo>>/<<parameters.docker_name>>"
             DOCKER_TAGS=$(echo -ne "$RAW_TAGS" | sed "s/,/\n/g" | sed "s/[^a-zA-Z0-9\n.]/-/g" | sed -e "s|^|-t ${IMAGE_BASE}:|")
             docker context create buildx-build
             docker buildx create --use buildx-build
