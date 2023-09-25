@@ -492,7 +492,7 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 	if g.Difficulty == nil {
 		head.Difficulty = params.GenesisDifficulty
 	}
-	if g.Config != nil && (g.Config.IsLondon(0)) {
+	if g.Config != nil && (g.Config.IsLondon(0)) && !isBobaLegacyBlock {
 		if g.BaseFee != nil {
 			head.BaseFee = g.BaseFee
 		} else {
