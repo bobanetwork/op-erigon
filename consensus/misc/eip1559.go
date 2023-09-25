@@ -57,6 +57,11 @@ func VerifyEip1559Header(config *chain.Config, parent, header *types.Header) err
 
 // CalcBaseFee calculates the basefee of the header.
 func CalcBaseFee(config *chain.Config, parent *types.Header) *big.Int {
+	// If the parent block is a legacy block, the baseFee remains 0.
+	if config.IsBobaLegacyBlock(parent.Number) {
+		return common.Big0
+	}
+
 	// If the current block is the first EIP-1559 block, return the InitialBaseFee.
 	if !config.IsLondon(parent.Number.Uint64()) {
 		return new(big.Int).SetUint64(params.InitialBaseFee)
