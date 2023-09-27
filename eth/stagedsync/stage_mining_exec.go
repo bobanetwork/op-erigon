@@ -535,7 +535,7 @@ LOOP:
 			log.Debug("HC Found a prepared response", "hc.Response", hexutility.Bytes(hc.Response))
 			txnGas := txn.GetGas()
 			txn = types.NewOffchainTx(mh, hc.Response, txnGas)
-			hc.State = vm.HC_STATE_INSERTED
+			hc.State = vm.HC_STATE_PREPARED
 			log.Debug("HC Inserting OffchainTx", "txn", txn)
 			hcOffchain = true
 		}
@@ -573,8 +573,8 @@ LOOP:
 			}
 
 			continue
-		} else if err == nil && hc != nil && hc.State == vm.HC_STATE_INSERTED {
-			hc.State = vm.HC_STATE_COMPLETED
+		} else if err == nil && hc != nil && hc.State == vm.HC_STATE_PREPARED {
+			hc.State = vm.HC_STATE_STORED
 		}
 
 		if errors.Is(err, core.ErrGasLimitReached) {

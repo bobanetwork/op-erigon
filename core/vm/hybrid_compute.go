@@ -36,9 +36,9 @@ const (
 
 	HC_STATE_NONE      HcState = 0 // Has not yet interacted with Hybrid Compute
 	HC_STATE_TRIGGERED HcState = 1 // ErrHcReverted trigger detected
-	HC_STATE_READY     HcState = 2 // Offchain Tx has been prepared
-	HC_STATE_INSERTED  HcState = 3 // Offchain Tx has been added to block
-	HC_STATE_COMPLETED HcState = 4 // FIXME Original Tx has been added after the Offchain Tx
+	HC_STATE_READY     HcState = 2 // Offchain response has been received
+	HC_STATE_PREPARED  HcState = 3 // Offchain Tx has been generated and queued
+	HC_STATE_STORED    HcState = 4 // Response stored to cache; ready to re-run the original Tx.
 	HC_STATE_FAILED    HcState = 5 // HC mechanism failed (various reasons). Doesn't include in-band errors returned to the client
 )
 

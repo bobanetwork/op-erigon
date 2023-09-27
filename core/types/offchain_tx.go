@@ -52,29 +52,13 @@ type OffchainTransaction struct {
 // Address of the HCHelper contract
 const HC_PREDEPLOY = "0x42000000000000000000000000000000000003E9"
 
-func (tx OffchainTransaction) GetDataGas() uint64      { return 0 } // FIXME - do we need this?
+func (tx OffchainTransaction) GetDataGas() uint64      { return 0 }
 func (tx OffchainTransaction) GetGas() uint64          { return tx.GasLimit }
 func (tx OffchainTransaction) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx OffchainTransaction) GetTip() *uint256.Int    { return uint256.NewInt(0) }
 func (tx OffchainTransaction) GetFeeCap() *uint256.Int { return uint256.NewInt(0) }
 func (tx OffchainTransaction) GetNonce() uint64        { return 0 }
 func (tx OffchainTransaction) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
-	/*
-		if baseFee == nil {
-			return tx.GetTip()
-		}
-		gasFeeCap := tx.GetFeeCap()
-		// return 0 because effectiveFee cant be < 0
-		if gasFeeCap.Lt(baseFee) {
-			return uint256.NewInt(0)
-		}
-		effectiveFee := new(uint256.Int).Sub(gasFeeCap, baseFee)
-		if tx.GetTip().Lt(effectiveFee) {
-			return tx.GetTip()
-		} else {
-			return effectiveFee
-		}
-	*/
 	return uint256.NewInt(0)
 }
 func (tx *OffchainTransaction) Unwrap() Transaction { return tx }
@@ -101,11 +85,11 @@ func (tx OffchainTransaction) Protected() bool {
 }
 
 func (tx OffchainTransaction) EncodingSize() int {
-	// FIXME - inefficient
+	// This function performs the encoding in order to determine the size,
+	// resulting in some unnecessary work (since the encoded structure is
+	// discarded) but simplifying the code here (vs. legacy_tx.go)
 	var bb bytes.Buffer
 	tx.EncodeRLP(&bb)
-	log.Debug("Offchain tx EncodingSize", "tx", tx, "len", bb.Len())
-
 	return bb.Len()
 }
 
@@ -193,7 +177,6 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 		return fmt.Errorf("close tx struct: %w", err)
 	}
 
-	log.Debug("Offchain DecodeRLP successful", "tx", tx)
 	return nil
 }
 

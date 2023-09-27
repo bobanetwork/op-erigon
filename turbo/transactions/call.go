@@ -39,7 +39,7 @@ func CallHC(hcs *vm.HCService, evm vm.VMInterface, msg core.Message, gp *core.Ga
 	evm.SetHC(hc)
 
 	var extra [2]uint64
-	if len(hc.Response) > 0 && hc.State < vm.HC_STATE_INSERTED { // FIXME
+	if len(hc.Response) > 0 && hc.State < vm.HC_STATE_PREPARED {
 		// A cached response is available from a prior run
 
 		txn := types.NewOffchainTx(mh, hc.Response, msg.Gas())
