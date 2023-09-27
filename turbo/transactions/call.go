@@ -28,7 +28,8 @@ func CallHC(hcs *vm.HCService, evm vm.VMInterface, msg core.Message, gp *core.Ga
 
 	var hc *vm.HCContext
 
-	mh := vm.HCKey(msg.From(), msg.To(), msg.Nonce(), msg.Data())
+	ibs := evm.IntraBlockState()
+	mh := vm.HCKey(msg.From(), msg.To(), ibs, msg.Data())
 	if hcs != nil {
 		hc = hcs.GetHC(mh)
 	}

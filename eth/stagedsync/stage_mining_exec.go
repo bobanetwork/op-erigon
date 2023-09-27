@@ -519,8 +519,7 @@ LOOP:
 
 		// Check for pending Hybrid Compute
 		txnFrom, _ := txn.GetSender()
-		mh := vm.HCKey(txnFrom, txn.GetTo(), txn.GetNonce(), txn.GetData())
-
+		mh := vm.HCKey(txnFrom, txn.GetTo(), ibs, txn.GetData())
 		if hcs != nil && hcs.HCActive[mh] != nil {
 			log.Debug("HC Skipping txn in HCActive map", " mh", mh, "From", txnFrom, "nonce", txn.GetNonce(), "HCActive", hcs.HCActive[mh])
 			txs.Pop()
@@ -604,7 +603,7 @@ LOOP:
 			} else {
 				if hcs != nil {
 					txnFrom, _ := txn.GetSender()
-					mh := vm.HCKey(txnFrom, txn.GetTo(), txn.GetNonce(), txn.GetData())
+					mh := vm.HCKey(txnFrom, txn.GetTo(), ibs, txn.GetData())
 					hcs.PutHC(mh, nil)
 				}
 				txs.Shift()

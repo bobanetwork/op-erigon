@@ -16,6 +16,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon/accounts/abi"
+	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/log/v3"
@@ -172,10 +173,12 @@ func (hcs *HCService) PruneCache() {
 // or input data from one call to another.
 // Cache entries are removed when eth_sendRawTransaction finishes or on a periodic cleanup timer for
 // transactions which were abandoned after gas estimation.
-func HCKey(fromAddr libcommon.Address, toPtr *libcommon.Address, nonce uint64, data []byte) libcommon.Hash {
-	// FIXME - can't include Nonce here because it can be 0 in eth_estimateGas() calls
-	//bNonce := make([]byte, 8)
-	//binary.BigEndian.PutUint64(bNonce, nonce)
+func HCKey(fromAddr libcommon.Address, toPtr *libcommon.Address, ibs evmtypes.IntraBlockState, data []byte) libcommon.Hash {
+	// We can't use the nonce field from the msg because it can be 0 on the eth_call() path.
+	// Instead we use the current nonce from IntraBlockState
+	nonce := ibs.GetNonce(fromAddr)
+	bNonce := make([]byte, 8)
+	binary.BigEndian.PutUint64(bNonce, nonce)
 
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(fromAddr.Bytes())
