@@ -224,10 +224,6 @@ func HCGenerateRandom() (*uint256.Int, error) {
 // TODO - redirect outgoing requests through an external proxy (squid, socks5, etc).
 
 func DoOffchain(reqUrl string, reqMethod libcommon.Address, reqPayload []byte) ([]byte, error) {
-	// Simulate a slow offchain response for development purposes; FIXME remove for production
-	log.Warn("HC Sleeping for 2s")
-	time.Sleep(2 * time.Second)
-
 	// TODO - reroute through an external proxy service
 	client, err := rpc.Dial(reqUrl, log.New())
 
