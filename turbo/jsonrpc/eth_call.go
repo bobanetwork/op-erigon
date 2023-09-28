@@ -360,34 +360,34 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 		return nil, fmt.Errorf("not supported by Erigon3")
 	}
 
-	// bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// chainConfig, err := api.chainConfig(tx)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("read chain config: %v", err)
-	// }
-	// if chainConfig.IsOptimismPreBedrock(bn) {
-	// 	if api.historicalRPCService != nil {
-	// 		var result accounts.AccProofResult
-	// 		if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getProof", address, storageKeys, hexutil.EncodeUint64(bn)); err != nil {
-	// 			return nil, fmt.Errorf("historical backend failed: %w", err)
-	// 		}
-	// 		return &result, nil
-	// 	}
-	// 	return nil, rpc.ErrNoHistoricalFallback
-	// }
+	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	if err != nil {
+		return nil, err
+	}
+	chainConfig, err := api.chainConfig(tx)
+	if err != nil {
+		return nil, fmt.Errorf("read chain config: %v", err)
+	}
+	if chainConfig.IsOptimismPreBedrock(bn) {
+		if api.historicalRPCService != nil {
+			var result accounts.AccProofResult
+			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getProof", address, storageKeys, hexutil.EncodeUint64(bn)); err != nil {
+				return nil, fmt.Errorf("historical backend failed: %w", err)
+			}
+			return &result, nil
+		}
+		return nil, rpc.ErrNoHistoricalFallback
+	}
 
 	blockNr, _, _, err := rpchelper.GetBlockNumber(blockNrOrHash, tx, api.filters)
 	if err != nil {
 		return nil, err
 	}
 
-	// header, err := api._blockReader.HeaderByNumber(ctx, tx, blockNr)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	header, err := api._blockReader.HeaderByNumber(ctx, tx, blockNr)
+	if err != nil {
+		return nil, err
+	}
 
 	latestBlock, err := rpchelper.GetLatestBlockNumber(tx)
 	if err != nil {
@@ -443,14 +443,14 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	}
 
 	loader.SetProofRetainer(pr)
-	// root, err := loader.CalcTrieRoot(tx, nil)
+	root, err := loader.CalcTrieRoot(tx, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// if root != header.Root {
-	// 	return nil, fmt.Errorf("mismatch in expected state root computed %v vs %v indicates bug in proof implementation", root, header.Root)
-	// }
+	if root != header.Root {
+		return nil, fmt.Errorf("mismatch in expected state root computed %v vs %v indicates bug in proof implementation", root, header.Root)
+	}
 	return pr.ProofResult()
 }
 
