@@ -18,7 +18,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
-	"github.com/ledgerwatch/erigon/turbo/stages"
+	"github.com/ledgerwatch/erigon/turbo/stages/mock"
 	"github.com/ledgerwatch/log/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ func TestGetReceipts(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateOptimismTestSentry(t)
 	agg := m.HistoryV3Components()
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
-	ctx, conn := rpcdaemontest.CreateTestGrpcConn(t, stages.Mock(t))
+	ctx, conn := rpcdaemontest.CreateTestGrpcConn(t, mock.Mock(t))
 	mining := txpool.NewMiningClient(conn)
 	ff := rpchelper.New(ctx, nil, nil, mining, func() {}, m.Log)
 	api := NewEthAPI(NewBaseApi(ff, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), m.DB, nil, nil, nil, 5000000, 100_000, log.New())

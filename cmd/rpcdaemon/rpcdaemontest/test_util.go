@@ -112,7 +112,7 @@ func CreateTestSentry(t *testing.T) (*mock.MockSentry, *core.ChainPack, []*core.
 	return m, chain, []*core.ChainPack{orphanedChain}
 }
 
-func CreateOptimismTestSentry(t *testing.T) (*stages.MockSentry, *core.ChainPack, []*core.ChainPack) {
+func CreateOptimismTestSentry(t *testing.T) (*mock.MockSentry, *core.ChainPack, []*core.ChainPack) {
 	addresses := makeTestAddresses()
 	var (
 		key      = addresses.key
@@ -132,7 +132,7 @@ func CreateOptimismTestSentry(t *testing.T) (*stages.MockSentry, *core.ChainPack
 			GasLimit: 10000000,
 		}
 	)
-	m := stages.MockWithGenesis(t, gspec, key, false)
+	m := mock.MockWithGenesis(t, gspec, key, false)
 
 	contractBackend := backends.NewTestSimulatedBackendWithConfig(t, gspec.Alloc, gspec.Config, gspec.GasLimit)
 	defer contractBackend.Close()

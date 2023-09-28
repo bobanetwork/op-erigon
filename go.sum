@@ -159,8 +159,8 @@ github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6r
 github.com/bits-and-blooms/bitset v1.2.0/go.mod h1:gIdJ4wp64HaoK2YrL1Q5/N7Y16edYb8uY+O0FJTyyDA=
 github.com/bits-and-blooms/bitset v1.5.0 h1:NpE8frKRLGHIcEzkR+gZhiioW1+WbYV6fKwD6ZIpQT8=
 github.com/bits-and-blooms/bitset v1.5.0/go.mod h1:gIdJ4wp64HaoK2YrL1Q5/N7Y16edYb8uY+O0FJTyyDA=
-github.com/bobanetwork/v3-erigon-lib v0.0.0-20230919193521-e08d674dd657 h1:jHqB96xD3e1SuM0z/onuQPWdk5s1ozIc+6/RWlGLqmk=
-github.com/bobanetwork/v3-erigon-lib v0.0.0-20230919193521-e08d674dd657/go.mod h1:0JiKpq2AMVSyb2WHvn9/ZORnVFxRE1l4YTfl2ksBOJ4=
+github.com/bobanetwork/v3-erigon-lib v0.0.0-20230928194434-d136dcfda72e h1:o8z7q7Dfhh9L3JPf9Go5iLK4gxt++RhuRC0DX0PZMJo=
+github.com/bobanetwork/v3-erigon-lib v0.0.0-20230928194434-d136dcfda72e/go.mod h1:0JiKpq2AMVSyb2WHvn9/ZORnVFxRE1l4YTfl2ksBOJ4=
 github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625/go.mod h1:HYsPBTaaSFSlLx/70C2HPIMNZpVV8+vt/A+FMnYP11g=
 github.com/bradfitz/iter v0.0.0-20140124041915-454541ec3da2/go.mod h1:PyRFw1Lt2wKX4ZVSQ2mk+PeDa1rxyObEDlApuIsUKuo=
 github.com/bradfitz/iter v0.0.0-20190303215204-33e6a9893b0c/go.mod h1:PyRFw1Lt2wKX4ZVSQ2mk+PeDa1rxyObEDlApuIsUKuo=

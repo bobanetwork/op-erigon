@@ -10,9 +10,9 @@ on:
     branches-ignore:
       - '**'
     tags:
-      - 'v*.*.*'
+      #- 'v*.*.*'
       # to be used by fork patch-releases ^^
-      - 'v*.*.*-*'
+      #- 'v*.*.*-*'
   workflow_dispatch:
 
 jobs:

@@ -271,7 +271,7 @@ require (
 	zombiezen.com/go/sqlite v0.13.1 // indirect
 )
 
-replace github.com/ledgerwatch/erigon-lib => github.com/bobanetwork/v3-erigon-lib v0.0.0-20230919193521-e08d674dd657
+replace github.com/ledgerwatch/erigon-lib => github.com/bobanetwork/v3-erigon-lib v0.0.0-20230928194434-d136dcfda72e
 
 // replace github.com/ledgerwatch/erigon-lib => ../erigon-lib
 
