@@ -4,11 +4,12 @@ on:
     branches:
       - devel
       - alpha
-      - stable
+      - 'release/**'
       - boba-develop
   pull_request:
     branches:
       - boba-develop
+      - 'release/**'
   schedule:
     - cron: '20 16 * * *' # daily at 16:20 UTC
   workflow_dispatch:

@@ -4,14 +4,19 @@ on:
     branches:
       - devel
       - alpha
-      - stable
+      - 'release/**'
       - boba-develop
   pull_request:
     branches:
       - devel
       - alpha
-      - stable
       - boba-develop
+      - 'release/**'
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
 
 concurrency:
   group: ${{ github.ref }}
