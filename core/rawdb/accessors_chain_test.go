@@ -509,9 +509,6 @@ func TestBlockReceiptStorage(t *testing.T) {
 		if err := checkReceiptsRLP(rs, receipts); err != nil {
 			t.Fatalf(err.Error())
 		}
-		for _, r := range rs {
-			fmt.Printf("JKY!!! %+v\n", r)
-		}
 	}
 	// Delete the body and ensure that the receipts are no longer returned (metadata can't be recomputed)
 	rawdb.DeleteHeader(tx, hash, 1)

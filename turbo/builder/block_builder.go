@@ -9,7 +9,6 @@ import (
 
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/types"
-	//"github.com/ledgerwatch/erigon/common/hexutil"
 )
 
 type BlockBuilderFunc func(param *core.BlockBuilderParameters, interrupt *int32) (*types.BlockWithReceipts, error)
@@ -59,27 +58,12 @@ func (b *BlockBuilder) Stop() (*types.BlockWithReceipts, error) {
 	return b.result, b.err
 }
 
-func (b *BlockBuilder) WaitForBlock() (*types.BlockWithReceipts, error) {
+func (b *BlockBuilder) Block() *types.Block {
 	b.syncCond.L.Lock()
 	defer b.syncCond.L.Unlock()
-
-	for b.result == nil && b.err == nil {
-		b.syncCond.Wait()
-	}
-
-	return b.result, b.err
-}
-
-func (b *BlockBuilder) Block() *types.BlockWithReceipts {
-	b.syncCond.L.Lock()
-	defer b.syncCond.L.Unlock()
-
-	if b.err != nil {
-		log.Warn("NewBlockBuilder returning block with error", "err", b.err)
-	}
 
 	if b.result == nil {
 		return nil
 	}
-	return b.result
+	return b.result.Block
 }

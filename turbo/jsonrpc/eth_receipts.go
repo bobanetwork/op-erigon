@@ -39,14 +39,8 @@ import (
 )
 
 func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chain.Config, block *types.Block, senders []common.Address) (types.Receipts, error) {
-	// FIXME disabling the cached receipt path to avoid wiring L1 Fee stuff for
-	// the moment
-	cached := rawdb.ReadReceipts(chainConfig, tx, block, senders)
-	if cached != nil && len(cached) != 0 {
-		log.Debug("Returning cached receipts", "block", block.Number(), "len", len(cached))
+	if cached := rawdb.ReadReceipts(chainConfig, tx, block, senders); cached != nil {
 		return cached, nil
-	} else {
-		log.Debug("Skipped cached receipts", "block", block.Number())
 	}
 	engine := api.engine()
 

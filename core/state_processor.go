@@ -110,7 +110,8 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 
 		if config.Optimism != nil {
 			// FIXME, these are already fetched by the L1CostFunc, but the wiring is
-			// weird, so, re-fetching.
+			// weird, so, re-fetching.  There is the DeriveFields function for
+			// receipts, perhaps that is the right path?
 			var l1BaseFee, overhead, scalar uint256.Int
 			ibs.GetState(types.L1BlockAddr, &types.L1BaseFeeSlot, &l1BaseFee)
 			ibs.GetState(types.L1BlockAddr, &types.OverheadSlot, &overhead)

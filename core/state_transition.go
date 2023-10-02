@@ -369,7 +369,10 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 	if mint := st.msg.Mint(); mint != nil {
 		st.state.AddBalance(st.msg.From(), mint)
 	}
-	snap := st.state.Snapshot()
+	var snap int
+	if st.msg.IsDepositTx() {
+		snap = st.state.Snapshot()
+	}
 
 	result, err := st.innerTransitionDb(refunds, gasBailout)
 	// Failed deposits must still be included. Unless we cannot produce the block at all due to the gas limit.

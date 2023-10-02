@@ -557,7 +557,7 @@ func (t *TransactionsFixedOrder) Pop() {
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
 	txType           byte
-	sourceHash       *libcommon.Hash
+	sourceHash       *libcommon.Hash // TODO(jky) Why is this here?
 	to               *libcommon.Address
 	from             libcommon.Address
 	nonce            uint64
