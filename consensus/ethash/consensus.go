@@ -670,11 +670,13 @@ func AccumulateRewards(config *chain.Config, header *types.Header, uncles []*typ
 
 // accumulateRewards retrieves rewards for a block and applies them to the coinbase accounts for miner and uncle miners
 func accumulateRewards(config *chain.Config, state *state.IntraBlockState, header *types.Header, uncles []*types.Header) {
-	minerReward, uncleRewards := AccumulateRewards(config, header, uncles)
-	for i, uncle := range uncles {
-		if i < len(uncleRewards) {
-			state.AddBalance(uncle.Coinbase, &uncleRewards[i])
+	if !config.IsBobaLegacyBlock(header.Number) {
+		minerReward, uncleRewards := AccumulateRewards(config, header, uncles)
+		for i, uncle := range uncles {
+			if i < len(uncleRewards) {
+				state.AddBalance(uncle.Coinbase, &uncleRewards[i])
+			}
 		}
+		state.AddBalance(header.Coinbase, &minerReward)
 	}
-	state.AddBalance(header.Coinbase, &minerReward)
 }
