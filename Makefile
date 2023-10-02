@@ -25,7 +25,8 @@ CGO_CFLAGS += -DMDBX_FORCE_ASSERTIONS=0 # Enable MDBX's asserts by default in 'd
 #CGO_CFLAGS += -DMDBX_ENV_CHECKPID=0 # Erigon doesn't do fork() syscall
 CGO_CFLAGS += -O
 CGO_CFLAGS += -D__BLST_PORTABLE__
-CGO_CFLAGS += -Wno-error=strict-prototypes # for Clang15, remove it when can https://github.com/ledgerwatch/erigon/issues/6113#issuecomment-1359526277
+CGO_CFLAGS += -Wno-unknown-warning-option -Wno-enum-int-mismatch -Wno-strict-prototypes
+#CGO_CFLAGS += -Wno-error=strict-prototypes # for Clang15, remove it when can https://github.com/ledgerwatch/erigon/issues/6113#issuecomment-1359526277
 
 # about netgo see: https://github.com/golang/go/issues/30310#issuecomment-471669125 and https://github.com/golang/go/issues/57757
 BUILD_TAGS = nosqlite,noboltdb
@@ -142,31 +143,36 @@ db-tools:
 
 ## test:                              run unit tests with a 100s timeout
 test:
+	@cd erigon-lib && $(MAKE) test
 	$(GOTEST) --timeout 100s
 
 test3:
+	@cd erigon-lib && $(MAKE) test
 	$(GOTEST) --timeout 100s -tags $(BUILD_TAGS),e3
 
 ## test-integration:                  run integration tests with a 30m timeout
 test-integration:
-	$(GOTEST) --timeout 60m -tags $(BUILD_TAGS),integration
+	@cd erigon-lib && $(MAKE) test
+	$(GOTEST) --timeout 30m -tags $(BUILD_TAGS),integration
 
 test3-integration:
-	$(GOTEST) --timeout 60m -tags $(BUILD_TAGS),integration,e3
+	@cd erigon-lib && $(MAKE) test
+	$(GOTEST) --timeout 30m -tags $(BUILD_TAGS),integration,e3
 
-## lint:                              run golangci-lint with .golangci.yml config file
-lint:
-	@./build/bin/golangci-lint run --config ./.golangci.yml
+## lint-deps:                         install lint dependencies
+lint-deps:
+	@cd erigon-lib && $(MAKE) lint-deps
 
-## lintci:                            run golangci-lint (additionally outputs message before run)
+## lintci:                            run golangci-lint linters
 lintci:
-	@echo "--> Running linter for code"
-	@./build/bin/golangci-lint run --config ./.golangci.yml
+	@cd erigon-lib && $(MAKE) lintci
+	@./erigon-lib/tools/golangci_lint.sh
 
-## lintci-deps:                       (re)installs golangci-lint to build/bin/golangci-lint
-lintci-deps:
-	rm -f ./build/bin/golangci-lint
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b ./build/bin v1.54.2
+## lint:                              run all linters
+lint:
+	@cd erigon-lib && $(MAKE) lint
+	@./erigon-lib/tools/golangci_lint.sh
+	@./erigon-lib/tools/mod_tidy_check.sh
 
 ## clean:                             cleans the go cache, build dir, libmdbx db dir
 clean:
