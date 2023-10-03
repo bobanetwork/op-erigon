@@ -51,6 +51,7 @@ func readChainSpec(filename string) *chain.Config {
 // Genesis hashes to enforce below configs on.
 var (
 	MainnetGenesisHash         = libcommon.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
+	HoleskyGenesisHash         = libcommon.HexToHash("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4")
 	SepoliaGenesisHash         = libcommon.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
 	GoerliGenesisHash          = libcommon.HexToHash("0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")
 	MumbaiGenesisHash          = libcommon.HexToHash("0x7b66506a9ebdbf30d32b43c5f15a3b1216269a1ec3a75aa3182b86176a2b1ca7")
@@ -72,6 +73,9 @@ var (
 var (
 	// MainnetChainConfig is the chain parameters to run a node on the main network.
 	MainnetChainConfig = readChainSpec("chainspecs/mainnet.json")
+
+	// HoleskyChainConfi contains the chain parameters to run a node on the Holesky test network.
+	HoleskyChainConfig = readChainSpec("chainspecs/holesky.json")
 
 	// SepoliaChainConfig contains the chain parameters to run a node on the Sepolia test network.
 	SepoliaChainConfig = readChainSpec("chainspecs/sepolia.json")
@@ -99,6 +103,7 @@ var (
 		TerminalTotalDifficulty:       big.NewInt(0),
 		TerminalTotalDifficultyPassed: true,
 		ShanghaiTime:                  big.NewInt(0),
+		CancunTime:                    big.NewInt(0),
 		Ethash:                        new(chain.EthashConfig),
 	}
 
@@ -218,6 +223,8 @@ func ChainConfigByChainName(chain string) *chain.Config {
 	switch chain {
 	case networkname.MainnetChainName:
 		return MainnetChainConfig
+	case networkname.HoleskyChainName:
+		return HoleskyChainConfig
 	case networkname.SepoliaChainName:
 		return SepoliaChainConfig
 	case networkname.GoerliChainName:
@@ -245,6 +252,8 @@ func GenesisHashByChainName(chain string) *libcommon.Hash {
 	switch chain {
 	case networkname.MainnetChainName:
 		return &MainnetGenesisHash
+	case networkname.HoleskyChainName:
+		return &HoleskyGenesisHash
 	case networkname.SepoliaChainName:
 		return &SepoliaGenesisHash
 	case networkname.GoerliChainName:
@@ -272,6 +281,8 @@ func ChainConfigByGenesisHash(genesisHash libcommon.Hash) *chain.Config {
 	switch {
 	case genesisHash == MainnetGenesisHash:
 		return MainnetChainConfig
+	case genesisHash == HoleskyGenesisHash:
+		return HoleskyChainConfig
 	case genesisHash == SepoliaGenesisHash:
 		return SepoliaChainConfig
 	case genesisHash == GoerliGenesisHash:
@@ -302,4 +313,39 @@ func NetworkIDByChainName(chain string) uint64 {
 		}
 		return config.ChainID.Uint64()
 	}
+}
+
+func IsChainPoS(chainConfig *chain.Config, currentTDProvider func() *big.Int) bool {
+	return isChainIDPoS(chainConfig.ChainID) || hasChainPassedTerminalTD(chainConfig, currentTDProvider)
+}
+
+func isChainIDPoS(chainID *big.Int) bool {
+	ids := []*big.Int{
+		MainnetChainConfig.ChainID,
+		HoleskyChainConfig.ChainID,
+		GoerliChainConfig.ChainID,
+		SepoliaChainConfig.ChainID,
+		GnosisChainConfig.ChainID,
+		ChiadoChainConfig.ChainID,
+	}
+	for _, id := range ids {
+		if id.Cmp(chainID) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func hasChainPassedTerminalTD(chainConfig *chain.Config, currentTDProvider func() *big.Int) bool {
+	if chainConfig.TerminalTotalDifficultyPassed {
+		return true
+	}
+
+	terminalTD := chainConfig.TerminalTotalDifficulty
+	if terminalTD == nil {
+		return false
+	}
+
+	currentTD := currentTDProvider()
+	return (currentTD != nil) && (terminalTD.Cmp(currentTD) <= 0)
 }

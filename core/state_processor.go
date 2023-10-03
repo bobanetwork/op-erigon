@@ -35,7 +35,7 @@ import (
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
 func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState,
-	stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64,
+	stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64,
 	evm vm.VMInterface, cfg vm.Config) (*types.Receipt, []byte, error) {
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64(), header.Time), header.BaseFee, rules)
@@ -74,8 +74,8 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		return nil, nil, err
 	}
 	*usedGas += result.UsedGas
-	if usedDataGas != nil {
-		*usedDataGas += tx.GetDataGas()
+	if usedBlobGas != nil {
+		*usedBlobGas += tx.GetBlobGas()
 	}
 
 	// Set the receipt logs and create the bloom filter.
@@ -110,7 +110,8 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 
 		if config.Optimism != nil {
 			// FIXME, these are already fetched by the L1CostFunc, but the wiring is
-			// weird, so, re-fetching.
+			// weird, so, re-fetching.  There is the DeriveFields function for
+			// receipts, perhaps that is the right path?
 			var l1BaseFee, overhead, scalar uint256.Int
 			ibs.GetState(types.L1BlockAddr, &types.L1BaseFeeSlot, &l1BaseFee)
 			ibs.GetState(types.L1BlockAddr, &types.OverheadSlot, &overhead)
@@ -127,7 +128,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 // indicating the block was invalid.
 func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader,
 	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
-	header *types.Header, tx types.Transaction, usedGas, usedDataGas *uint64, cfg vm.Config,
+	header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64, cfg vm.Config,
 ) (*types.Receipt, []byte, error) {
 	log.Debug("ApplyTransaction called for", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
@@ -140,5 +141,5 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, l1CostFunc)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
-	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedDataGas, vmenv, cfg)
+	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedBlobGas, vmenv, cfg)
 }

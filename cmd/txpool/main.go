@@ -49,9 +49,10 @@ var (
 	baseFeePoolLimit int
 	queuedPoolLimit  int
 
-	priceLimit   uint64
-	accountSlots uint64
-	priceBump    uint64
+	priceLimit    uint64
+	accountSlots  uint64
+	priceBump     uint64
+	blobPriceBump uint64
 
 	noTxGossip bool
 
@@ -77,6 +78,7 @@ func init() {
 	rootCmd.PersistentFlags().Uint64Var(&priceLimit, "txpool.pricelimit", txpoolcfg.DefaultConfig.MinFeeCap, "Minimum gas price (fee cap) limit to enforce for acceptance into the pool")
 	rootCmd.PersistentFlags().Uint64Var(&accountSlots, "txpool.accountslots", txpoolcfg.DefaultConfig.AccountSlots, "Minimum number of executable transaction slots guaranteed per account")
 	rootCmd.PersistentFlags().Uint64Var(&priceBump, "txpool.pricebump", txpoolcfg.DefaultConfig.PriceBump, "Price bump percentage to replace an already existing transaction")
+	rootCmd.PersistentFlags().Uint64Var(&blobPriceBump, "txpool.blobpricebump", txpoolcfg.DefaultConfig.BlobPriceBump, "Price bump percentage to replace an existing blob (type-3) transaction")
 	rootCmd.PersistentFlags().DurationVar(&commitEvery, utils.TxPoolCommitEveryFlag.Name, utils.TxPoolCommitEveryFlag.Value, utils.TxPoolCommitEveryFlag.Usage)
 	rootCmd.PersistentFlags().BoolVar(&noTxGossip, "txpool.disabletxpoolgossip", txpoolcfg.DefaultConfig.NoTxGossip, "Disable transaction pool gossip")
 	rootCmd.Flags().StringSliceVar(&traceSenders, utils.TxPoolTraceSendersFlag.Name, []string{}, utils.TxPoolTraceSendersFlag.Usage)
@@ -143,6 +145,7 @@ func doTxpool(ctx context.Context, logger log.Logger) error {
 	cfg.MinFeeCap = priceLimit
 	cfg.AccountSlots = accountSlots
 	cfg.PriceBump = priceBump
+	cfg.BlobPriceBump = blobPriceBump
 	cfg.NoTxGossip = noTxGossip
 
 	cacheConfig := kvcache.DefaultCoherentConfig

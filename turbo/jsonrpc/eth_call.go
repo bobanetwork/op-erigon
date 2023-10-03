@@ -74,7 +74,7 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, blockNrOrHa
 	if err != nil {
 		return nil, err
 	}
-	block, err := api.blockWithSenders(ctx, tx, hash, blockNumber)
+	block, err := api.blockWithSenders(tx, hash, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 	// try and get the block from the lru cache first then try DB before failing
 	block := api.tryBlockFromLru(latestCanHash)
 	if block == nil {
-		block, err = api.blockWithSenders(ctx, dbtx, latestCanHash, latestCanBlockNumber)
+		block, err = api.blockWithSenders(dbtx, latestCanHash, latestCanBlockNumber)
 		if err != nil {
 			return 0, err
 		}
@@ -513,7 +513,7 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 	if err != nil {
 		return nil, err
 	}
-	block, err := api.blockWithSenders(ctx, tx, hash, blockNumber)
+	block, err := api.blockWithSenders(tx, hash, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +608,7 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 		txCtx := core.NewEVMTxContext(msg)
 
 		evm := vm.NewEVM(blockCtx, txCtx, state, chainConfig, config)
-		gp := new(core.GasPool).AddGas(msg.Gas()).AddDataGas(msg.DataGas())
+		gp := new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas())
 		res, err := core.ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
 		if err != nil {
 			return nil, err

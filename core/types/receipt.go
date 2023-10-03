@@ -487,7 +487,6 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		}
 	case BlobTxType:
 		w.WriteByte(BlobTxType)
-		rlp.Encode(w, data)
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}

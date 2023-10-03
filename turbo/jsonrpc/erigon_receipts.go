@@ -33,7 +33,7 @@ func (api *ErigonImpl) GetLogsByHash(ctx context.Context, hash common.Hash) ([][
 		return nil, err
 	}
 
-	block, err := api.blockByHashWithSenders(ctx, tx, hash)
+	block, err := api.blockByHashWithSenders(tx, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (api *ErigonImpl) GetBlockReceiptsByBlockHash(ctx context.Context, cannonic
 	if err != nil {
 		return nil, err
 	}
-	block, err := api.blockWithSenders(ctx, tx, cannonicalBlockHash, blockNum)
+	block, err := api.blockWithSenders(tx, cannonicalBlockHash, blockNum)
 	if err != nil {
 		return nil, err
 	}
@@ -404,9 +404,9 @@ func (api *ErigonImpl) GetBlockReceiptsByBlockHash(ctx context.Context, cannonic
 	}
 
 	if chainConfig.Bor != nil {
-		borTx, _, _, _ := rawdb.ReadBorTransactionForBlock(tx, block)
+		borTx := rawdb.ReadBorTransactionForBlock(tx, blockNum)
 		if borTx != nil {
-			borReceipt, err := rawdb.ReadBorReceipt(tx, block.Hash(), block.NumberU64(), receipts)
+			borReceipt, err := rawdb.ReadBorReceipt(tx, block.Hash(), blockNum, receipts)
 			if err != nil {
 				return nil, err
 			}

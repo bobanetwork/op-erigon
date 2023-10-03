@@ -101,7 +101,6 @@ var Defaults = Config{
 		KeepBlocks: false,
 		Produce:    true,
 	},
-	DropUselessPeers: false,
 }
 
 func init() {
@@ -235,6 +234,8 @@ type Config struct {
 
 	// No heimdall service
 	WithoutHeimdall bool
+	// Heimdall services active
+	WithHeimdallMilestones bool
 	// Ethstats service
 	Ethstats string
 	// Consensus layer
@@ -245,9 +246,8 @@ type Config struct {
 	SentinelAddr                string
 	SentinelPort                uint64
 
-	OverrideShanghaiTime *big.Int `toml:",omitempty"`
-
-	DropUselessPeers bool
+	OverrideCancunTime *big.Int `toml:",omitempty"`
+	ForcePartialCommit bool
 
 	RollupSequencerHTTP        string
 	RollupHistoricalRPC        string

@@ -233,6 +233,7 @@ func (n *Node) openDataDir() error {
 	// Lock the instance directory to prevent concurrent use by another instance as well as
 	// accidental use of the instance directory as a database.
 	l := flock.New(filepath.Join(instdir, "LOCK"))
+
 	locked, err := l.TryLock()
 	if err != nil {
 		return convertFileLockError(err)
@@ -293,8 +294,6 @@ func OpenDatabase(config *nodecfg.Config, label kv.Label, name string, readonly 
 		if len(name) == 0 {
 			return nil, fmt.Errorf("Expected a consensus name")
 		}
-	case kv.AcctProofDB:
-		name = "proofdb"
 	default:
 		name = "test"
 	}
@@ -339,15 +338,7 @@ func OpenDatabase(config *nodecfg.Config, label kv.Label, name string, readonly 
 		default:
 			opts = opts.GrowthStep(16 * datasize.MB)
 		}
-		if label == kv.AcctProofDB {
-			proofCfg := func(defaultBuckets kv.TableCfg) kv.TableCfg {
-				return kv.TableCfg{
-					"AccountProof": {},
-					"DbInfo":       {},
-				}
-			}
-			opts = opts.WithTableCfg(proofCfg)
-		}
+
 		return opts.Open()
 	}
 	var err error
