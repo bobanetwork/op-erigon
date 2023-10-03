@@ -121,6 +121,7 @@ jobs:
       #modifying the usual checkout step so that we can clone two projects into a directory ~/project/<>
       - run: git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL" v3-erigon/
       - run: git clone https://github.com/bobanetwork/v3-anchorage v3-anchorage/
+      - run: git -C v3-anchorage rev-parse HEAD
       - persist_to_workspace:
           root: "."
           paths:
