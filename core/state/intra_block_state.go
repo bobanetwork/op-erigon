@@ -289,7 +289,7 @@ func (sdb *IntraBlockState) HasSelfdestructed(addr libcommon.Address) bool {
 	if stateObject.deleted {
 		return false
 	}
-	if stateObject.created {
+	if stateObject.createdContract {
 		return false
 	}
 	return stateObject.selfdestructed
@@ -416,10 +416,21 @@ func (sdb *IntraBlockState) Selfdestruct(addr libcommon.Address) bool {
 		prevbalance: *stateObject.Balance(),
 	})
 	stateObject.markSelfdestructed()
-	stateObject.created = false
+	stateObject.createdContract = false
 	stateObject.data.Balance.Clear()
 
 	return true
+}
+
+func (sdb *IntraBlockState) Selfdestruct6780(addr libcommon.Address) {
+	stateObject := sdb.getStateObject(addr)
+	if stateObject == nil {
+		return
+	}
+
+	if stateObject.newlyCreated {
+		sdb.Selfdestruct(addr)
+	}
 }
 
 // SetTransientState sets transient storage for a given account. It
@@ -546,6 +557,7 @@ func (sdb *IntraBlockState) createObject(addr libcommon.Address, previous *state
 	} else {
 		sdb.journal.append(resetObjectChange{account: &addr, prev: previous})
 	}
+	newobj.newlyCreated = true
 	sdb.setStateObject(addr, newobj)
 	return newobj
 }
@@ -582,7 +594,7 @@ func (sdb *IntraBlockState) CreateAccount(addr libcommon.Address, contractCreati
 	newObj.data.Initialised = true
 
 	if contractCreation {
-		newObj.created = true
+		newObj.createdContract = true
 		newObj.data.Incarnation = prevInc + 1
 	} else {
 		newObj.selfdestructed = false
@@ -626,7 +638,7 @@ func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, add
 		}
 		stateObject.deleted = true
 	}
-	if isDirty && (stateObject.created || !stateObject.selfdestructed) && !emptyRemoval {
+	if isDirty && (stateObject.createdContract || !stateObject.selfdestructed) && !emptyRemoval {
 		stateObject.deleted = false
 		// Write any contract code associated with the state object
 		if stateObject.code != nil && stateObject.dirtyCode {
@@ -634,7 +646,7 @@ func updateAccount(EIP161Enabled bool, isAura bool, stateWriter StateWriter, add
 				return err
 			}
 		}
-		if stateObject.created {
+		if stateObject.createdContract {
 			if err := stateWriter.CreateContract(addr); err != nil {
 				return err
 			}
@@ -654,12 +666,12 @@ func printAccount(EIP161Enabled bool, addr libcommon.Address, stateObject *state
 	if stateObject.selfdestructed || (isDirty && emptyRemoval) {
 		fmt.Printf("delete: %x\n", addr)
 	}
-	if isDirty && (stateObject.created || !stateObject.selfdestructed) && !emptyRemoval {
+	if isDirty && (stateObject.createdContract || !stateObject.selfdestructed) && !emptyRemoval {
 		// Write any contract code associated with the state object
 		if stateObject.code != nil && stateObject.dirtyCode {
 			fmt.Printf("UpdateCode: %x,%x\n", addr, stateObject.CodeHash())
 		}
-		if stateObject.created {
+		if stateObject.createdContract {
 			fmt.Printf("CreateContract: %x\n", addr)
 		}
 		stateObject.printTrie()
@@ -694,7 +706,7 @@ func (sdb *IntraBlockState) FinalizeTx(chainRules *chain.Rules, stateWriter Stat
 		if err := updateAccount(chainRules.IsSpuriousDragon, chainRules.IsAura, stateWriter, addr, so, true); err != nil {
 			return err
 		}
-
+		so.newlyCreated = false
 		sdb.stateObjectsDirty[addr] = struct{}{}
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
@@ -856,15 +868,17 @@ func (sdb *IntraBlockState) Prepare(rules *chain.Rules, sender, coinbase libcomm
 }
 
 // AddAddressToAccessList adds the given address to the access list
-func (sdb *IntraBlockState) AddAddressToAccessList(addr libcommon.Address) {
-	if sdb.accessList.AddAddress(addr) {
+func (sdb *IntraBlockState) AddAddressToAccessList(addr libcommon.Address) (addrMod bool) {
+	addrMod = sdb.accessList.AddAddress(addr)
+	if addrMod {
 		sdb.journal.append(accessListAddAccountChange{&addr})
 	}
+	return addrMod
 }
 
 // AddSlotToAccessList adds the given (address, slot)-tuple to the access list
-func (sdb *IntraBlockState) AddSlotToAccessList(addr libcommon.Address, slot libcommon.Hash) {
-	addrMod, slotMod := sdb.accessList.AddSlot(addr, slot)
+func (sdb *IntraBlockState) AddSlotToAccessList(addr libcommon.Address, slot libcommon.Hash) (addrMod, slotMod bool) {
+	addrMod, slotMod = sdb.accessList.AddSlot(addr, slot)
 	if addrMod {
 		// In practice, this should not happen, since there is no way to enter the
 		// scope of 'address' without having the 'address' become already added
@@ -878,6 +892,7 @@ func (sdb *IntraBlockState) AddSlotToAccessList(addr libcommon.Address, slot lib
 			slot:    &slot,
 		})
 	}
+	return addrMod, slotMod
 }
 
 // AddressInAccessList returns true if the given address is in the access list.
@@ -885,7 +900,6 @@ func (sdb *IntraBlockState) AddressInAccessList(addr libcommon.Address) bool {
 	return sdb.accessList.ContainsAddress(addr)
 }
 
-// SlotInAccessList returns true if the given (address, slot)-tuple is in the access list.
 func (sdb *IntraBlockState) SlotInAccessList(addr libcommon.Address, slot libcommon.Hash) (addressPresent bool, slotPresent bool) {
 	return sdb.accessList.Contains(addr, slot)
 }

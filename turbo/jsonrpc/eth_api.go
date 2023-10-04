@@ -59,7 +59,7 @@ type EthAPI interface {
 	// Receipt related (see ./eth_receipts.go)
 	GetTransactionReceipt(ctx context.Context, hash common.Hash) (map[string]interface{}, error)
 	GetLogs(ctx context.Context, crit ethFilters.FilterCriteria) (types.Logs, error)
-	GetBlockReceipts(ctx context.Context, number rpc.BlockNumber) ([]map[string]interface{}, error)
+	GetBlockReceipts(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) ([]map[string]interface{}, error)
 
 	// Uncle related (see ./eth_uncles.go)
 	GetUncleByBlockNumberAndIndex(ctx context.Context, blockNr rpc.BlockNumber, index hexutil.Uint) (map[string]interface{}, error)
@@ -163,19 +163,19 @@ func (api *BaseAPI) genesis(tx kv.Tx) (*types.Block, error) {
 	return genesis, err
 }
 
-func (api *BaseAPI) txnLookup(ctx context.Context, tx kv.Tx, txnHash common.Hash) (uint64, bool, error) {
-	return api._txnReader.TxnLookup(ctx, tx, txnHash)
+func (api *BaseAPI) txnLookup(tx kv.Tx, txnHash common.Hash) (uint64, bool, error) {
+	return api._txnReader.TxnLookup(context.Background(), tx, txnHash)
 }
 
-func (api *BaseAPI) blockByNumberWithSenders(ctx context.Context, tx kv.Tx, number uint64) (*types.Block, error) {
-	hash, hashErr := api._blockReader.CanonicalHash(ctx, tx, number)
+func (api *BaseAPI) blockByNumberWithSenders(tx kv.Tx, number uint64) (*types.Block, error) {
+	hash, hashErr := api._blockReader.CanonicalHash(context.Background(), tx, number)
 	if hashErr != nil {
 		return nil, hashErr
 	}
-	return api.blockWithSenders(ctx, tx, hash, number)
+	return api.blockWithSenders(tx, hash, number)
 }
 
-func (api *BaseAPI) blockByHashWithSenders(ctx context.Context, tx kv.Tx, hash common.Hash) (*types.Block, error) {
+func (api *BaseAPI) blockByHashWithSenders(tx kv.Tx, hash common.Hash) (*types.Block, error) {
 	if api.blocksLRU != nil {
 		if it, ok := api.blocksLRU.Get(hash); ok && it != nil {
 			return it, nil
@@ -186,16 +186,16 @@ func (api *BaseAPI) blockByHashWithSenders(ctx context.Context, tx kv.Tx, hash c
 		return nil, nil
 	}
 
-	return api.blockWithSenders(ctx, tx, hash, *number)
+	return api.blockWithSenders(tx, hash, *number)
 }
 
-func (api *BaseAPI) blockWithSenders(ctx context.Context, tx kv.Tx, hash common.Hash, number uint64) (*types.Block, error) {
+func (api *BaseAPI) blockWithSenders(tx kv.Tx, hash common.Hash, number uint64) (*types.Block, error) {
 	if api.blocksLRU != nil {
 		if it, ok := api.blocksLRU.Get(hash); ok && it != nil {
 			return it, nil
 		}
 	}
-	block, _, err := api._blockReader.BlockWithSenders(ctx, tx, hash, number)
+	block, _, err := api._blockReader.BlockWithSenders(context.Background(), tx, hash, number)
 	if err != nil {
 		return nil, err
 	}
@@ -238,14 +238,14 @@ func (api *BaseAPI) chainConfigWithGenesis(tx kv.Tx) (*chain.Config, *types.Bloc
 		return cc, genesisBlock, nil
 	}
 
-	hash, err := rawdb.ReadCanonicalHash(tx, 0)
+	genesisBlock, err := api.blockByRPCNumber(0, tx)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err != nil {
-		return nil, nil, err
+	if genesisBlock == nil {
+		return nil, nil, fmt.Errorf("genesis block not found in database")
 	}
-	cc, err = rawdb.ReadChainConfig(tx, hash)
+	cc, err = rawdb.ReadChainConfig(tx, genesisBlock.Hash())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -260,13 +260,14 @@ func (api *BaseAPI) pendingBlock() *types.Block {
 	return api.filters.LastPendingBlock()
 }
 
-func (api *BaseAPI) blockByRPCNumber(ctx context.Context, number rpc.BlockNumber, tx kv.Tx) (*types.Block, error) {
+func (api *BaseAPI) blockByRPCNumber(number rpc.BlockNumber, tx kv.Tx) (*types.Block, error) {
 	n, h, _, err := rpchelper.GetBlockNumber(rpc.BlockNumberOrHashWithNumber(number), tx, api.filters)
 	if err != nil {
 		return nil, err
 	}
 
-	block, err := api.blockWithSenders(ctx, tx, h, n)
+	// it's ok to use context.Background(), because in "Remote RPCDaemon" `tx` already contains internal ctx
+	block, err := api.blockWithSenders(tx, h, n)
 	return block, err
 }
 
@@ -387,7 +388,7 @@ type RPCTransaction struct {
 	Type                hexutil.Uint64     `json:"type"`
 	Accesses            *types2.AccessList `json:"accessList,omitempty"`
 	ChainID             *hexutil.Big       `json:"chainId,omitempty"`
-	MaxFeePerDataGas    *hexutil.Big       `json:"maxFeePerDataGas,omitempty"`
+	MaxFeePerBlobGas    *hexutil.Big       `json:"maxFeePerBlobGas,omitempty"`
 	BlobVersionedHashes []common.Hash      `json:"blobVersionedHashes,omitempty"`
 	V                   *hexutil.Big       `json:"v"`
 	R                   *hexutil.Big       `json:"r"`
@@ -450,7 +451,7 @@ func newRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		result.S = (*hexutil.Big)(t.S.ToBig())
 		result.Accesses = &t.AccessList
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
-		result.MaxFeePerDataGas = (*hexutil.Big)(t.MaxFeePerDataGas.ToBig())
+		result.MaxFeePerBlobGas = (*hexutil.Big)(t.MaxFeePerBlobGas.ToBig())
 		result.BlobVersionedHashes = t.BlobVersionedHashes
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())

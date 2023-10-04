@@ -16,16 +16,15 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
+	"github.com/ledgerwatch/erigon-lib/common/fixedgas"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/memdb"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
 	"github.com/ledgerwatch/erigon/consensus"
-	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
-	"github.com/ledgerwatch/erigon/core/systemcontracts"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/core/vm"
@@ -51,7 +50,7 @@ type MiningExecCfg struct {
 }
 
 type TxPoolForMining interface {
-	YieldBest(n uint16, txs *types2.TxsRlp, tx kv.Tx, onTopOf, availableGas, availableDataGas uint64, toSkip mapset.Set[[32]byte]) (bool, int, error)
+	YieldBest(n uint16, txs *types2.TxsRlp, tx kv.Tx, onTopOf, availableGas, availableBlobGas uint64, toSkip mapset.Set[[32]byte]) (bool, int, error)
 }
 
 func StageMiningExecCfg(
@@ -94,10 +93,9 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	stateReader := state.NewPlainStateReader(tx)
 	ibs := state.New(stateReader)
 	stateWriter := state.NewPlainStateWriter(tx, tx, current.Header.Number.Uint64())
-	if cfg.chainConfig.DAOForkBlock != nil && cfg.chainConfig.DAOForkBlock.Cmp(current.Header.Number) == 0 {
-		misc.ApplyDAOHardFork(ibs)
-	}
-	systemcontracts.UpgradeBuildInSystemContract(&cfg.chainConfig, current.Header.Number, ibs, logger)
+
+	chainReader := ChainReader{Cfg: cfg.chainConfig, Db: tx, BlockReader: cfg.blockReader}
+	core.InitializeBlockExecution(cfg.engine, chainReader, current.Header, &cfg.chainConfig, ibs, logger)
 
 	// Create an empty block based on temporary copied state for
 	// sealing in advance without waiting block execution finished.
@@ -198,7 +196,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	}
 
 	var err error
-	_, current.Txs, current.Receipts, err = core.FinalizeBlockExecution(cfg.engine, stateReader, current.Header, current.Txs, current.Uncles, stateWriter, &cfg.chainConfig, ibs, current.Receipts, current.Withdrawals, ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, true)
+	_, current.Txs, current.Receipts, err = core.FinalizeBlockExecution(cfg.engine, stateReader, current.Header, current.Txs, current.Uncles, stateWriter, &cfg.chainConfig, ibs, current.Receipts, current.Withdrawals, ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, true, logger)
 	if err != nil {
 		return err
 	}
@@ -227,13 +225,13 @@ func getNextTransactions(
 	if err := cfg.txPool2DB.View(context.Background(), func(poolTx kv.Tx) error {
 		var err error
 		counter := 0
-		for !onTime && counter < 1000 {
+		for !onTime && counter < 500 {
 			remainingGas := header.GasLimit - header.GasUsed
-			remainingDataGas := uint64(0)
-			if header.DataGasUsed != nil {
-				remainingDataGas = chain.MaxDataGasPerBlock - *header.DataGasUsed
+			remainingBlobGas := uint64(0)
+			if header.BlobGasUsed != nil {
+				remainingBlobGas = fixedgas.MaxBlobGasPerBlock - *header.BlobGasUsed
 			}
-			if onTime, count, err = cfg.txPool2.YieldBest(amount, &txSlots, poolTx, executionAt, remainingGas, remainingDataGas, alreadyYielded); err != nil {
+			if onTime, count, err = cfg.txPool2.YieldBest(amount, &txSlots, poolTx, executionAt, remainingGas, remainingBlobGas, alreadyYielded); err != nil {
 				return err
 			}
 			time.Sleep(1 * time.Millisecond)
@@ -411,6 +409,9 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	header := current.Header
 	tcount := 0
 	gasPool := new(core.GasPool).AddGas(header.GasLimit - header.GasUsed)
+	if header.BlobGasUsed != nil {
+		gasPool.AddBlobGas(fixedgas.MaxBlobGasPerBlock - *header.BlobGasUsed)
+	}
 	signer := types.MakeSigner(&chainConfig, header.Number.Uint64(), header.Time)
 
 	var coalescedLogs types.Logs
@@ -419,15 +420,16 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 	var miningCommitTx = func(txn types.Transaction, coinbase libcommon.Address, vmConfig *vm.Config, chainConfig chain.Config, ibs *state.IntraBlockState, current *MiningBlock, hc *vm.HCContext) ([]*types.Log, error) {
 		ibs.SetTxContext(txn.Hash(), libcommon.Hash{}, tcount)
 		gasSnap := gasPool.Gas()
-		dataGasSnap := gasPool.DataGas()
+		blobGasSnap := gasPool.BlobGas()
 		snap := ibs.Snapshot()
-		receipt, _, err := core.ApplyTransactionHC(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.DataGasUsed, *vmConfig, hc)
+		logger.Debug("addTransactionsToMiningBlock", "txn hash", txn.Hash())
+		receipt, _, err := core.ApplyTransactionHC(&chainConfig, core.GetHashFn(header, getHeader), engine, &coinbase, gasPool, ibs, noop, header, txn, &header.GasUsed, header.BlobGasUsed, *vmConfig, hc)
 		if err != nil || (hc != nil && hc.State != vm.HC_STATE_NONE) {
 			log.Debug("HC miningCommitTx result", "err", err, "hc", hc)
 		}
 		if err != nil {
 			ibs.RevertToSnapshot(snap)
-			gasPool = new(core.GasPool).AddGas(gasSnap).AddDataGas(dataGasSnap) // restore gasPool as well as ibs
+			gasPool = new(core.GasPool).AddGas(gasSnap).AddBlobGas(blobGasSnap) // restore gasPool as well as ibs
 			return nil, err
 		}
 

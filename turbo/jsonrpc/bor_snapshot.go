@@ -2,24 +2,21 @@ package jsonrpc
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/log/v3"
-	"github.com/xsleonard/go-merkle"
-	"golang.org/x/crypto/sha3"
 
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/bor"
 	"github.com/ledgerwatch/erigon/consensus/bor/valset"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
-	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/erigon/eth/borfinality/whitelist"
 	"github.com/ledgerwatch/erigon/rpc"
 )
 
@@ -55,7 +52,7 @@ func (api *BorImpl) GetSnapshot(number *rpc.BlockNumber) (*Snapshot, error) {
 	}
 
 	// init consensus db
-	borTx, err := api.borDb.BeginRo(ctx)
+	borTx, err := api.bor.DB.BeginRo(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +103,7 @@ func (api *BorImpl) GetSnapshotAtHash(hash common.Hash) (*Snapshot, error) {
 	}
 
 	// init consensus db
-	borTx, err := api.borDb.BeginRo(ctx)
+	borTx, err := api.bor.DB.BeginRo(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +134,7 @@ func (api *BorImpl) GetSigners(number *rpc.BlockNumber) ([]common.Address, error
 	}
 
 	// init consensus db
-	borTx, err := api.borDb.BeginRo(ctx)
+	borTx, err := api.bor.DB.BeginRo(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +162,7 @@ func (api *BorImpl) GetSignersAtHash(hash common.Hash) ([]common.Address, error)
 	}
 
 	// init consensus db
-	borTx, err := api.borDb.BeginRo(ctx)
+	borTx, err := api.bor.DB.BeginRo(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +188,66 @@ func (api *BorImpl) GetCurrentValidators() ([]*valset.Validator, error) {
 		return make([]*valset.Validator, 0), err
 	}
 	return snap.ValidatorSet.Validators, nil
+}
+
+// GetVoteOnHash gets the vote on milestone hash
+func (api *BorImpl) GetVoteOnHash(ctx context.Context, starBlockNr uint64, endBlockNr uint64, hash string, milestoneId string) (bool, error) {
+	tx, err := api.db.BeginRo(context.Background())
+	if err != nil {
+		return false, err
+	}
+
+	service := whitelist.GetWhitelistingService()
+
+	if service == nil {
+		return false, errors.New("Only available in Bor engine")
+	}
+
+	//Confirmation of 16 blocks on the endblock
+	tipConfirmationBlockNr := endBlockNr + uint64(16)
+
+	//Check if tipConfirmation block exit
+	_, err = api._blockReader.BlockByNumber(ctx, tx, tipConfirmationBlockNr)
+	if err != nil {
+		return false, errors.New("failed to get tip confirmation block")
+	}
+
+	//Check if end block exist
+	localEndBlock, err := api._blockReader.BlockByNumber(ctx, tx, endBlockNr)
+	if err != nil {
+		return false, errors.New("failed to get end block")
+	}
+
+	localEndBlockHash := localEndBlock.Hash().String()
+
+	isLocked := service.LockMutex(endBlockNr)
+
+	if !isLocked {
+		service.UnlockMutex(false, "", endBlockNr, common.Hash{})
+		return false, errors.New("whitelisted number or locked sprint number is more than the received end block number")
+	}
+
+	if localEndBlockHash != hash {
+		service.UnlockMutex(false, "", endBlockNr, common.Hash{})
+		return false, fmt.Errorf("hash mismatch: localChainHash %s, milestoneHash %s", localEndBlockHash, hash)
+	}
+
+	bor, ok := api._engine.(*bor.Bor)
+
+	if !ok {
+		return false, errors.New("bor engine not available")
+	}
+
+	err = bor.HeimdallClient.FetchMilestoneID(ctx, milestoneId)
+
+	if err != nil {
+		service.UnlockMutex(false, "", endBlockNr, common.Hash{})
+		return false, errors.New("milestone ID doesn't exist in Heimdall")
+	}
+
+	service.UnlockMutex(true, milestoneId, endBlockNr, localEndBlock.Hash())
+
+	return true, nil
 }
 
 type BlockSigners struct {
@@ -237,7 +294,7 @@ func (api *BorImpl) GetSnapshotProposerSequence(blockNrOrHash *rpc.BlockNumberOr
 	}
 
 	// init consensus db
-	borTx, err := api.borDb.BeginRo(ctx)
+	borTx, err := api.bor.DB.BeginRo(ctx)
 	if err != nil {
 		return BlockSigners{}, err
 	}
@@ -287,50 +344,14 @@ func (api *BorImpl) GetSnapshotProposerSequence(blockNrOrHash *rpc.BlockNumberOr
 
 // GetRootHash returns the merkle root of the start to end block headers
 func (api *BorImpl) GetRootHash(start, end uint64) (string, error) {
-	length := end - start + 1
-	if length > bor.MaxCheckpointLength {
-		return "", &bor.MaxCheckpointLengthExceededError{Start: start, End: end}
-	}
 	ctx := context.Background()
 	tx, err := api.db.BeginRo(ctx)
 	if err != nil {
 		return "", err
 	}
 	defer tx.Rollback()
-	header := rawdb.ReadCurrentHeader(tx)
-	var currentHeaderNumber uint64 = 0
-	if header == nil {
-		return "", &valset.InvalidStartEndBlockError{Start: start, End: end, CurrentHeader: currentHeaderNumber}
-	}
-	currentHeaderNumber = header.Number.Uint64()
-	if start > end || end > currentHeaderNumber {
-		return "", &valset.InvalidStartEndBlockError{Start: start, End: end, CurrentHeader: currentHeaderNumber}
-	}
-	blockHeaders := make([]*types.Header, end-start+1)
-	for number := start; number <= end; number++ {
-		blockHeaders[number-start], _ = getHeaderByNumber(ctx, rpc.BlockNumber(number), api, tx)
-	}
 
-	headers := make([][32]byte, bor.NextPowerOfTwo(length))
-	for i := 0; i < len(blockHeaders); i++ {
-		blockHeader := blockHeaders[i]
-		header := crypto.Keccak256(bor.AppendBytes32(
-			blockHeader.Number.Bytes(),
-			new(big.Int).SetUint64(blockHeader.Time).Bytes(),
-			blockHeader.TxHash.Bytes(),
-			blockHeader.ReceiptHash.Bytes(),
-		))
-
-		var arr [32]byte
-		copy(arr[:], header)
-		headers[i] = arr
-	}
-	tree := merkle.NewTreeWithOpts(merkle.TreeOptions{EnableHashSorting: false, DisableHashLeaves: true})
-	if err := tree.Generate(bor.Convert(headers), sha3.NewLegacyKeccak256()); err != nil {
-		return "", err
-	}
-	root := hex.EncodeToString(tree.Root().Hash)
-	return root, nil
+	return api.bor.GetRootHash(ctx, tx, start, end)
 }
 
 // Helper functions for Snapshot Type
@@ -430,7 +451,7 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 
 		// change validator set and change proposer
 		if number > 0 && (number+1)%currentSprint == 0 {
-			if err := validateHeaderExtraField(header.Extra); err != nil {
+			if err := bor.ValidateHeaderExtraField(header.Extra); err != nil {
 				return nil, err
 			}
 			validatorBytes := header.Extra[extraVanity : len(header.Extra)-extraSeal]

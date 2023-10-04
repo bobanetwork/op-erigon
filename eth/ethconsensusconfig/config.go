@@ -15,7 +15,6 @@ import (
 	"github.com/ledgerwatch/erigon/consensus/bor/contract"
 	"github.com/ledgerwatch/erigon/consensus/bor/heimdall"
 	"github.com/ledgerwatch/erigon/consensus/bor/heimdall/span"
-	"github.com/ledgerwatch/erigon/consensus/bor/heimdallgrpc"
 	"github.com/ledgerwatch/erigon/consensus/clique"
 	"github.com/ledgerwatch/erigon/consensus/ethash"
 	"github.com/ledgerwatch/erigon/consensus/ethash/ethashcfg"
@@ -23,10 +22,11 @@ import (
 	"github.com/ledgerwatch/erigon/node"
 	"github.com/ledgerwatch/erigon/node/nodecfg"
 	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/erigon/turbo/services"
 )
 
 func CreateConsensusEngine(nodeConfig *nodecfg.Config, chainConfig *chain.Config, config interface{}, notify []string, noVerify bool,
-	heimdallGrpcAddress string, heimdallUrl string, withoutHeimdall bool, readonly bool,
+	heimdallClient heimdall.IHeimdallClient, withoutHeimdall bool, blockReader services.FullBlockReader, readonly bool,
 	logger log.Logger,
 ) consensus.Engine {
 	var eng consensus.Engine
@@ -100,7 +100,8 @@ func CreateConsensusEngine(nodeConfig *nodecfg.Config, chainConfig *chain.Config
 		// Then, bor != nil will also be enabled for ethash and clique. Only enable Bor for real if there is a validator contract present.
 		if chainConfig.Bor != nil && chainConfig.Bor.ValidatorContract != "" {
 			genesisContractsClient := contract.NewGenesisContractsClient(chainConfig, chainConfig.Bor.ValidatorContract, chainConfig.Bor.StateReceiverContract, logger)
-			spanner := span.NewChainSpanner(contract.ValidatorSet(), chainConfig, logger)
+
+			spanner := span.NewChainSpanner(contract.ValidatorSet(), chainConfig, withoutHeimdall, logger)
 
 			var err error
 			var db kv.RwDB
@@ -111,17 +112,7 @@ func CreateConsensusEngine(nodeConfig *nodecfg.Config, chainConfig *chain.Config
 				panic(err)
 			}
 
-			var heimdallClient bor.IHeimdallClient
-			if withoutHeimdall {
-				return bor.New(chainConfig, db, spanner, nil, genesisContractsClient, logger)
-			} else {
-				if heimdallGrpcAddress != "" {
-					heimdallClient = heimdallgrpc.NewHeimdallGRPCClient(heimdallGrpcAddress)
-				} else {
-					heimdallClient = heimdall.NewHeimdallClient(heimdallUrl, logger)
-				}
-				eng = bor.New(chainConfig, db, spanner, heimdallClient, genesisContractsClient, logger)
-			}
+			eng = bor.New(chainConfig, db, blockReader, spanner, heimdallClient, genesisContractsClient, logger)
 		}
 	}
 
@@ -142,9 +133,9 @@ func CreateConsensusEngineBareBones(chainConfig *chain.Config, logger log.Logger
 	if chainConfig.Clique != nil {
 		consensusConfig = params.CliqueSnapshot
 	} else if chainConfig.Aura != nil {
-		consensusConfig = &chainConfig.Aura
+		consensusConfig = chainConfig.Aura
 	} else if chainConfig.Bor != nil {
-		consensusConfig = &chainConfig.Bor
+		consensusConfig = chainConfig.Bor
 	} else {
 		var ethashCfg ethashcfg.Config
 		ethashCfg.PowMode = ethashcfg.ModeFake
@@ -152,5 +143,5 @@ func CreateConsensusEngineBareBones(chainConfig *chain.Config, logger log.Logger
 	}
 
 	return CreateConsensusEngine(&nodecfg.Config{}, chainConfig, consensusConfig, nil /* notify */, true, /* noVerify */
-		"" /* heimdallGrpcAddress */, "" /* heimdallUrl */, true /* withoutHeimdall */, false /* readonly */, logger)
+		nil /* heimdallClient */, true /* withoutHeimdall */, nil /* blockReader */, false /* readonly */, logger)
 }

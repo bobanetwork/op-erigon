@@ -52,7 +52,7 @@ type OffchainTransaction struct {
 // Address of the HCHelper contract
 const HC_PREDEPLOY = "0x42000000000000000000000000000000000003E9"
 
-func (tx OffchainTransaction) GetDataGas() uint64      { return 0 }
+func (tx OffchainTransaction) GetBlobGas() uint64      { return 0 }
 func (tx OffchainTransaction) GetGas() uint64          { return tx.GasLimit }
 func (tx OffchainTransaction) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx OffchainTransaction) GetTip() *uint256.Int    { return uint256.NewInt(0) }
@@ -75,7 +75,7 @@ func (tx OffchainTransaction) GetAccessList() types2.AccessList {
 func (tx OffchainTransaction) GetData() []byte {
 	return tx.Data
 }
-func (tx OffchainTransaction) GetDataHashes() []libcommon.Hash {
+func (tx OffchainTransaction) GetBlobHashes() []libcommon.Hash {
 	// Only blob txs have data hashes
 	return []libcommon.Hash{}
 }

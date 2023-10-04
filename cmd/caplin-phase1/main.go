@@ -17,10 +17,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/ledgerwatch/erigon/cl/beacon"
-	"github.com/ledgerwatch/erigon/cl/beacon/handler"
 	"github.com/ledgerwatch/erigon/cl/freezer"
+	"github.com/ledgerwatch/erigon/cl/persistence"
+	"github.com/ledgerwatch/erigon/cl/persistence/db_config"
 	"github.com/ledgerwatch/erigon/cl/phase1/core"
 	"github.com/ledgerwatch/erigon/cl/phase1/core/state"
 	"github.com/ledgerwatch/erigon/cl/phase1/execution_client"
@@ -51,19 +53,21 @@ func main() {
 }
 
 func runCaplinNode(cliCtx *cli.Context) error {
-	ctx := context.Background()
+	ctx, cn := context.WithCancel(context.Background())
+	defer cn()
+
 	cfg, err := lcCli.SetupConsensusClientCfg(cliCtx)
 	if err != nil {
 		log.Error("[Phase1] Could not initialize caplin", "err", err)
 	}
-	if _, err := debug.Setup(cliCtx, true /* root logger */); err != nil {
+	if _, _, err := debug.Setup(cliCtx, true /* root logger */); err != nil {
 		return err
 	}
 	log.Root().SetHandler(log.LvlFilterHandler(log.Lvl(cfg.LogLvl), log.StderrHandler))
 	log.Info("[Phase1]", "chain", cliCtx.String(flags.Chain.Name))
 	log.Info("[Phase1] Running Caplin")
 	// Either start from genesis or a checkpoint
-	var state *state.BeaconState
+	var state *state.CachingBeaconState
 	if cfg.InitialSync {
 		state = cfg.InitalState
 	} else {
@@ -114,18 +118,6 @@ func runCaplinNode(cliCtx *cli.Context) error {
 		executionEngine = cc
 	}
 
-	if !cfg.NoBeaconApi {
-		apiHandler := handler.NewApiHandler(cfg.GenesisCfg, cfg.BeaconCfg)
-		go beacon.ListenAndServe(apiHandler, &beacon.RouterConfiguration{
-			Protocol:        cfg.BeaconProtocol,
-			Address:         cfg.BeaconAddr,
-			ReadTimeTimeout: cfg.BeaconApiReadTimeout,
-			WriteTimeout:    cfg.BeaconApiWriteTimeout,
-			IdleTimeout:     cfg.BeaconApiWriteTimeout,
-		})
-		log.Info("Beacon API started", "addr", cfg.BeaconAddr)
-	}
-
 	var caplinFreezer freezer.Freezer
 	if cfg.RecordMode {
 		caplinFreezer = &freezer.RootPathOsFs{
@@ -133,5 +125,18 @@ func runCaplinNode(cliCtx *cli.Context) error {
 		}
 	}
 
-	return caplin1.RunCaplinPhase1(ctx, sentinel, cfg.BeaconCfg, cfg.GenesisCfg, executionEngine, state, caplinFreezer)
+	caplinDBPath := path.Join(cfg.DataDir, "caplin")
+	rawdb := persistence.AferoRawBeaconBlockChainFromOsPath(cfg.BeaconCfg, caplinDBPath)
+	beaconDB, sqlDB, err := caplin1.OpenCaplinDatabase(ctx, db_config.DefaultDatabaseConfiguration, cfg.BeaconCfg, rawdb, caplinDBPath, executionEngine)
+	if err != nil {
+		return err
+	}
+	return caplin1.RunCaplinPhase1(ctx, sentinel, executionEngine, cfg.BeaconCfg, cfg.GenesisCfg, state, caplinFreezer, sqlDB, rawdb, beaconDB, cfg.Dirs.Tmp, beacon.RouterConfiguration{
+		Protocol:        cfg.BeaconProtocol,
+		Address:         cfg.BeaconAddr,
+		ReadTimeTimeout: cfg.BeaconApiReadTimeout,
+		WriteTimeout:    cfg.BeaconApiWriteTimeout,
+		IdleTimeout:     cfg.BeaconApiWriteTimeout,
+		Active:          !cfg.NoBeaconApi,
+	})
 }
