@@ -72,7 +72,6 @@ libmdbx/build/*
 tests/testdata/*
 
 go.work*
-erigon-lib/
 
 /goerli
 
@@ -91,3 +90,7 @@ caplin-recordings
 jwt.hex
 
 .tool-versions
+
+*__debug_bin*
+yarn.lock
+node_modules
