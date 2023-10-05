@@ -15,6 +15,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
@@ -388,6 +389,9 @@ type RPCTransaction struct {
 	V                   *hexutil.Big       `json:"v"`
 	R                   *hexutil.Big       `json:"r"`
 	S                   *hexutil.Big       `json:"s"`
+	SourceHash          *common.Hash       `json:"sourceHash,omitempty"`
+	Mint                *hexutil.Big       `json:"mint,omitempty"`
+	IsSystemTx          bool               `json:"isSystemTx,omitempty"`
 }
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
@@ -448,6 +452,18 @@ func newRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
 		result.MaxFeePerBlobGas = (*hexutil.Big)(t.MaxFeePerBlobGas.ToBig())
 		result.BlobVersionedHashes = t.BlobVersionedHashes
+	case *types.DepositTransaction:
+		result.SourceHash = t.SourceHash
+		if t.IsSystemTx {
+			result.IsSystemTx = t.IsSystemTx
+		}
+		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
+		result.Nonce = 0
+		result.GasPrice = (*hexutil.Big)(libcommon.Big0)
+		// must contain v, r, s values for backwards compatibility.
+		result.V = (*hexutil.Big)(libcommon.Big0)
+		result.R = (*hexutil.Big)(libcommon.Big0)
+		result.S = (*hexutil.Big)(libcommon.Big0)
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	result.From, _ = tx.Sender(*signer)
