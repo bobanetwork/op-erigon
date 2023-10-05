@@ -481,9 +481,16 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		result.BlobVersionedHashes = t.GetBlobHashes()
 	case *types.DepositTransaction:
 		result.SourceHash = t.SourceHash
-		result.IsSystemTx = t.IsSystemTx
+		if t.IsSystemTx {
+			result.IsSystemTx = t.IsSystemTx
+		}
 		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
 		result.Nonce = 0
+		result.GasPrice = (*hexutil.Big)(libcommon.Big0)
+		// must contain v, r, s values for backwards compatibility.
+		result.V = (*hexutil.Big)(libcommon.Big0)
+		result.R = (*hexutil.Big)(libcommon.Big0)
+		result.S = (*hexutil.Big)(libcommon.Big0)
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	var err error
