@@ -247,7 +247,8 @@ func TestNewRPCTransactionDepositTx(t *testing.T) {
 		Mint:       uint256.NewInt(34),
 		Value:      uint256.NewInt(1337),
 	}
-	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0))
+	nonce := uint64(12)
+	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), &nonce)
 	// Should provide zero values for unused fields that are required in other transactions
 	require.Equal(t, got.GasPrice, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().GasPrice = %v, want 0x0", got.GasPrice)
 	require.Equal(t, got.V, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().V = %v, want 0x0", got.V)
@@ -258,7 +259,7 @@ func TestNewRPCTransactionDepositTx(t *testing.T) {
 	require.Equal(t, got.SourceHash, tx.SourceHash, "newRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
 	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "newRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
 	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "newRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
-	require.Equal(t, got.Nonce, (hexutil.Uint64)(0), "newRPCTransaction().Mint = %v, want %v", got.Nonce, 0)
+	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "newRPCTransaction().Mint = %v, want %v", got.Nonce, nonce)
 }
 
 func TestNewRPCTransactionOmitIsSystemTxFalse(t *testing.T) {
@@ -267,7 +268,7 @@ func TestNewRPCTransactionOmitIsSystemTxFalse(t *testing.T) {
 		From:       &common.Address{1},
 		Value:      uint256.NewInt(1337),
 	}
-	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0))
+	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
 
 	require.False(t, got.IsSystemTx, "should omit IsSystemTx when false")
 }
@@ -341,7 +342,7 @@ func TestUnmarshalRpcDepositTx(t *testing.T) {
 				Mint:       uint256.NewInt(34),
 				Value:      uint256.NewInt(1337),
 			}
-			rpcTx := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0))
+			rpcTx := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
 			test.modifier(rpcTx)
 			json, err := json.Marshal(rpcTx)
 			require.NoError(t, err, "marshalling failed: %w", err)
