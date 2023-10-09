@@ -514,6 +514,10 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
 
+	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
+		return nil, &engine_helpers.InvalidPayloadAttributesErr
+	}
+
 	req := &execution.AssembleBlockRequest{
 		ParentHash:            gointerfaces.ConvertHashToH256(forkchoiceState.HeadHash),
 		Timestamp:             timestamp,

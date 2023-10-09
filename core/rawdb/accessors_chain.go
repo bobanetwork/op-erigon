@@ -855,6 +855,18 @@ func ReadReceipts(config *chain.Config, db kv.Tx, block *types.Block, senders []
 	return receipts
 }
 
+func ReadDepositNonces(db kv.Tx, blockNumber uint64) []*uint64 {
+	receipts := ReadRawReceipts(db, blockNumber)
+	if receipts == nil {
+		return nil
+	}
+	depositNonces := make([]*uint64, len(receipts))
+	for i, r := range receipts {
+		depositNonces[i] = r.DepositNonce
+	}
+	return depositNonces
+}
+
 // WriteReceipts stores all the transaction receipts belonging to a block.
 func WriteReceipts(tx kv.Putter, number uint64, receipts types.Receipts) error {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))

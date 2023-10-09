@@ -421,7 +421,7 @@ type RPCTransaction struct {
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
-func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumber uint64, index uint64, baseFee *big.Int) *RPCTransaction {
+func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumber uint64, index uint64, baseFee *big.Int, depositNonce *uint64) *RPCTransaction {
 	// Determine the signer. For replay-protected transactions, use the most permissive
 	// signer, because we assume that signers are backwards-compatible with old
 	// transactions. For non-protected transactions, the homestead signer signer is used
@@ -481,9 +481,18 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		result.BlobVersionedHashes = t.GetBlobHashes()
 	case *types.DepositTransaction:
 		result.SourceHash = t.SourceHash
-		result.IsSystemTx = t.IsSystemTx
+		if t.IsSystemTx {
+			result.IsSystemTx = t.IsSystemTx
+		}
+		if depositNonce != nil {
+			result.Nonce = hexutil.Uint64(*depositNonce)
+		}
 		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
-		result.Nonce = 0
+		result.GasPrice = (*hexutil.Big)(libcommon.Big0)
+		// must contain v, r, s values for backwards compatibility.
+		result.V = (*hexutil.Big)(libcommon.Big0)
+		result.R = (*hexutil.Big)(libcommon.Big0)
+		result.S = (*hexutil.Big)(libcommon.Big0)
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	var err error
@@ -555,7 +564,7 @@ func newRPCTransactionFromBlockIndex(b *types.Block, index uint64) *RPCTransacti
 
 // newRPCTransactionFromBlockAndTxGivenIndex returns a transaction that will serialize to the RPC representation.
 func newRPCTransactionFromBlockAndTxGivenIndex(b *types.Block, tx types.Transaction, index uint64) *RPCTransaction {
-	return newRPCTransaction(tx, b.Hash(), b.NumberU64(), index, b.BaseFee())
+	return newRPCTransaction(tx, b.Hash(), b.NumberU64(), index, b.BaseFee(), nil)
 }
 
 /*
