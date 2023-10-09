@@ -60,7 +60,7 @@ func VerifyEip1559Header(config *chain.Config, parent, header *types.Header, ski
 
 // CalcBaseFee calculates the basefee of the header.
 func CalcBaseFee(config *chain.Config, parent *types.Header) *big.Int {
-	// If the current block is pre bedrodk, return 0.
+	// If the current block is pre bedrock, return 0.
 	if config.IsOptimismPreBedrock(parent.Number.Uint64()) {
 		return common.Big0
 	}
