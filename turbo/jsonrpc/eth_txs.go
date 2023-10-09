@@ -78,7 +78,16 @@ func (api *APIImpl) GetTransactionByHash(ctx context.Context, txnHash common.Has
 			return newRPCBorTransaction(borTx, txnHash, blockHash, blockNum, uint64(len(block.Transactions())), baseFee, chainConfig.ChainID), nil
 		}
 
-		return newRPCTransaction(txn, blockHash, blockNum, txnIndex, baseFee), nil
+		if chainConfig.IsOptimism() {
+			depositNonces := rawdb.ReadDepositNonces(tx, block.NumberU64())
+			if txnIndex >= uint64(len(depositNonces)) {
+				return nil, fmt.Errorf("depositNonce for tx %x not found", txnHash)
+			} else {
+				return newRPCTransaction(txn, blockHash, blockNum, txnIndex, baseFee, depositNonces[txnIndex]), nil
+			}
+		}
+
+		return newRPCTransaction(txn, blockHash, blockNum, txnIndex, baseFee, nil), nil
 	}
 
 	curHeader := rawdb.ReadCurrentHeader(tx)
@@ -193,7 +202,16 @@ func (api *APIImpl) GetTransactionByBlockHashAndIndex(ctx context.Context, block
 		return newRPCBorTransaction(borTx, derivedBorTxHash, block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee(), chainConfig.ChainID), nil
 	}
 
-	return newRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee()), nil
+	if chainConfig.IsOptimism() {
+		depositNonces := rawdb.ReadDepositNonces(tx, block.NumberU64())
+		if uint64(txIndex) >= uint64(len(depositNonces)) {
+			return nil, fmt.Errorf("depositNonce for tx %x not found", txs[txIndex].Hash())
+		} else {
+			return newRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee(), depositNonces[txIndex]), nil
+		}
+	}
+
+	return newRPCTransaction(txs[txIndex], block.Hash(), block.NumberU64(), uint64(txIndex), block.BaseFee(), nil), nil
 }
 
 // GetRawTransactionByBlockHashAndIndex returns the bytes of the transaction for the given block hash and index.
@@ -256,8 +274,15 @@ func (api *APIImpl) GetTransactionByBlockNumberAndIndex(ctx context.Context, blo
 		derivedBorTxHash := types2.ComputeBorTxHash(blockNum, hash)
 		return newRPCBorTransaction(borTx, derivedBorTxHash, hash, blockNum, uint64(txIndex), block.BaseFee(), chainConfig.ChainID), nil
 	}
-
-	return newRPCTransaction(txs[txIndex], hash, blockNum, uint64(txIndex), block.BaseFee()), nil
+	if chainConfig.IsOptimism() {
+		depositNonces := rawdb.ReadDepositNonces(tx, blockNum)
+		if uint64(txIndex) >= uint64(len(depositNonces)) {
+			return nil, fmt.Errorf("depositNonce for tx %x not found", txs[txIndex].Hash())
+		} else {
+			return newRPCTransaction(txs[txIndex], block.Hash(), blockNum, uint64(txIndex), block.BaseFee(), depositNonces[txIndex]), nil
+		}
+	}
+	return newRPCTransaction(txs[txIndex], hash, blockNum, uint64(txIndex), block.BaseFee(), nil), nil
 }
 
 // GetRawTransactionByBlockNumberAndIndex returns the bytes of the transaction for the given block number and index.
