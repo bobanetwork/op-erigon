@@ -43,7 +43,7 @@ type txJSON struct {
 	AccessList *types2.AccessList `json:"accessList,omitempty"`
 
 	// Blob transaction fields:
-	MaxFeePerDataGas    *hexutil.Big     `json:"maxFeePerDataGas,omitempty"`
+	MaxFeePerBlobGas    *hexutil.Big     `json:"maxFeePerBlobGas,omitempty"`
 	BlobVersionedHashes []libcommon.Hash `json:"blobVersionedHashes,omitempty"`
 	// Blob wrapper fields:
 	Blobs       Blobs     `json:"blobs,omitempty"`
@@ -113,6 +113,26 @@ func (tx DynamicFeeTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&enc)
 }
 
+func (tx DepositTransaction) MarshalJSON() ([]byte, error) {
+	var enc txJSON
+	// These are set for all tx types.
+	enc.Hash = tx.Hash()
+	enc.Type = hexutil.Uint64(tx.Type())
+	enc.ChainID = (*hexutil.Big)(libcommon.Big0)
+	enc.Gas = (*hexutil.Uint64)(&tx.GasLimit)
+	enc.Value = (*hexutil.Big)(tx.Value.ToBig())
+	enc.Data = (*hexutility.Bytes)(&tx.Data)
+	enc.To = tx.To
+	enc.SourceHash = tx.SourceHash
+	enc.From = tx.From
+	if tx.Mint != nil {
+		enc.Mint = (*hexutil.Big)(tx.Mint.ToBig())
+	}
+	enc.IsSystemTx = &tx.IsSystemTx
+	// other fields will show up as null.
+	return json.Marshal(&enc)
+}
+
 func toBlobTxJSON(tx *BlobTx) *txJSON {
 	var enc txJSON
 	// These are set for all tx types.
@@ -130,8 +150,8 @@ func toBlobTxJSON(tx *BlobTx) *txJSON {
 	enc.V = (*hexutil.Big)(tx.V.ToBig())
 	enc.R = (*hexutil.Big)(tx.R.ToBig())
 	enc.S = (*hexutil.Big)(tx.S.ToBig())
-	enc.MaxFeePerDataGas = (*hexutil.Big)(tx.MaxFeePerDataGas.ToBig())
-	enc.BlobVersionedHashes = tx.GetDataHashes()
+	enc.MaxFeePerBlobGas = (*hexutil.Big)(tx.MaxFeePerBlobGas.ToBig())
+	enc.BlobVersionedHashes = tx.GetBlobHashes()
 	return &enc
 }
 
@@ -532,15 +552,15 @@ func UnmarshalBlobTxJSON(input []byte) (Transaction, error) {
 	}
 	tx.Data = *dec.Data
 
-	if dec.MaxFeePerDataGas == nil {
-		return nil, errors.New("missing required field 'maxFeePerDataGas' in transaction")
+	if dec.MaxFeePerBlobGas == nil {
+		return nil, errors.New("missing required field 'maxFeePerBlobGas' in transaction")
 	}
 
-	maxFeePerDataGas, overflow := uint256.FromBig(dec.MaxFeePerDataGas.ToInt())
+	maxFeePerBlobGas, overflow := uint256.FromBig(dec.MaxFeePerBlobGas.ToInt())
 	if overflow {
-		return nil, errors.New("'maxFeePerDataGas' in transaction does not fit in 256 bits")
+		return nil, errors.New("'maxFeePerBlobGas' in transaction does not fit in 256 bits")
 	}
-	tx.MaxFeePerDataGas = maxFeePerDataGas
+	tx.MaxFeePerBlobGas = maxFeePerBlobGas
 
 	if dec.BlobVersionedHashes != nil {
 		tx.BlobVersionedHashes = dec.BlobVersionedHashes

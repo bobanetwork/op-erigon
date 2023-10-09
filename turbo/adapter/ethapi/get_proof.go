@@ -6,14 +6,13 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/length"
 
-	//"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/turbo/trie"
 )
 
 /*
 // Result structs for GetProof
-type xAccountResult struct {
+type AccountResult struct {
 	Address      libcommon.Address `json:"address"`
 	AccountProof []string          `json:"accountProof"`
 	Balance      *hexutil.Big      `json:"balance"`
@@ -23,7 +22,7 @@ type xAccountResult struct {
 	StorageProof []StorageResult   `json:"storageProof"`
 }
 
-type xStorageResult struct {
+type StorageResult struct {
 	Key   string       `json:"key"`
 	Value *hexutil.Big `json:"value"`
 	Proof []string     `json:"proof"`

@@ -56,13 +56,15 @@ type OtterscanAPI interface {
 
 type OtterscanAPIImpl struct {
 	*BaseAPI
-	db kv.RoDB
+	db          kv.RoDB
+	maxPageSize uint64
 }
 
-func NewOtterscanAPI(base *BaseAPI, db kv.RoDB) *OtterscanAPIImpl {
+func NewOtterscanAPI(base *BaseAPI, db kv.RoDB, maxPageSize uint64) *OtterscanAPIImpl {
 	return &OtterscanAPIImpl{
-		BaseAPI: base,
-		db:      db,
+		BaseAPI:     base,
+		db:          db,
+		maxPageSize: maxPageSize,
 	}
 }
 
@@ -73,7 +75,7 @@ func (api *OtterscanAPIImpl) GetApiLevel() uint8 {
 // TODO: dedup from eth_txs.go#GetTransactionByHash
 func (api *OtterscanAPIImpl) getTransactionByHash(ctx context.Context, tx kv.Tx, hash common.Hash) (types.Transaction, *types.Block, common.Hash, uint64, uint64, error) {
 	// https://infura.io/docs/ethereum/json-rpc/eth-getTransactionByHash
-	blockNum, ok, err := api.txnLookup(ctx, tx, hash)
+	blockNum, ok, err := api.txnLookup(tx, hash)
 	if err != nil {
 		return nil, nil, common.Hash{}, 0, 0, err
 	}
@@ -81,7 +83,7 @@ func (api *OtterscanAPIImpl) getTransactionByHash(ctx context.Context, tx kv.Tx,
 		return nil, nil, common.Hash{}, 0, 0, nil
 	}
 
-	block, err := api.blockByNumberWithSenders(ctx, tx, blockNum)
+	block, err := api.blockByNumberWithSenders(tx, blockNum)
 	if err != nil {
 		return nil, nil, common.Hash{}, 0, 0, err
 	}
@@ -140,7 +142,7 @@ func (api *OtterscanAPIImpl) runTracer(ctx context.Context, tx kv.Tx, hash commo
 	}
 	vmenv := vm.NewEVM(blockCtx, txCtx, ibs, chainConfig, vmConfig)
 
-	result, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas()).AddDataGas(msg.DataGas()), true, false /* gasBailout */)
+	result, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas()), true, false /* gasBailout */)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %v", err)
 	}
@@ -172,6 +174,10 @@ func (api *OtterscanAPIImpl) GetInternalOperations(ctx context.Context, hash com
 // than the necessary to fill pageSize in the last found block, i.e., let's say you want pageSize == 25,
 // you already found 24 txs, the next block contains 4 matches, then this function will return 28 txs.
 func (api *OtterscanAPIImpl) SearchTransactionsBefore(ctx context.Context, addr common.Address, blockNum uint64, pageSize uint16) (*TransactionsWithReceipts, error) {
+	if uint64(pageSize) > api.maxPageSize {
+		return nil, fmt.Errorf("max allowed page size: %v", api.maxPageSize)
+	}
+
 	dbtx, err := api.db.BeginRo(ctx)
 	if err != nil {
 		return nil, err
@@ -318,7 +324,17 @@ func (api *OtterscanAPIImpl) searchTransactionsBeforeV3(tx kv.TemporalTx, ctx co
 		if err != nil {
 			return nil, err
 		}
-		rpcTx := newRPCTransaction(txn, blockHash, blockNum, uint64(txIndex), header.BaseFee)
+		var rpcTx *RPCTransaction
+		if chainConfig.IsOptimism() {
+			depositNonces := rawdb.ReadDepositNonces(tx, blockNum)
+			if txIndex >= len(depositNonces) {
+				return nil, fmt.Errorf("depositNonce for tx %x not found", txn.Hash())
+			} else {
+				rpcTx = newRPCTransaction(txn, blockHash, blockNum, uint64(txIndex), header.BaseFee, depositNonces[txIndex])
+			}
+		} else {
+			rpcTx = newRPCTransaction(txn, blockHash, blockNum, uint64(txIndex), header.BaseFee, nil)
+		}
 		txs = append(txs, rpcTx)
 		receipt := &types.Receipt{
 			Type: txn.Type(), CumulativeGasUsed: res.UsedGas,
@@ -347,6 +363,10 @@ func (api *OtterscanAPIImpl) searchTransactionsBeforeV3(tx kv.TemporalTx, ctx co
 // than the necessary to fill pageSize in the last found block, i.e., let's say you want pageSize == 25,
 // you already found 24 txs, the next block contains 4 matches, then this function will return 28 txs.
 func (api *OtterscanAPIImpl) SearchTransactionsAfter(ctx context.Context, addr common.Address, blockNum uint64, pageSize uint16) (*TransactionsWithReceipts, error) {
+	if uint64(pageSize) > api.maxPageSize {
+		return nil, fmt.Errorf("max allowed page size: %v", api.maxPageSize)
+	}
+
 	dbtx, err := api.db.BeginRo(ctx)
 	if err != nil {
 		return nil, err

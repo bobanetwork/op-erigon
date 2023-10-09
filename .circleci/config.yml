@@ -121,6 +121,7 @@ jobs:
       #modifying the usual checkout step so that we can clone two projects into a directory ~/project/<>
       - run: git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL" v3-erigon/
       - run: git clone https://github.com/bobanetwork/v3-anchorage v3-anchorage/
+      - run: git -C v3-anchorage rev-parse HEAD
       - persist_to_workspace:
           root: "."
           paths:
@@ -144,7 +145,10 @@ jobs:
           command: |
             cp ~/project/v3-erigon/go.mod ~/project/v3-anchorage/op-erigon/go.mod
             cd ~/project/v3-anchorage/op-erigon 
-            go mod edit -module="github.com/ethereum-optimism/optimism/op-erigon" && go mod edit -replace "github.com/ledgerwatch/erigon=github.com/bobanetwork/v3-erigon@$CIRCLE_SHA1" 
+            go mod edit -module="github.com/ethereum-optimism/optimism/op-erigon"
+            go mod edit \
+            -replace "github.com/ledgerwatch/erigon=github.com/bobanetwork/v3-erigon@$CIRCLE_SHA1" \
+            -replace "github.com/ledgerwatch/erigon-lib=github.com/bobanetwork/v3-erigon/erigon-lib@$CIRCLE_SHA1" 
             go mod tidy
       - run:
           name: prep results dir

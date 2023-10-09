@@ -74,7 +74,7 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, blockNrOrHa
 	if err != nil {
 		return nil, err
 	}
-	block, err := api.blockWithSenders(ctx, tx, hash, blockNumber)
+	block, err := api.blockWithSenders(tx, hash, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 	// try and get the block from the lru cache first then try DB before failing
 	block := api.tryBlockFromLru(latestCanHash)
 	if block == nil {
-		block, err = api.blockWithSenders(ctx, dbtx, latestCanHash, latestCanBlockNumber)
+		block, err = api.blockWithSenders(dbtx, latestCanHash, latestCanBlockNumber)
 		if err != nil {
 			return 0, err
 		}
@@ -513,7 +513,7 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 	if err != nil {
 		return nil, err
 	}
-	block, err := api.blockWithSenders(ctx, tx, hash, blockNumber)
+	block, err := api.blockWithSenders(tx, hash, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -566,11 +566,15 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 
 	// Retrieve the precompiles since they don't need to be added to the access list
 	precompiles := vm.ActivePrecompiles(chainConfig.Rules(blockNumber, header.Time))
+	excl := make(map[libcommon.Address]struct{})
+	for _, pc := range precompiles {
+		excl[pc] = struct{}{}
+	}
 
 	// Create an initial tracer
-	prevTracer := logger.NewAccessListTracer(nil, *args.From, to, precompiles)
+	prevTracer := logger.NewAccessListTracer(nil, excl, nil)
 	if args.AccessList != nil {
-		prevTracer = logger.NewAccessListTracer(*args.AccessList, *args.From, to, precompiles)
+		prevTracer = logger.NewAccessListTracer(*args.AccessList, excl, nil)
 	}
 	for {
 		state := state.New(stateReader)
@@ -601,14 +605,14 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 		}
 
 		// Apply the transaction with the access list tracer
-		tracer := logger.NewAccessListTracer(accessList, *args.From, to, precompiles)
+		tracer := logger.NewAccessListTracer(accessList, excl, state)
 		config := vm.Config{Tracer: tracer, Debug: true, NoBaseFee: true}
 		l1CostFunc := types.NewL1CostFunc(chainConfig, state)
 		blockCtx := transactions.NewEVMBlockContext(engine, header, bNrOrHash.RequireCanonical, tx, api._blockReader, l1CostFunc)
 		txCtx := core.NewEVMTxContext(msg)
 
 		evm := vm.NewEVM(blockCtx, txCtx, state, chainConfig, config)
-		gp := new(core.GasPool).AddGas(msg.Gas()).AddDataGas(msg.DataGas())
+		gp := new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas())
 		res, err := core.ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
 		if err != nil {
 			return nil, err
@@ -619,8 +623,15 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 				errString = res.Err.Error()
 			}
 			accessList := &accessListResult{Accesslist: &accessList, Error: errString, GasUsed: hexutil.Uint64(res.UsedGas)}
-			if optimizeGas != nil && *optimizeGas {
-				optimizeToInAccessList(accessList, to)
+			if optimizeGas == nil || *optimizeGas { // optimize gas unless explicitly told not to
+				optimizeWarmAddrInAccessList(accessList, *args.From)
+				optimizeWarmAddrInAccessList(accessList, to)
+				optimizeWarmAddrInAccessList(accessList, header.Coinbase)
+				for addr := range tracer.CreatedContracts() {
+					if !tracer.UsedBeforeCreation(addr) {
+						optimizeWarmAddrInAccessList(accessList, addr)
+					}
+				}
 			}
 			return accessList, nil
 		}
@@ -628,14 +639,15 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 	}
 }
 
-// to address is warm already, so we can save by adding it to the access list
-// only if we are adding a lot of its storage slots as well
-func optimizeToInAccessList(accessList *accessListResult, to libcommon.Address) {
+// some addresses (like sender, recipient, block producer, and created contracts)
+// are considered warm already, so we can save by adding these to the access list
+// only if we are adding a lot of their respective storage slots as well
+func optimizeWarmAddrInAccessList(accessList *accessListResult, addr libcommon.Address) {
 	indexToRemove := -1
 
 	for i := 0; i < len(*accessList.Accesslist); i++ {
 		entry := (*accessList.Accesslist)[i]
-		if entry.Address != to {
+		if entry.Address != addr {
 			continue
 		}
 

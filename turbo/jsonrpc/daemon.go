@@ -7,6 +7,7 @@ import (
 	libstate "github.com/ledgerwatch/erigon-lib/state"
 	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/cli/httpcfg"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/bor"
 	"github.com/ledgerwatch/erigon/consensus/clique"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
@@ -15,7 +16,7 @@ import (
 )
 
 // APIList describes the list of available RPC apis
-func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, engineBackend rpchelper.EngineBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
+func APIList(db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
 	filters *rpchelper.Filters, stateCache kvcache.Cache,
 	blockReader services.FullBlockReader, agg *libstate.AggregatorV3, cfg httpcfg.HttpCfg, engine consensus.EngineReader,
 	seqRPCService, historicalRPCService *rpc.Client, logger log.Logger,
@@ -31,8 +32,14 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, engineBackend 
 	dbImpl := NewDBAPIImpl() /* deprecated */
 	adminImpl := NewAdminAPI(eth)
 	parityImpl := NewParityAPIImpl(base, db)
-	borImpl := NewBorAPI(base, db, borDb) // bor (consensus) specific
-	otsImpl := NewOtterscanAPI(base, db)
+
+	var borImpl *BorImpl
+
+	if bor, ok := engine.(*bor.Bor); ok {
+		borImpl = NewBorAPI(base, db, bor) // bor (consensus) specific
+	}
+
+	otsImpl := NewOtterscanAPI(base, db, cfg.OtsMaxPageSize)
 	gqlImpl := NewGraphQLAPI(base, db)
 
 	if cfg.GraphQLEnabled {
@@ -103,12 +110,14 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, engineBackend 
 				Version:   "1.0",
 			})
 		case "bor":
-			list = append(list, rpc.API{
-				Namespace: "bor",
-				Public:    true,
-				Service:   BorAPI(borImpl),
-				Version:   "1.0",
-			})
+			if borImpl != nil {
+				list = append(list, rpc.API{
+					Namespace: "bor",
+					Public:    true,
+					Service:   BorAPI(borImpl),
+					Version:   "1.0",
+				})
+			}
 		case "admin":
 			list = append(list, rpc.API{
 				Namespace: "admin",
@@ -134,32 +143,6 @@ func APIList(db kv.RoDB, borDb kv.RoDB, eth rpchelper.ApiBackend, engineBackend 
 			list = append(list, clique.NewCliqueAPI(db, engine, blockReader))
 		}
 	}
-
-	return list
-}
-
-func AuthAPIList(db kv.RoDB, eth rpchelper.ApiBackend, engineBackend rpchelper.EngineBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
-	filters *rpchelper.Filters, stateCache kvcache.Cache, blockReader services.FullBlockReader,
-	agg *libstate.AggregatorV3,
-	cfg httpcfg.HttpCfg, engine consensus.EngineReader,
-	seqRPCService, historicalRPCService *rpc.Client, logger log.Logger,
-) (list []rpc.API) {
-	base := NewBaseApi(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, cfg.Dirs, seqRPCService, historicalRPCService)
-
-	ethImpl := NewEthAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit, logger)
-	engineImpl := NewEngineAPI(base, db, engineBackend)
-
-	list = append(list, rpc.API{
-		Namespace: "eth",
-		Public:    true,
-		Service:   EthAPI(ethImpl),
-		Version:   "1.0",
-	}, rpc.API{
-		Namespace: "engine",
-		Public:    true,
-		Service:   EngineAPI(engineImpl),
-		Version:   "1.0",
-	})
 
 	return list
 }

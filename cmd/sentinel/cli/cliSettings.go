@@ -3,10 +3,12 @@ package cli
 import (
 	"errors"
 	"fmt"
+	common2 "github.com/ledgerwatch/erigon-lib/common"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon/cl/phase1/core/rawdb"
 	"github.com/ledgerwatch/erigon/cl/phase1/core/state"
 	"github.com/ledgerwatch/erigon/common"
@@ -28,30 +30,33 @@ type ConsensusClientCliCfg struct {
 	BeaconDataCfg         *rawdb.BeaconDataConfig
 	Port                  uint   `json:"port"`
 	Addr                  string `json:"address"`
-	ServerAddr            string `json:"serverAddr"`
-	ServerProtocol        string `json:"serverProtocol"`
-	ServerTcpPort         uint   `json:"serverTcpPort"`
-	LogLvl                uint   `json:"logLevel"`
-	NoDiscovery           bool   `json:"noDiscovery"`
-	CheckpointUri         string `json:"checkpointUri"`
+	ServerAddr            string `json:"server_addr"`
+	ServerProtocol        string `json:"server_protocol"`
+	ServerTcpPort         uint   `json:"server_tcp_port"`
+	LogLvl                uint   `json:"log_level"`
+	NoDiscovery           bool   `json:"no_discovery"`
+	LocalDiscovery        bool   `json:"local_discovery"`
+	CheckpointUri         string `json:"checkpoint_uri"`
 	Chaindata             string `json:"chaindata"`
-	ErigonPrivateApi      string `json:"erigonPrivateApi"`
-	TransitionChain       bool   `json:"transitionChain"`
+	ErigonPrivateApi      string `json:"erigon_private_api"`
+	TransitionChain       bool   `json:"transition_chain"`
 	NetworkType           clparams.NetworkType
-	InitialSync           bool          `json:"initialSync"`
-	NoBeaconApi           bool          `json:"noBeaconApi"`
-	BeaconApiReadTimeout  time.Duration `json:"beaconApiReadTimeout"`
-	BeaconApiWriteTimeout time.Duration `json:"beaconApiWriteTimeout"`
-	BeaconAddr            string        `json:"beaconAddr"`
-	BeaconProtocol        string        `json:"beaconProtocol"`
-	RecordMode            bool          `json:"recordMode"`
-	RecordDir             string        `json:"recordDir"`
+	InitialSync           bool          `json:"initial_sync"`
+	NoBeaconApi           bool          `json:"no_beacon_api"`
+	BeaconApiReadTimeout  time.Duration `json:"beacon_api_read_timeout"`
+	BeaconApiWriteTimeout time.Duration `json:"beacon_api_write_timeout"`
+	BeaconAddr            string        `json:"beacon_addr"`
+	BeaconProtocol        string        `json:"beacon_protocol"`
+	RecordMode            bool          `json:"record_mode"`
+	RecordDir             string        `json:"record_dir"`
+	DataDir               string        `json:"data_dir"`
 	RunEngineAPI          bool          `json:"run_engine_api"`
 	EngineAPIAddr         string        `json:"engine_api_addr"`
 	EngineAPIPort         int           `json:"engine_api_port"`
 	JwtSecret             []byte
 
-	InitalState *state.BeaconState
+	InitalState *state.CachingBeaconState
+	Dirs        datadir.Dirs
 }
 
 func SetupConsensusClientCfg(ctx *cli.Context) (*ConsensusClientCliCfg, error) {
@@ -94,6 +99,8 @@ func SetupConsensusClientCfg(ctx *cli.Context) (*ConsensusClientCliCfg, error) {
 	cfg.BeaconProtocol = "tcp"
 	cfg.RecordMode = ctx.Bool(flags.RecordModeFlag.Name)
 	cfg.RecordDir = ctx.String(flags.RecordModeDir.Name)
+	cfg.DataDir = ctx.String(utils.DataDirFlag.Name)
+	cfg.Dirs = datadir.New(cfg.DataDir)
 
 	cfg.RunEngineAPI = ctx.Bool(flags.RunEngineAPI.Name)
 	cfg.EngineAPIAddr = ctx.String(flags.EngineApiHostFlag.Name)
@@ -112,25 +119,24 @@ func SetupConsensusClientCfg(ctx *cli.Context) (*ConsensusClientCliCfg, error) {
 	cfg.Addr = ctx.String(flags.SentinelDiscoveryAddr.Name)
 
 	cfg.LogLvl = ctx.Uint(logging.LogVerbosityFlag.Name)
-	fmt.Println(cfg.LogLvl)
 	if cfg.LogLvl == uint(log.LvlInfo) || cfg.LogLvl == 0 {
 		cfg.LogLvl = uint(log.LvlDebug)
 	}
 	cfg.NoDiscovery = ctx.Bool(flags.NoDiscovery.Name)
+	cfg.LocalDiscovery = ctx.Bool(flags.LocalDiscovery.Name)
 	if ctx.String(flags.CheckpointSyncUrlFlag.Name) != "" {
 		cfg.CheckpointUri = ctx.String(flags.CheckpointSyncUrlFlag.Name)
 	} else {
 		cfg.CheckpointUri = clparams.GetCheckpointSyncEndpoint(cfg.NetworkType)
-		fmt.Println(cfg.CheckpointUri)
 	}
 	cfg.Chaindata = ctx.String(flags.ChaindataFlag.Name)
 	cfg.BeaconDataCfg = rawdb.BeaconDataConfigurations[ctx.String(flags.BeaconDBModeFlag.Name)]
 	// Process bootnodes
 	if ctx.String(flags.BootnodesFlag.Name) != "" {
-		cfg.NetworkCfg.BootNodes = utils.SplitAndTrim(ctx.String(flags.BootnodesFlag.Name))
+		cfg.NetworkCfg.BootNodes = common2.CliString2Array(ctx.String(flags.BootnodesFlag.Name))
 	}
 	if ctx.String(flags.SentinelStaticPeersFlag.Name) != "" {
-		cfg.NetworkCfg.StaticPeers = utils.SplitAndTrim(ctx.String(flags.SentinelStaticPeersFlag.Name))
+		cfg.NetworkCfg.StaticPeers = common2.CliString2Array(ctx.String(flags.SentinelStaticPeersFlag.Name))
 		fmt.Println(cfg.NetworkCfg.StaticPeers)
 	}
 	cfg.TransitionChain = ctx.Bool(flags.TransitionChainFlag.Name)

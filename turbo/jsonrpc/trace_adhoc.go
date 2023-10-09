@@ -52,7 +52,7 @@ type TraceCallParam struct {
 	GasPrice             *hexutil.Big       `json:"gasPrice"`
 	MaxPriorityFeePerGas *hexutil.Big       `json:"maxPriorityFeePerGas"`
 	MaxFeePerGas         *hexutil.Big       `json:"maxFeePerGas"`
-	MaxFeePerDataGas     *hexutil.Big       `json:"maxFeePerDataGas"`
+	MaxFeePerBlobGas     *hexutil.Big       `json:"maxFeePerBlobGas"`
 	Value                *hexutil.Big       `json:"value"`
 	Data                 hexutility.Bytes   `json:"data"`
 	AccessList           *types2.AccessList `json:"accessList"`
@@ -154,7 +154,7 @@ func (args *TraceCallParam) ToMessage(globalGasCap uint64, baseFee *uint256.Int)
 		gasPrice         *uint256.Int
 		gasFeeCap        *uint256.Int
 		gasTipCap        *uint256.Int
-		maxFeePerDataGas *uint256.Int
+		maxFeePerBlobGas *uint256.Int
 	)
 	if baseFee == nil {
 		// If there's no basefee, then it must be a non-1559 execution
@@ -202,8 +202,8 @@ func (args *TraceCallParam) ToMessage(globalGasCap uint64, baseFee *uint256.Int)
 				gasFeeCap, gasTipCap = gasPrice, gasPrice
 			}
 		}
-		if args.MaxFeePerDataGas != nil {
-			maxFeePerDataGas.SetFromBig(args.MaxFeePerDataGas.ToInt())
+		if args.MaxFeePerBlobGas != nil {
+			maxFeePerBlobGas.SetFromBig(args.MaxFeePerBlobGas.ToInt())
 		}
 	}
 	value := new(uint256.Int)
@@ -221,7 +221,7 @@ func (args *TraceCallParam) ToMessage(globalGasCap uint64, baseFee *uint256.Int)
 	if args.AccessList != nil {
 		accessList = *args.AccessList
 	}
-	msg := types.NewMessage(addr, args.To, 0, value, gas, gasPrice, gasFeeCap, gasTipCap, data, accessList, false /* checkNonce */, false /* isFree */, maxFeePerDataGas, 0 /* rollupDataGas FIXME */)
+	msg := types.NewMessage(addr, args.To, 0, value, gas, gasPrice, gasFeeCap, gasTipCap, data, accessList, false /* checkNonce */, false /* isFree */, maxFeePerBlobGas, 0 /* rollupDataGas FIXME */)
 	return msg, nil
 }
 
@@ -453,7 +453,7 @@ func (ot *OeTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 			// Set the "push" of the last operation
 			var showStack int
 			switch {
-			case ot.lastOp >= vm.PUSH1 && ot.lastOp <= vm.PUSH32:
+			case ot.lastOp >= vm.PUSH0 && ot.lastOp <= vm.PUSH32:
 				showStack = 1
 			case ot.lastOp >= vm.SWAP1 && ot.lastOp <= vm.SWAP16:
 				showStack = int(ot.lastOp-vm.SWAP1) + 2
@@ -476,7 +476,7 @@ func (ot *OeTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 			// Set the "mem" of the last operation
 			var setMem bool
 			switch ot.lastOp {
-			case vm.MSTORE, vm.MSTORE8, vm.MLOAD, vm.RETURNDATACOPY, vm.CALLDATACOPY, vm.CODECOPY:
+			case vm.MSTORE, vm.MSTORE8, vm.MLOAD, vm.RETURNDATACOPY, vm.CALLDATACOPY, vm.CODECOPY, vm.EXTCODECOPY:
 				setMem = true
 			}
 			if setMem && ot.lastMemLen > 0 {
@@ -540,6 +540,11 @@ func (ot *OeTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scop
 			if st.Len() > 2 {
 				ot.lastMemOff = st.Back(0).Uint64()
 				ot.lastMemLen = st.Back(2).Uint64()
+			}
+		case vm.EXTCODECOPY:
+			if st.Len() > 3 {
+				ot.lastMemOff = st.Back(1).Uint64()
+				ot.lastMemLen = st.Back(3).Uint64()
 			}
 		case vm.STATICCALL, vm.DELEGATECALL:
 			if st.Len() > 5 {
@@ -721,7 +726,7 @@ func (api *TraceAPIImpl) ReplayTransaction(ctx context.Context, txHash libcommon
 		return nil, err
 	}
 
-	blockNum, ok, err := api.txnLookup(ctx, tx, txHash)
+	blockNum, ok, err := api.txnLookup(tx, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +744,7 @@ func (api *TraceAPIImpl) ReplayTransaction(ctx context.Context, txHash libcommon
 		}
 		blockNum = *blockNumPtr
 	}
-	block, err := api.blockByNumberWithSenders(ctx, tx, blockNum)
+	block, err := api.blockByNumberWithSenders(tx, blockNum)
 	if err != nil {
 		return nil, err
 	}
@@ -816,7 +821,7 @@ func (api *TraceAPIImpl) ReplayBlockTransactions(ctx context.Context, blockNrOrH
 	}
 
 	// Extract transactions from block
-	block, bErr := api.blockWithSenders(ctx, tx, blockHash, blockNumber)
+	block, bErr := api.blockWithSenders(tx, blockHash, blockNumber)
 	if bErr != nil {
 		return nil, bErr
 	}
@@ -898,7 +903,7 @@ func (api *TraceAPIImpl) Call(ctx context.Context, args TraceCallParam, traceTyp
 
 	ibs := state.New(stateReader)
 
-	block, err := api.blockWithSenders(ctx, tx, hash, blockNumber)
+	block, err := api.blockWithSenders(tx, hash, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -974,7 +979,7 @@ func (api *TraceAPIImpl) Call(ctx context.Context, args TraceCallParam, traceTyp
 		evm.Cancel()
 	}()
 
-	gp := new(core.GasPool).AddGas(msg.Gas()).AddDataGas(msg.DataGas())
+	gp := new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas())
 	var execResult *core.ExecutionResult
 	ibs.SetTxContext(libcommon.Hash{}, libcommon.Hash{}, 0)
 	execResult, err = core.ApplyMessage(evm, msg, gp, true /* refunds */, true /* gasBailout */)
@@ -1061,7 +1066,7 @@ func (api *TraceAPIImpl) CallMany(ctx context.Context, calls json.RawMessage, pa
 	}
 
 	// TODO: can read here only parent header
-	parentBlock, err := api.blockWithSenders(ctx, dbtx, hash, blockNumber)
+	parentBlock, err := api.blockWithSenders(dbtx, hash, blockNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -1115,7 +1120,7 @@ func (api *TraceAPIImpl) doCallMany(ctx context.Context, dbtx kv.Tx, msgs []type
 	ibs := state.New(cachedReader)
 
 	// TODO: can read here only parent header
-	parentBlock, err := api.blockWithSenders(ctx, dbtx, hash, blockNumber)
+	parentBlock, err := api.blockWithSenders(dbtx, hash, blockNumber)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1193,7 +1198,7 @@ func (api *TraceAPIImpl) doCallMany(ctx context.Context, dbtx kv.Tx, msgs []type
 
 		evm := vm.NewEVM(blockCtx, txCtx, ibs, chainConfig, vmConfig)
 
-		gp := new(core.GasPool).AddGas(msg.Gas()).AddDataGas(msg.DataGas())
+		gp := new(core.GasPool).AddGas(msg.Gas()).AddBlobGas(msg.BlobGas())
 		var execResult *core.ExecutionResult
 		// Clone the state cache before applying the changes, clone is discarded
 		var cloneReader state.StateReader
