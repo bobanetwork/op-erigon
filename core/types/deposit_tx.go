@@ -26,10 +26,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"math/bits"
 
-	"bytes"
-
-	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -86,11 +84,14 @@ func (tx DepositTransaction) Protected() bool {
 }
 
 func (tx DepositTransaction) EncodingSize() int {
-	// FIXME - inefficient
-	var bb bytes.Buffer
-	tx.EncodeRLP(&bb)
-
-	return bb.Len()
+	payloadSize := tx.payloadSize()
+	envelopeSize := payloadSize
+	// Add envelope size and type size
+	if payloadSize >= 56 {
+		envelopeSize += libcommon.BitLenToByteLen(bits.Len(uint(payloadSize)))
+	}
+	envelopeSize += 2
+	return envelopeSize
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
@@ -116,27 +117,102 @@ func (tx DepositTransaction) MarshalBinary(w io.Writer) error {
 
 // EncodeRLP implements rlp.Encoder
 func (tx DepositTransaction) EncodeRLP(w io.Writer) error {
+	var b [33]byte
+	rlp.EncodeInt(DepositTxType, w, b[:])
 
-	var bb bytes.Buffer
-	buf := rlp2.NewEncoderBuffer(&bb)
-	buf.WriteUint64(DepositTxType)
-	idx1 := buf.List()
-	buf.WriteBytes(tx.SourceHash.Bytes())
-	buf.WriteBytes(tx.From.Bytes())
-	if tx.To != nil {
-		buf.WriteBytes(tx.To.Bytes())
-	} else {
-		buf.WriteBytes([]byte{})
+	payloadSize := tx.payloadSize()
+
+	// prefix
+	if err := EncodeStructSizePrefix(payloadSize, w, b[:]); err != nil {
+		return err
 	}
-	buf.WriteBytes(tx.Mint.Bytes())
-	buf.WriteBytes(tx.Value.Bytes())
-	buf.WriteUint64(tx.GasLimit)
-	buf.WriteBool(tx.IsSystemTx)
-	buf.WriteBytes(tx.Data)
-	buf.ListEnd(idx1)
+	if err := rlp.EncodeString(tx.SourceHash[:], w, b[:]); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.From[:], w, b[:]); err != nil {
+		return err
+	}
+	if tx.To == nil {
+		b[0] = 128
+	} else {
+		b[0] = 128 + 20
+	}
+	if _, err := w.Write(b[:1]); err != nil {
+		return err
+	}
+	if tx.To != nil {
+		if _, err := w.Write(tx.To.Bytes()); err != nil {
+			return err
+		}
+	}
+	if err := tx.Mint.EncodeRLP(w); err != nil {
+		return err
+	}
+	if err := tx.Value.EncodeRLP(w); err != nil {
+		return err
+	}
+	if err := rlp.EncodeInt(tx.GasLimit, w, b[:]); err != nil {
+		return err
+	}
+	boolVal := uint64(0)
+	if tx.IsSystemTx {
+		boolVal = 1
+	}
+	if err := rlp.EncodeInt(boolVal, w, b[:]); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.Data, w, b[:]); err != nil {
+		return err
+	}
 
-	w.Write(buf.ToBytes())
 	return nil
+}
+
+func (tx DepositTransaction) payloadSize() int {
+	// SourceHash
+	payloadSize := 1
+	payloadSize += len(tx.SourceHash)
+
+	// From
+	payloadSize++
+	payloadSize += len(tx.From)
+
+	// To
+	payloadSize++
+	if tx.To != nil {
+		payloadSize += len(tx.To)
+	}
+
+	// Mint
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(tx.Mint)
+
+	// Value
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(tx.Value)
+
+	// GasLimit
+	payloadSize++
+	payloadSize += rlp.IntLenExcludingHead(tx.GasLimit)
+
+	// IsSystemTx
+	payloadSize++
+
+	// size of Data
+	payloadSize++
+	switch len(tx.Data) {
+	case 0:
+	case 1:
+		if tx.Data[0] >= 128 {
+			payloadSize++
+		}
+	default:
+		if len(tx.Data) >= 56 {
+			payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(len(tx.Data))))
+		}
+		payloadSize += len(tx.Data)
+	}
+	return payloadSize
 }
 
 // DecodeRLP decodes DepositTransaction but with the list token already consumed and encodingSize being presented
