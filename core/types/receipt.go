@@ -62,10 +62,9 @@ type Receipt struct {
 
 	// Implementation fields: These fields are added by geth when processing a transaction.
 	// They are stored in the chain database.
-	TxHash            libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
-	ContractAddress   libcommon.Address `json:"contractAddress" codec:"-"`
-	GasUsed           uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
-	EffectiveGasPrice *big.Int          `json:"effectiveGasPrice"`
+	TxHash          libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
+	ContractAddress libcommon.Address `json:"contractAddress" codec:"-"`
+	GasUsed         uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
 
 	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions
 	// The state transition process ensures this is only set for Regolith deposit transactions.

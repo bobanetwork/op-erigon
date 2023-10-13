@@ -770,7 +770,6 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"contractAddress":   nil,
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
-		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
 	}
 	if chainConfig.Optimism != nil && !txn.IsDepositTx() {
 		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
@@ -781,7 +780,6 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositNonce != nil {
 		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
 	}
-
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(txn.GetPrice().Uint64())
 	} else {
