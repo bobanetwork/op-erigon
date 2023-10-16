@@ -753,7 +753,6 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"contractAddress":   nil,
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
-		"effectiveGasPrice": (*hexutil.Big)(receipt.EffectiveGasPrice),
 	}
 	if receipt.L1Fee != nil {
 		// simulate 'omitEmpty'
