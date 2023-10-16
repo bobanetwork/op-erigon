@@ -305,11 +305,11 @@ func RPCMarshalHeader(head *types.Header) map[string]interface{} {
 // RPCMarshalBlock converts the given block to the RPC output which depends on fullTx. If inclTx is true transactions are
 // returned. When fullTx is true the returned block contains full transaction details, otherwise it will only contain
 // transaction hashes.
-func RPCMarshalBlockDeprecated(block *types.Block, inclTx bool, fullTx bool) (map[string]interface{}, error) {
-	return RPCMarshalBlockExDeprecated(block, inclTx, fullTx, nil, libcommon.Hash{}, nil)
+func RPCMarshalBlockDeprecated(block *types.Block, inclTx bool, fullTx bool, depositNonces []*uint64) (map[string]interface{}, error) {
+	return RPCMarshalBlockExDeprecated(block, inclTx, fullTx, nil, libcommon.Hash{}, nil, depositNonces)
 }
 
-func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, borTx types.Transaction, borTxHash libcommon.Hash, receipts types.Receipts) (map[string]interface{}, error) {
+func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, borTx types.Transaction, borTxHash libcommon.Hash, receipts types.Receipts, depositNonces []*uint64) (map[string]interface{}, error) {
 	fields := RPCMarshalHeader(block.Header())
 	fields["size"] = hexutil.Uint64(block.Size())
 	if _, ok := fields["transactions"]; !ok {
@@ -331,6 +331,10 @@ func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, b
 		}
 		txs := block.Transactions()
 		transactions := make([]interface{}, len(txs), len(txs)+1)
+		if depositNonces == nil {
+			// ensure that depositNonces is always initialized for formatTx
+			depositNonces = make([]*uint64, len(txs))
+		}
 		var err error
 		for i, tx := range txs {
 			var dn *uint64
@@ -438,10 +442,13 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 	}
 	switch t := tx.(type) {
 	case *types.LegacyTx:
-		chainId = types.DeriveChainId(&t.V)
-		// if a legacy transaction has an EIP-155 chain id, include it explicitly, otherwise chain id is not included
-		if !chainId.IsZero() {
-			result.ChainID = (*hexutil.Big)(chainId.ToBig())
+		// avoid overflow by not calling DeriveChainId. chain id not included when v = 0
+		if !t.V.IsZero() {
+			chainId = types.DeriveChainId(&t.V)
+			// if a legacy transaction has an EIP-155 chain id, include it explicitly, otherwise chain id is not included
+			if !chainId.IsZero() {
+				result.ChainID = (*hexutil.Big)(chainId.ToBig())
+			}
 		}
 		result.GasPrice = (*hexutil.Big)(t.GasPrice.ToBig())
 		result.V = (*hexutil.Big)(t.V.ToBig())

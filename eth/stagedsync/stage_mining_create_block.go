@@ -173,20 +173,11 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		uncles:    mapset.NewSet[libcommon.Hash](),
 	}
 
-	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
-	if cfg.blockBuilderParameters != nil && cfg.blockBuilderParameters.GasLimit != nil {
-		log.Info("Override gas limit from Engine API", "old", header.GasLimit, "new", *cfg.blockBuilderParameters.GasLimit)
-		header.GasLimit = *cfg.blockBuilderParameters.GasLimit
-	} else if cfg.chainConfig.Optimism != nil && cfg.miner.MiningConfig.GasLimit != 0 {
-		// TODO(jky) this seems incomaptible with the requirement that GasLimit is
-		// specified by the payload attributes -- Clarification, in op-geth, they
-		// seem to build blocks without input from op-node, but, Erigon only begins
-		// the block building process when a forkchoice is supplied (with gas limit)
-		// so this path is dead in Erigon.
-		log.Info("Override gas limit as is optimism, but not set by engine", "old", header.GasLimit, "new", cfg.miner.MiningConfig.GasLimit)
-		header.GasLimit = cfg.miner.MiningConfig.GasLimit
+	targetGasLimit := &cfg.miner.MiningConfig.GasLimit
+	if cfg.chainConfig.IsOptimism() {
+		targetGasLimit = cfg.blockBuilderParameters.GasLimit
 	}
-
+	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, targetGasLimit)
 	header.Coinbase = coinbase
 	header.Extra = cfg.miner.MiningConfig.ExtraData
 

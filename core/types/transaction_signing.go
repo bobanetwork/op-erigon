@@ -311,6 +311,8 @@ func (sg Signer) SignatureValues(tx Transaction, sig []byte) (R, S, V *uint256.I
 			return nil, nil, nil, ErrInvalidChainId
 		}
 		R, S, V = decodeSignature(sig)
+	case *DepositTransaction:
+		return nil, nil, nil, fmt.Errorf("deposits do not have a signature")
 	default:
 		return nil, nil, nil, ErrTxTypeNotSupported
 	}
