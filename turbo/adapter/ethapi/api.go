@@ -322,7 +322,7 @@ func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, b
 		}
 		if fullTx {
 			formatTx = func(tx types.Transaction, index int, dn *uint64) (interface{}, error) {
-				rpcTx := newRPCTransactionFromBlockAndTxGivenIndex(block, tx, uint64(index))
+				rpcTx := newRPCTransactionFromBlockAndTxGivenIndex(block, tx, uint64(index), depositNonces[index])
 				if dn != nil {
 					rpcTx.Nonce = hexutil.Uint64(*dn)
 				}
@@ -570,8 +570,8 @@ func newRPCTransactionFromBlockIndex(b *types.Block, index uint64) *RPCTransacti
 */
 
 // newRPCTransactionFromBlockAndTxGivenIndex returns a transaction that will serialize to the RPC representation.
-func newRPCTransactionFromBlockAndTxGivenIndex(b *types.Block, tx types.Transaction, index uint64) *RPCTransaction {
-	return newRPCTransaction(tx, b.Hash(), b.NumberU64(), index, b.BaseFee(), nil)
+func newRPCTransactionFromBlockAndTxGivenIndex(b *types.Block, tx types.Transaction, index uint64, depositNonce *uint64) *RPCTransaction {
+	return newRPCTransaction(tx, b.Hash(), b.NumberU64(), index, b.BaseFee(), depositNonce)
 }
 
 /*
