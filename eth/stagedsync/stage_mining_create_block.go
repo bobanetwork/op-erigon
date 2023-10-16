@@ -174,7 +174,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	}
 
 	targetGasLimit := &cfg.miner.MiningConfig.GasLimit
-	if cfg.chainConfig.IsOptimism() {
+	if cfg.chainConfig.IsOptimism() && cfg.blockBuilderParameters != nil && cfg.blockBuilderParameters.GasLimit != nil {
 		targetGasLimit = cfg.blockBuilderParameters.GasLimit
 	}
 	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, targetGasLimit)
