@@ -227,7 +227,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 		unwindToNumber = fcuHeader.Number.Uint64()
 	}
 
-	e.executionPipeline.UnwindTo(unwindToNumber, libcommon.Hash{})
+	e.executionPipeline.UnwindTo(unwindToNumber, stagedsync.ForkChoice)
 	if e.historyV3 {
 		if err := rawdbv3.TxNums.Truncate(tx, unwindToNumber); err != nil {
 			sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
@@ -255,6 +255,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 
 	// Run the unwind
 	if err := e.executionPipeline.RunUnwind(e.db, tx); err != nil {
+		err = fmt.Errorf("updateForkChoice: %w", err)
 		sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
 		return
 	}
@@ -319,6 +320,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 	}
 	// Run the forkchoice
 	if err := e.executionPipeline.Run(e.db, tx, false); err != nil {
+		err = fmt.Errorf("updateForkChoice: %w", err)
 		sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
 		return
 	}
@@ -371,6 +373,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 		}
 
 		if err := e.db.Update(ctx, func(tx kv.RwTx) error { return e.executionPipeline.RunPrune(e.db, tx, false) }); err != nil {
+			err = fmt.Errorf("updateForkChoice: %w", err)
 			sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
 			return
 		}

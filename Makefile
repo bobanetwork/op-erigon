@@ -120,7 +120,7 @@ COMMANDS += txpool
 COMMANDS += verkle
 COMMANDS += evm
 COMMANDS += sentinel
-COMMANDS += caplin-phase1
+COMMANDS += caplin
 COMMANDS += caplin-regression
 
 

@@ -23,6 +23,7 @@ import (
 	"strconv"
 
 	"github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common/fixedgas"
 )
 
 // Config is the core config which determines the blockchain settings.
@@ -71,6 +72,12 @@ type Config struct {
 	BedrockBlock *big.Int `json:"bedrockBlock,omitempty"` // bedrockSwitch block (nil = no fork, 0 = already actived)
 	// RegolithTime is *uint64 in op-geth
 	RegolithTime *big.Int `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
+
+	// Optional EIP-4844 parameters
+	MinBlobGasPrice            *uint64 `json:"minBlobGasPrice,omitempty"`
+	MaxBlobGasPerBlock         *uint64 `json:"maxBlobGasPerBlock,omitempty"`
+	TargetBlobGasPerBlock      *uint64 `json:"targetBlobGasPerBlock,omitempty"`
+	BlobGasPriceUpdateFraction *uint64 `json:"blobGasPriceUpdateFraction,omitempty"`
 
 	Eip1559FeeCollector           *common.Address `json:"eip1559FeeCollector,omitempty"`           // (Optional) Address where burnt EIP-1559 fees go to
 	Eip1559FeeCollectorTransition *big.Int        `json:"eip1559FeeCollectorTransition,omitempty"` // (Optional) Block from which burnt EIP-1559 fees go to the Eip1559FeeCollector
@@ -254,6 +261,38 @@ func (c *Config) ElasticityMultiplier(defaultParam int) uint64 {
 		return c.Optimism.EIP1559Elasticity
 	}
 	return uint64(defaultParam)
+}
+
+func (c *Config) GetMinBlobGasPrice() uint64 {
+	if c.MinBlobGasPrice != nil {
+		return *c.MinBlobGasPrice
+	}
+	return 1 // MIN_BLOB_GASPRICE (EIP-4844)
+}
+
+func (c *Config) GetMaxBlobGasPerBlock() uint64 {
+	if c.MaxBlobGasPerBlock != nil {
+		return *c.MaxBlobGasPerBlock
+	}
+	return 786432 // MAX_BLOB_GAS_PER_BLOCK (EIP-4844)
+}
+
+func (c *Config) GetTargetBlobGasPerBlock() uint64 {
+	if c.TargetBlobGasPerBlock != nil {
+		return *c.TargetBlobGasPerBlock
+	}
+	return 393216 // TARGET_BLOB_GAS_PER_BLOCK (EIP-4844)
+}
+
+func (c *Config) GetBlobGasPriceUpdateFraction() uint64 {
+	if c.BlobGasPriceUpdateFraction != nil {
+		return *c.BlobGasPriceUpdateFraction
+	}
+	return 3338477 // BLOB_GASPRICE_UPDATE_FRACTION (EIP-4844)
+}
+
+func (c *Config) GetMaxBlobsPerBlock() uint64 {
+	return c.GetMaxBlobGasPerBlock() / fixedgas.BlobGasPerBlob
 }
 
 // CheckCompatible checks whether scheduled fork transitions have been imported
