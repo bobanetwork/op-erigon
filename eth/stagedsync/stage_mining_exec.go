@@ -10,10 +10,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/holiman/uint256"
-	"github.com/ledgerwatch/erigon-lib/common/length"
-	"github.com/ledgerwatch/erigon-lib/etl"
 	"github.com/ledgerwatch/erigon-lib/kv/membatch"
-	"github.com/ledgerwatch/erigon-lib/kv/temporal/historyv2"
 	"github.com/ledgerwatch/log/v3"
 	"golang.org/x/net/context"
 
@@ -22,8 +19,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
-	"github.com/ledgerwatch/erigon/common/changeset"
-	"github.com/ledgerwatch/erigon/common/dbutils"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
@@ -541,111 +536,4 @@ func NotifyPendingLogs(logPrefix string, notifier ChainEventNotifier, logs types
 		return
 	}
 	notifier.OnNewPendingLogs(logs)
-}
-
-// implemented by tweaking UnwindExecutionStage
-func UnwindMiningExecutionStage(u *UnwindState, s *StageState, tx kv.RwTx, ctx context.Context, cfg MiningExecCfg, logger log.Logger) (err error) {
-	if u.UnwindPoint >= s.BlockNumber {
-		return nil
-	}
-	useExternalTx := tx != nil
-	if !useExternalTx {
-		tx, err = cfg.db.BeginRw(context.Background())
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-	}
-	logPrefix := u.LogPrefix()
-	log.Info(fmt.Sprintf("[%s] Unwind Mining Execution", logPrefix), "from", s.BlockNumber, "to", u.UnwindPoint)
-
-	if err = unwindMiningExecutionStage(u, s, tx, ctx, cfg, logger); err != nil {
-		return err
-	}
-	if err = u.Done(tx); err != nil {
-		return err
-	}
-
-	if !useExternalTx {
-		if err = tx.Commit(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func unwindMiningExecutionStage(u *UnwindState, s *StageState, tx kv.RwTx, ctx context.Context, cfg MiningExecCfg, logger log.Logger) error {
-	logPrefix := s.LogPrefix()
-	stateBucket := kv.PlainState
-	storageKeyLength := length.Addr + length.Incarnation + length.Hash
-
-	changes := etl.NewCollector(logPrefix, cfg.tmpdir, etl.NewOldestEntryBuffer(etl.BufferOptimalSize), logger)
-	defer changes.Close()
-	errRewind := changeset.RewindData(tx, s.BlockNumber, u.UnwindPoint, changes, ctx.Done())
-	if errRewind != nil {
-		return fmt.Errorf("getting rewind data: %w", errRewind)
-	}
-
-	if err := changes.Load(tx, stateBucket, func(k, v []byte, table etl.CurrentTableReader, next etl.LoadNextFunc) error {
-		if len(k) == 20 {
-			if len(v) > 0 {
-				var acc accounts.Account
-				if err := acc.DecodeForStorage(v); err != nil {
-					return err
-				}
-
-				// Fetch the code hash
-				recoverCodeHashPlain(&acc, tx, k)
-				var address libcommon.Address
-				copy(address[:], k)
-
-				// cleanup contract code bucket
-				original, err := state.NewPlainStateReader(tx).ReadAccountData(address)
-				if err != nil {
-					return fmt.Errorf("read account for %x: %w", address, err)
-				}
-				if original != nil {
-					// clean up all the code incarnations original incarnation and the new one
-					for incarnation := original.Incarnation; incarnation > acc.Incarnation && incarnation > 0; incarnation-- {
-						err = tx.Delete(kv.PlainContractCode, dbutils.PlainGenerateStoragePrefix(address[:], incarnation))
-						if err != nil {
-							return fmt.Errorf("writeAccountPlain for %x: %w", address, err)
-						}
-					}
-				}
-
-				newV := make([]byte, acc.EncodingLengthForStorage())
-				acc.EncodeForStorage(newV)
-				if err := next(k, k, newV); err != nil {
-					return err
-				}
-			} else {
-				if err := next(k, k, nil); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		if len(v) > 0 {
-			if err := next(k, k[:storageKeyLength], v); err != nil {
-				return err
-			}
-		} else {
-			if err := next(k, k[:storageKeyLength], nil); err != nil {
-				return err
-			}
-		}
-		return nil
-
-	}, etl.TransformArgs{Quit: ctx.Done()}); err != nil {
-		return err
-	}
-
-	if err := historyv2.Truncate(tx, u.UnwindPoint+1); err != nil {
-		return err
-	}
-
-	// we do not have to delete receipt, epoch, callTraceSet because
-	// mining stage does not write anything to db.
-	return nil
 }

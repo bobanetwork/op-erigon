@@ -60,10 +60,8 @@ func MiningStages(
 				//defer fmt.Println("SpawnMiningExecStage", "DONE")
 				return SpawnMiningExecStage(s, tx, execCfg, ctx.Done(), logger)
 			},
-			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx, logger log.Logger) error {
-				return UnwindMiningExecutionStage(u, s, tx, ctx, execCfg, logger)
-			},
-			Prune: func(firstCycle bool, u *PruneState, tx kv.RwTx, logger log.Logger) error { return nil },
+			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, tx kv.RwTx, logger log.Logger) error { return nil },
+			Prune:  func(firstCycle bool, u *PruneState, tx kv.RwTx, logger log.Logger) error { return nil },
 		},
 		{
 			ID:          stages.HashState,
