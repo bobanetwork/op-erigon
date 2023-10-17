@@ -170,8 +170,15 @@ func (r Receipt) EncodeRLP(w io.Writer) error {
 	}
 	buf := new(bytes.Buffer)
 	buf.WriteByte(r.Type)
-	if err := rlp.Encode(buf, data); err != nil {
-		return err
+	if r.Type == DepositTxType {
+		withNonce := &depositReceiptRlp{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs, r.DepositNonce}
+		if err := rlp.Encode(buf, withNonce); err != nil {
+			return err
+		}
+	} else {
+		if err := rlp.Encode(buf, data); err != nil {
+			return err
+		}
 	}
 	return rlp.Encode(w, buf.Bytes())
 }
@@ -254,6 +261,17 @@ func (r *Receipt) decodePayload(s *rlp.Stream) error {
 	}
 	if err = s.ListEnd(); err != nil {
 		return fmt.Errorf("close Logs: %w", err)
+	}
+	if r.Type == DepositTxType {
+		depositNonce, err := s.Uint()
+		if err != nil {
+			if !errors.Is(err, rlp.EOL) {
+				return fmt.Errorf("read DepositNonce: %w", err)
+			}
+			return nil
+		} else {
+			r.DepositNonce = &depositNonce
+		}
 	}
 	if err := s.ListEnd(); err != nil {
 		return fmt.Errorf("close receipt payload: %w", err)
@@ -416,6 +434,9 @@ func decodeStoredReceiptRLP(r *ReceiptForStorage, blob []byte) error {
 		r.Logs[i] = (*Log)(log)
 	}
 	//r.Bloom = CreateBloom(Receipts{(*Receipt)(r)})
+	if stored.DepositNonce != nil {
+		r.DepositNonce = stored.DepositNonce
+	}
 
 	return nil
 }
