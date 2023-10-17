@@ -242,7 +242,9 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 	if err != nil {
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
-	response, err := ethapi.RPCMarshalBlockEx(b, true, fullTx, borTx, borTxHash, additionalFields, receipts)
+
+	depositNonces := rawdb.ReadDepositNonces(tx, b.NumberU64())
+	response, err := ethapi.RPCMarshalBlockEx(b, true, fullTx, borTx, borTxHash, additionalFields, receipts, depositNonces)
 	if err == nil && number == rpc.PendingBlockNumber && chainConfig.Optimism == nil { // don't remove info if optimism
 		// Pending blocks need to nil out a few fields
 		for _, field := range []string{"hash", "nonce", "miner"} {
@@ -307,7 +309,9 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 	if err != nil {
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
-	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, borTx, borTxHash, additionalFields, receipts)
+
+	depositNonces := rawdb.ReadDepositNonces(tx, number)
+	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, borTx, borTxHash, additionalFields, receipts, depositNonces)
 
 	if chainConfig.Bor != nil {
 		response["miner"], _ = ecrecover(block.Header(), chainConfig.Bor)

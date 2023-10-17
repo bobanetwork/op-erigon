@@ -481,7 +481,8 @@ func (api *OtterscanAPIImpl) delegateGetBlockByNumber(tx kv.Tx, b *types.Block, 
 		return nil, err
 	}
 	additionalFields := make(map[string]interface{})
-	response, err := ethapi.RPCMarshalBlock(b, inclTx, inclTx, additionalFields)
+	depositNonces := rawdb.ReadDepositNonces(tx, uint64(number.Int64()))
+	response, err := ethapi.RPCMarshalBlock(b, inclTx, inclTx, additionalFields, depositNonces)
 	if !inclTx {
 		delete(response, "transactions") // workaround for https://github.com/ledgerwatch/erigon/issues/4989#issuecomment-1218415666
 	}
