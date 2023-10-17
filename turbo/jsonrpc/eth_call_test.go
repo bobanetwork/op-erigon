@@ -352,7 +352,7 @@ func TestGetBlockByTimestampLatestTime(t *testing.T) {
 
 	latestBlock, err := m.BlockReader.CurrentBlock(tx)
 	require.NoError(t, err)
-	response, err := ethapi.RPCMarshalBlockDeprecated(latestBlock, true, false)
+	response, err := ethapi.RPCMarshalBlockDeprecated(latestBlock, true, false, nil)
 
 	if err != nil {
 		t.Error("couldn't get the rpc marshal block")
@@ -390,7 +390,7 @@ func TestGetBlockByTimestampOldestTime(t *testing.T) {
 		t.Error("couldn't retrieve oldest block")
 	}
 
-	response, err := ethapi.RPCMarshalBlockDeprecated(oldestBlock, true, false)
+	response, err := ethapi.RPCMarshalBlockDeprecated(oldestBlock, true, false, nil)
 
 	if err != nil {
 		t.Error("couldn't get the rpc marshal block")
@@ -426,7 +426,7 @@ func TestGetBlockByTimeHigherThanLatestBlock(t *testing.T) {
 	latestBlock, err := m.BlockReader.CurrentBlock(tx)
 	require.NoError(t, err)
 
-	response, err := ethapi.RPCMarshalBlockDeprecated(latestBlock, true, false)
+	response, err := ethapi.RPCMarshalBlockDeprecated(latestBlock, true, false, nil)
 
 	if err != nil {
 		t.Error("couldn't get the rpc marshal block")
@@ -474,7 +474,7 @@ func TestGetBlockByTimeMiddle(t *testing.T) {
 		t.Error("couldn't retrieve middle block")
 	}
 
-	response, err := ethapi.RPCMarshalBlockDeprecated(middleBlock, true, false)
+	response, err := ethapi.RPCMarshalBlockDeprecated(middleBlock, true, false, nil)
 
 	if err != nil {
 		t.Error("couldn't get the rpc marshal block")
@@ -515,7 +515,7 @@ func TestGetBlockByTimestamp(t *testing.T) {
 	if pickedBlock == nil {
 		t.Error("couldn't retrieve picked block")
 	}
-	response, err := ethapi.RPCMarshalBlockDeprecated(pickedBlock, true, false)
+	response, err := ethapi.RPCMarshalBlockDeprecated(pickedBlock, true, false, nil)
 
 	if err != nil {
 		t.Error("couldn't get the rpc marshal block")
