@@ -1310,6 +1310,13 @@ func (s *Ethereum) Stop() error {
 		s.silkworm.Close()
 	}
 
+	if s.seqRPCService != nil {
+		s.seqRPCService.Close()
+	}
+	if s.historicalRPCService != nil {
+		s.historicalRPCService.Close()
+	}
+
 	return nil
 }
 
