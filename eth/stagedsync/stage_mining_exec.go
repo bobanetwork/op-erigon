@@ -28,22 +28,25 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/services"
 )
 
 type MiningExecCfg struct {
-	db          kv.RwDB
-	miningState MiningState
-	notifier    ChainEventNotifier
-	chainConfig chain.Config
-	engine      consensus.Engine
-	blockReader services.FullBlockReader
-	vmConfig    *vm.Config
-	tmpdir      string
-	interrupt   *int32
-	payloadId   uint64
-	txPool2     TxPoolForMining
-	txPool2DB   kv.RoDB
+	db                   kv.RwDB
+	miningState          MiningState
+	notifier             ChainEventNotifier
+	chainConfig          chain.Config
+	engine               consensus.Engine
+	blockReader          services.FullBlockReader
+	vmConfig             *vm.Config
+	tmpdir               string
+	interrupt            *int32
+	payloadId            uint64
+	txPool2              TxPoolForMining
+	txPool2DB            kv.RoDB
+	historicalRPCService *rpc.Client
+	historicalRPCTimeout *time.Duration
 }
 
 type TxPoolForMining interface {
@@ -57,20 +60,24 @@ func StageMiningExecCfg(
 	tmpdir string, interrupt *int32, payloadId uint64,
 	txPool2 TxPoolForMining, txPool2DB kv.RoDB,
 	blockReader services.FullBlockReader,
+	historicalRPCService *rpc.Client,
+	historicalRPCTimeout *time.Duration,
 ) MiningExecCfg {
 	return MiningExecCfg{
-		db:          db,
-		miningState: miningState,
-		notifier:    notifier,
-		chainConfig: chainConfig,
-		engine:      engine,
-		blockReader: blockReader,
-		vmConfig:    vmConfig,
-		tmpdir:      tmpdir,
-		interrupt:   interrupt,
-		payloadId:   payloadId,
-		txPool2:     txPool2,
-		txPool2DB:   txPool2DB,
+		db:                   db,
+		miningState:          miningState,
+		notifier:             notifier,
+		chainConfig:          chainConfig,
+		engine:               engine,
+		blockReader:          blockReader,
+		vmConfig:             vmConfig,
+		tmpdir:               tmpdir,
+		interrupt:            interrupt,
+		payloadId:            payloadId,
+		txPool2:              txPool2,
+		txPool2DB:            txPool2DB,
+		historicalRPCService: historicalRPCService,
+		historicalRPCTimeout: historicalRPCTimeout,
 	}
 }
 
