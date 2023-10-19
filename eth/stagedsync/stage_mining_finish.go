@@ -3,6 +3,7 @@ package stagedsync
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -25,6 +26,7 @@ type MiningFinishCfg struct {
 	blockReader           services.FullBlockReader
 	latestBlockBuiltStore *builder.LatestBlockBuiltStore
 	historicalRPC         *rpc.Client
+	historicalRPCTimeout  *time.Duration
 }
 
 func StageMiningFinishCfg(
@@ -36,6 +38,7 @@ func StageMiningFinishCfg(
 	blockReader services.FullBlockReader,
 	latestBlockBuiltStore *builder.LatestBlockBuiltStore,
 	historicalRPC *rpc.Client,
+	historicalRPCTimeout *time.Duration,
 ) MiningFinishCfg {
 	return MiningFinishCfg{
 		db:                    db,
@@ -46,6 +49,7 @@ func StageMiningFinishCfg(
 		blockReader:           blockReader,
 		latestBlockBuiltStore: latestBlockBuiltStore,
 		historicalRPC:         historicalRPC,
+		historicalRPCTimeout:  historicalRPCTimeout,
 	}
 }
 
@@ -60,7 +64,9 @@ func SpawnMiningFinishStage(s *StageState, tx kv.RwTx, cfg MiningFinishCfg, quit
 
 	if cfg.historicalRPC != nil && cfg.chainConfig.IsOptimismPreBedrock(current.Header.Number.Uint64()) {
 		var r types.Header
-		err := cfg.historicalRPC.CallContext(context.Background(), &r, "eth_getBlockByNumber", hexutil.EncodeBig(current.Header.Number), false)
+		ctx, cancel := context.WithTimeout(context.Background(), *cfg.historicalRPCTimeout)
+		err := cfg.historicalRPC.CallContext(ctx, &r, "eth_getBlockByNumber", hexutil.EncodeBig(current.Header.Number), false)
+		cancel()
 		if err != nil {
 			return err
 		}

@@ -46,6 +46,7 @@ type MiningExecCfg struct {
 	txPool2              TxPoolForMining
 	txPool2DB            kv.RoDB
 	historicalRPCService *rpc.Client
+	historicalRPCTimeout *time.Duration
 }
 
 type TxPoolForMining interface {
@@ -60,6 +61,7 @@ func StageMiningExecCfg(
 	txPool2 TxPoolForMining, txPool2DB kv.RoDB,
 	blockReader services.FullBlockReader,
 	historicalRPCService *rpc.Client,
+	historicalRPCTimeout *time.Duration,
 ) MiningExecCfg {
 	return MiningExecCfg{
 		db:                   db,
@@ -75,6 +77,7 @@ func StageMiningExecCfg(
 		txPool2:              txPool2,
 		txPool2DB:            txPool2DB,
 		historicalRPCService: historicalRPCService,
+		historicalRPCTimeout: historicalRPCTimeout,
 	}
 }
 
