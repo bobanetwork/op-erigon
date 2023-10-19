@@ -445,6 +445,8 @@ func MockWithEverything(tb testing.TB, gspec *types.Genesis, key *ecdsa.PrivateK
 				ethconfig.Defaults.Sync,
 				mock.agg,
 				nil,
+				cfg.RollupHistoricalRPC,
+				cfg.RollupHistoricalRPCTimeout,
 			),
 			stagedsync.StageHashStateCfg(mock.DB, mock.Dirs, cfg.HistoryV3),
 			stagedsync.StageTrieCfg(mock.DB, checkStateRoot, true, false, dirs.Tmp, mock.BlockReader, mock.sentriesClient.Hd, cfg.HistoryV3, mock.agg),
