@@ -29,6 +29,8 @@ def:
                 - "core/types/deposit_tx.go"
                 - "core/types/transaction_marshalling.go"
                 - "core/types/transaction_signing.go"
+                - "erigon-lib/types/txn.go"
+                - "turbo/adapter/ethapi/api_test.go"
             - title: "Transaction properties"
               description: |
                 The Transaction type now exposes the deposit-transaction and L1-cost properties required for the rollup.
@@ -61,31 +63,34 @@ def:
             - title: "Regolith upgrade"
               globs:
                 - "core/state_processor.go"
+                - "core/error.go"
         - title: "Chain config"
           description: |
             The rollup functionality is enabled with the optimism field in the chain config. The EIP-1559 parameters are configurable to adjust for faster more frequent and smaller blocks. The parameters can be overriden for testing.
           globs:
             - "params/protocol_params.go"
+            - "erigon-lib/chain/chain_config.go"
         - title: "Engine API modifications"
           description: |
             The Engine API is extended to insert transactions into the block and optionally exclude the tx-pool, to reproduce the exact block of the sequencer from just the inputs, as derived from L1 by the rollup-node. See [L2 execution engine specs](https://github.com/ethereum-optimism/optimism/blob/develop/specs/exec-engine.md).
           globs:
-            - "turbo/jsonrpc/engine_api.go"
+            - "turbo/engineapi/engine_server.go"
+            - "turbo/engineapi/engine_types/jsonrpc.go"
             - "ethdb/privateapi/ethbackend.go"
         - title: "Block-building modifications"
           description: |
             The block-building code (in the “mining” stages because of Proof-Of-Work legacy of ethereum) implements the changes to support the transaction-inclusion, tx-pool toggle and gaslimit parameters of the Engine API.
           globs:
+            - "turbo/execution/eth1/block_building.go"
+            - "turbo/execution/eth1/forkchoice.go"
             - "cmd/integration/commands/stages.go"
             - "eth/stagedsync/default_stages.go"
             - "eth/stagedsync/stage_mining_create_block.go"
             - "eth/stagedsync/stage_mining_exec.go"
-            - "eth/stagedsync/stage_mining_force_txs.go"
             - "eth/stagedsync/stagebuilder.go"
             - "core/block_builder_parameters.go"
             - "params/mining.go"
             - "core/chain_makers.go"
-            - "eth/stagedsync/stage_mining_exec_test.go"
         - title: "Tx-pool tx cost updates"
           description: |
             Transaction queueing and inclusion needs to account for the L1 cost component.
@@ -116,10 +121,13 @@ def:
         - title: "Goerli testnet configs"
           globs:
             - "params/config.go"
-            - "core/genesis.go"
+            - "core/allocs/optimism_goerli.json"
             - "params/networkname/network_name.go"
             - "params/chainspecs/optimism-goerli.json"
             - "core/allocs/optimism-goerli.json"
+        - title: "Mainnet configs"
+          globs:
+            - "params/chainspecs/optimism-mainnet.json"
     - title: "User API enhancements"
       description: |
         Encode the Deposit Tx properties, the L1 costs, and daisy-chain RPC-calls for pre-Bedrock historical data
@@ -131,6 +139,7 @@ def:
             - "core/types/receipt.go"
             - "core/types/receipt_test.go"
             - "turbo/jsonrpc/eth_receipts.go"
+            - "turbo/jsonrpc/eth_receipts_test.go"
             - "turbo/jsonrpc/erigon_receipts_test.go"
             - "accounts/abi/bind/backends/simulated.go"
             - "core/rawdb/accessors_chain.go"
@@ -141,13 +150,18 @@ def:
           description: |
             Forward transactions to the sequencer or historical node if configured.
           globs:
-            - "cmd/erigon-el/backend/backend.go"
+            - "cmd/rpcdaemon/main.go"
+            - "cmd/rpcdaemon/cli/config.go"
+            - "cmd/rpcdaemon/cli/httpcfg/http_cfg.go"
+            - "rpc/rpccfg/rpccfg.go"
             - "turbo/jsonrpc/daemon.go"
             - "eth/backend.go"
             - "turbo/jsonrpc/eth_accounts.go"
             - "turbo/jsonrpc/eth_call.go"
+            - "turbo/jsonrpc/eth_call_test.go"
             - "turbo/jsonrpc/send_transaction.go"
             - "rpc/errors.go"
+            - "turbo/jsonrpc/eth_accounts_test.go"
         - title: "Transaction & Block response"
           description: |
             Format deposit and L1-cost data in transaction responses.
@@ -169,16 +183,21 @@ def:
     - title: "Generated files"
       globs:
         - "core/types/receipt_codecgen_gen.go"
+        - "core/types/gen_receipt_json.go"
         - "erigon-lib/gointerfaces/*/*.pb.go"
 # files can be ignored globally, these will be listed in a separate grayed-out section,
 # and do not count towards the total line count.
 ignore:
+  - "fork.yaml"
   - ".circleci/*"
   - "*.sum"
   - ".gitignore"
   - ".github/**/*"
   - "Dockerfile"
+  - "Dockerfile.debian"
+  - "docker-compose.yaml"
   - "cmd/downloader/recompress.sh"
   - "cmd/downloader/torrent_hashes_update.sh"
   - "README.md"
+  - "OP.md"
   - "Makefile"
