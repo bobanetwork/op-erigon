@@ -169,6 +169,7 @@ def:
     - title: "Generated files"
       globs:
         - "core/types/receipt_codecgen_gen.go"
+        - "erigon-lib/gointerfaces/*/*.pb.go"
 # files can be ignored globally, these will be listed in a separate grayed-out section,
 # and do not count towards the total line count.
 ignore:
