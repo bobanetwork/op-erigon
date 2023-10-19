@@ -17,7 +17,6 @@
 package core
 
 import (
-	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/log/v3"
@@ -36,7 +35,7 @@ import (
 // indicating the block was invalid.
 func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState,
 	stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64,
-	evm vm.VMInterface, cfg vm.Config) (*types.Receipt, []byte, error) {
+	evm *vm.EVM, cfg vm.Config) (*types.Receipt, []byte, error) {
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64(), header.Time), header.BaseFee, rules)
 	if err != nil {
@@ -125,16 +124,6 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 		receipt.BlockNumber = header.Number
 		receipt.TransactionIndex = uint(ibs.TxIndex())
-
-		if config.Optimism != nil {
-			// FIXME, these are already fetched by the L1CostFunc, but the wiring is
-			// weird, so, re-fetching.  There is the DeriveFields function for
-			// receipts, perhaps that is the right path?
-			var l1BaseFee, overhead, scalar uint256.Int
-			ibs.GetState(types.L1BlockAddr, &types.L1BaseFeeSlot, &l1BaseFee)
-			ibs.GetState(types.L1BlockAddr, &types.OverheadSlot, &overhead)
-			ibs.GetState(types.L1BlockAddr, &types.ScalarSlot, &scalar)
-		}
 	}
 
 	return receipt, result.ReturnData, err

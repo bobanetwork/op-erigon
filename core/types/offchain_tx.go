@@ -23,12 +23,11 @@
 package types
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math/big"
+	"math/bits"
 
-	rlp2 "github.com/ethereum/go-ethereum/rlp" // Use this one to avoid a bunch of BS with the ledgerwatch/erigon/rlp version
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -85,12 +84,14 @@ func (tx OffchainTransaction) Protected() bool {
 }
 
 func (tx OffchainTransaction) EncodingSize() int {
-	// This function performs the encoding in order to determine the size,
-	// resulting in some unnecessary work (since the encoded structure is
-	// discarded) but simplifying the code here (vs. legacy_tx.go)
-	var bb bytes.Buffer
-	tx.EncodeRLP(&bb)
-	return bb.Len()
+	payloadSize := tx.payloadSize()
+	envelopeSize := payloadSize
+	// Add envelope size and type size
+	if payloadSize >= 56 {
+		envelopeSize += libcommon.BitLenToByteLen(bits.Len(uint(payloadSize)))
+	}
+	envelopeSize += 2
+	return envelopeSize
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
@@ -115,22 +116,87 @@ func (tx OffchainTransaction) MarshalBinary(w io.Writer) error {
 
 // EncodeRLP implements rlp.Encoder
 func (tx OffchainTransaction) EncodeRLP(w io.Writer) error {
+	var b [33]byte
+	rlp.EncodeInt(OffchainTxType, w, b[:])
 
-	var bb bytes.Buffer
-	buf := rlp2.NewEncoderBuffer(&bb)
-	buf.WriteUint64(uint64(OffchainTxType))
-	idx1 := buf.List()
-	buf.WriteBytes(tx.SourceHash.Bytes())
-	buf.WriteBytes(tx.From.Bytes())
-	buf.WriteBytes(tx.To.Bytes())
-	buf.WriteUint64(tx.GasLimit)
-	buf.WriteBytes(tx.Data)
-	buf.ListEnd(idx1)
+	payloadSize := tx.payloadSize()
 
-	w.Write(buf.ToBytes())
+	// prefix
+	if err := EncodeStructSizePrefix(payloadSize, w, b[:]); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.SourceHash[:], w, b[:]); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.From[:], w, b[:]); err != nil {
+		return err
+	}
+	if tx.To == nil {
+		b[0] = 128
+	} else {
+		b[0] = 128 + 20
+	}
+	if _, err := w.Write(b[:1]); err != nil {
+		return err
+	}
+	if tx.To != nil {
+		if _, err := w.Write(tx.To.Bytes()); err != nil {
+			return err
+		}
+	}
+/*	if err := tx.Value.EncodeRLP(w); err != nil {
+		return err
+	}
+*/
+	if err := rlp.EncodeInt(tx.GasLimit, w, b[:]); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.Data, w, b[:]); err != nil {
+		return err
+	}
 
 	return nil
 }
+
+func (tx OffchainTransaction) payloadSize() int {
+	// SourceHash
+	payloadSize := 1
+	payloadSize += len(tx.SourceHash)
+
+	// From
+	payloadSize++
+	payloadSize += len(tx.From)
+
+	// To
+	payloadSize++
+	if tx.To != nil {
+		payloadSize += len(tx.To)
+	}
+
+/*	// Value
+	payloadSize++
+	payloadSize += rlp.Uint256LenExcludingHead(tx.Value)
+*/
+	// GasLimit
+	payloadSize++
+	payloadSize += rlp.IntLenExcludingHead(tx.GasLimit)
+	// size of Data
+	payloadSize++
+	switch len(tx.Data) {
+	case 0:
+	case 1:
+		if tx.Data[0] >= 128 {
+			payloadSize++
+		}
+	default:
+		if len(tx.Data) >= 56 {
+			payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(len(tx.Data))))
+		}
+		payloadSize += len(tx.Data)
+	}
+	return payloadSize
+}
+
 
 // DecodeRLP decodes OffchainTransaction but with the list token already consumed and encodingSize being presented
 func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
@@ -159,16 +225,24 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read To: %w", err)
 	}
-	if len(b) != 20 {
+	switch len(b) {
+	case 20:
+		tx.To = &libcommon.Address{}
+		copy((*tx.To)[:], b)
+	case 0:
+		// contract creation
+	default:
 		return fmt.Errorf("wrong size for To: %d", len(b))
 	}
-	tx.To = &libcommon.Address{}
-	copy((*tx.To)[:], b)
-
+/*
+	if b, err = s.Uint256Bytes(); err != nil {
+		return fmt.Errorf("read Value: %w", err)
+	}
+	tx.Value = new(uint256.Int).SetBytes(b)
+*/
 	if tx.GasLimit, err = s.Uint(); err != nil {
 		return fmt.Errorf("read GasLimit: %w", err)
 	}
-
 	if tx.Data, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read Data: %w", err)
 	}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
+	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
@@ -342,31 +343,33 @@ func (api *BaseAPI) blockNumberFromBlockNumberOrHash(tx kv.Tx, bnh *rpc.BlockNum
 // APIImpl is implementation of the EthAPI interface based on remote Db access
 type APIImpl struct {
 	*BaseAPI
-	ethBackend      rpchelper.ApiBackend
-	txPool          txpool.TxpoolClient
-	mining          txpool.MiningClient
-	gasCache        *GasPriceCache
-	db              kv.RoDB
-	GasCap          uint64
-	ReturnDataLimit int
-	logger          log.Logger
+	ethBackend          rpchelper.ApiBackend
+	txPool              txpool.TxpoolClient
+	mining              txpool.MiningClient
+	gasCache            *GasPriceCache
+	db                  kv.RoDB
+	GasCap              uint64
+	ReturnDataLimit     int
+	AllowUnprotectedTxs bool
+	logger              log.Logger
 }
 
 // NewEthAPI returns APIImpl instance
-func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient, gascap uint64, returnDataLimit int, logger log.Logger) *APIImpl {
+func NewEthAPI(base *BaseAPI, db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient, gascap uint64, returnDataLimit int, allowUnprotectedTxs bool, logger log.Logger) *APIImpl {
 	if gascap == 0 {
 		gascap = uint64(math.MaxUint64 / 2)
 	}
 	return &APIImpl{
-		BaseAPI:         base,
-		db:              db,
-		ethBackend:      eth,
-		txPool:          txPool,
-		mining:          mining,
-		gasCache:        NewGasPriceCache(),
-		GasCap:          gascap,
-		ReturnDataLimit: returnDataLimit,
-		logger:          logger,
+		BaseAPI:             base,
+		db:                  db,
+		ethBackend:          eth,
+		txPool:              txPool,
+		mining:              mining,
+		gasCache:            NewGasPriceCache(),
+		GasCap:              gascap,
+		AllowUnprotectedTxs: allowUnprotectedTxs,
+		ReturnDataLimit:     returnDataLimit,
+		logger:              logger,
 	}
 }
 
@@ -393,11 +396,14 @@ type RPCTransaction struct {
 	V                   *hexutil.Big       `json:"v"`
 	R                   *hexutil.Big       `json:"r"`
 	S                   *hexutil.Big       `json:"s"`
+	SourceHash          *common.Hash       `json:"sourceHash,omitempty"`
+	Mint                *hexutil.Big       `json:"mint,omitempty"`
+	IsSystemTx          bool               `json:"isSystemTx,omitempty"`
 }
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
 // representation, with the given location metadata set (if available).
-func newRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64, baseFee *big.Int) *RPCTransaction {
+func newRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber uint64, index uint64, baseFee *big.Int, depositNonce *uint64) *RPCTransaction {
 	// Determine the signer. For replay-protected transactions, use the most permissive
 	// signer, because we assume that signers are backwards-compatible with old
 	// transactions. For non-protected transactions, the homestead signer signer is used
@@ -415,9 +421,13 @@ func newRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 	switch t := tx.(type) {
 	case *types.LegacyTx:
 		chainId = types.DeriveChainId(&t.V)
-		// if a legacy transaction has an EIP-155 chain id, include it explicitly, otherwise chain id is not included
-		if !chainId.IsZero() {
-			result.ChainID = (*hexutil.Big)(chainId.ToBig())
+		// avoid overflow by not calling DeriveChainId. chain id not included when v = 0
+		if !t.V.IsZero() {
+			chainId = types.DeriveChainId(&t.V)
+			// if a legacy transaction has an EIP-155 chain id, include it explicitly, otherwise chain id is not included
+			if !chainId.IsZero() {
+				result.ChainID = (*hexutil.Big)(chainId.ToBig())
+			}
 		}
 		result.GasPrice = (*hexutil.Big)(t.GasPrice.ToBig())
 		result.V = (*hexutil.Big)(t.V.ToBig())
@@ -453,6 +463,20 @@ func newRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
 		result.MaxFeePerBlobGas = (*hexutil.Big)(t.MaxFeePerBlobGas.ToBig())
 		result.BlobVersionedHashes = t.BlobVersionedHashes
+	case *types.DepositTransaction:
+		result.SourceHash = t.SourceHash
+		if t.IsSystemTx {
+			result.IsSystemTx = t.IsSystemTx
+		}
+		if depositNonce != nil {
+			result.Nonce = hexutil.Uint64(*depositNonce)
+		}
+		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
+		result.GasPrice = (*hexutil.Big)(libcommon.Big0)
+		// must contain v, r, s values for backwards compatibility.
+		result.V = (*hexutil.Big)(libcommon.Big0)
+		result.R = (*hexutil.Big)(libcommon.Big0)
+		result.S = (*hexutil.Big)(libcommon.Big0)
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	result.From, _ = tx.Sender(*signer)
@@ -508,7 +532,7 @@ func newRPCPendingTransaction(tx types.Transaction, current *types.Header, confi
 	if current != nil {
 		baseFee = misc.CalcBaseFee(config, current)
 	}
-	return newRPCTransaction(tx, common.Hash{}, 0, 0, baseFee)
+	return newRPCTransaction(tx, common.Hash{}, 0, 0, baseFee, nil)
 }
 
 // newRPCRawTransactionFromBlockIndex returns the bytes of a transaction given a block and a transaction index.

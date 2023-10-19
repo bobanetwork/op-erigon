@@ -62,10 +62,9 @@ type Receipt struct {
 
 	// Implementation fields: These fields are added by geth when processing a transaction.
 	// They are stored in the chain database.
-	TxHash            libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
-	ContractAddress   libcommon.Address `json:"contractAddress" codec:"-"`
-	GasUsed           uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
-	EffectiveGasPrice *big.Int          `json:"effectiveGasPrice"`
+	TxHash          libcommon.Hash    `json:"transactionHash" gencodec:"required" codec:"-"`
+	ContractAddress libcommon.Address `json:"contractAddress" codec:"-"`
+	GasUsed         uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
 
 	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions
 	// The state transition process ensures this is only set for Regolith deposit transactions.
@@ -170,8 +169,15 @@ func (r Receipt) EncodeRLP(w io.Writer) error {
 	}
 	buf := new(bytes.Buffer)
 	buf.WriteByte(r.Type)
-	if err := rlp.Encode(buf, data); err != nil {
-		return err
+	if r.Type == DepositTxType {
+		withNonce := &depositReceiptRlp{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs, r.DepositNonce}
+		if err := rlp.Encode(buf, withNonce); err != nil {
+			return err
+		}
+	} else {
+		if err := rlp.Encode(buf, data); err != nil {
+			return err
+		}
 	}
 	return rlp.Encode(w, buf.Bytes())
 }
@@ -254,6 +260,17 @@ func (r *Receipt) decodePayload(s *rlp.Stream) error {
 	}
 	if err = s.ListEnd(); err != nil {
 		return fmt.Errorf("close Logs: %w", err)
+	}
+	if r.Type == DepositTxType {
+		depositNonce, err := s.Uint()
+		if err != nil {
+			if !errors.Is(err, rlp.EOL) {
+				return fmt.Errorf("read DepositNonce: %w", err)
+			}
+			return nil
+		} else {
+			r.DepositNonce = &depositNonce
+		}
 	}
 	if err := s.ListEnd(); err != nil {
 		return fmt.Errorf("close receipt payload: %w", err)
@@ -416,6 +433,9 @@ func decodeStoredReceiptRLP(r *ReceiptForStorage, blob []byte) error {
 		r.Logs[i] = (*Log)(log)
 	}
 	//r.Bloom = CreateBloom(Receipts{(*Receipt)(r)})
+	if stored.DepositNonce != nil {
+		r.DepositNonce = stored.DepositNonce
+	}
 
 	return nil
 }
@@ -535,7 +555,11 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 			// If one wants to deploy a contract, one needs to send a transaction that does not have `To` field
 			// and then the address of the contract one is creating this way will depend on the `tx.From`
 			// and the nonce of the creating account (which is `tx.From`).
-			r[i].ContractAddress = crypto.CreateAddress(senders[i], txs[i].GetNonce())
+			nonce := txs[i].GetNonce()
+			if r[i].DepositNonce != nil {
+				nonce = *r[i].DepositNonce
+			}
+			r[i].ContractAddress = crypto.CreateAddress(senders[i], nonce)
 		}
 		// The used gas can be calculated based on previous r
 		if i == 0 {

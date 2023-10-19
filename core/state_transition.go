@@ -69,7 +69,7 @@ type StateTransition struct {
 	value      *uint256.Int
 	data       []byte
 	state      evmtypes.IntraBlockState
-	evm        vm.VMInterface
+	evm        *vm.EVM
 
 	//some pre-allocated intermediate variables
 	sharedBuyGas        *uint256.Int
@@ -162,7 +162,7 @@ func IntrinsicGas(data []byte, accessList types2.AccessList, isContractCreation 
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransitionHC(evm vm.VMInterface, msg Message, gp *GasPool, extraGas *[2]uint64) *StateTransition {
+func NewStateTransitionHC(evm *vm.EVM, msg Message, gp *GasPool, extraGas *[2]uint64) *StateTransition {
 	isBor := evm.ChainConfig().Bor != nil
 	if extraGas == nil {
 		extraGas = new([2]uint64) // values will be populated but ignored
@@ -187,7 +187,7 @@ func NewStateTransitionHC(evm vm.VMInterface, msg Message, gp *GasPool, extraGas
 }
 
 // NewStateTransition initialises and returns a new state transition object.
-func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTransition {
+func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition {
 	return NewStateTransitionHC(evm, msg, gp, nil)
 }
 
@@ -201,15 +201,14 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 // `refunds` is false when it is not required to apply gas refunds
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
 // for trace_call to replicate OE/Pariry behaviour
-func ApplyMessageHC(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool, extra *[2]uint64) (*ExecutionResult, error) {
+func ApplyMessageHC(evm *vm.EVM, msg Message, gp *GasPool, refunds bool, gasBailout bool, extra *[2]uint64) (*ExecutionResult, error) {
 	result, err := NewStateTransitionHC(evm, msg, gp, extra).TransitionDb(refunds, gasBailout)
 	if err == nil && result != nil && result.Err == vm.ErrHCReverted {
 		err = vm.ErrHCReverted
 	}
 	return result, err
 }
-
-func ApplyMessage(evm vm.VMInterface, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
+func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
 	return ApplyMessageHC(evm, msg, gp, refunds, gasBailout, nil)
 }
 
@@ -245,7 +244,7 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 		if st.evm.Context().ExcessBlobGas == nil {
 			return fmt.Errorf("%w: Cancun is active but ExcessBlobGas is nil", ErrInternalFailure)
 		}
-		blobGasPrice, err := misc.GetBlobGasPrice(*st.evm.Context().ExcessBlobGas)
+		blobGasPrice, err := misc.GetBlobGasPrice(st.evm.ChainConfig(), *st.evm.Context().ExcessBlobGas)
 		if err != nil {
 			return err
 		}
@@ -387,7 +386,7 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 		if st.evm.Context().ExcessBlobGas == nil {
 			return fmt.Errorf("%w: Cancun is active but ExcessBlobGas is nil", ErrInternalFailure)
 		}
-		blobGasPrice, err := misc.GetBlobGasPrice(*st.evm.Context().ExcessBlobGas)
+		blobGasPrice, err := misc.GetBlobGasPrice(st.evm.ChainConfig(), *st.evm.Context().ExcessBlobGas)
 		if err != nil {
 			return err
 		}
@@ -421,7 +420,7 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 		// Record deposits as using all their gas (matches the gas pool)
 		// System Transactions are special & are not recorded as using any gas (anywhere)
 		gasUsed := st.msg.Gas()
-		if st.msg.IsSystemTx() {
+		if st.msg.IsSystemTx() && !st.evm.ChainConfig().IsOptimismRegolith(st.evm.Context().Time) {
 			gasUsed = 0
 		}
 		result = &ExecutionResult{

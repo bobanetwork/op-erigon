@@ -24,7 +24,7 @@ import (
 )
 
 // Shared section of DoCall() and DoCallWithNewGas(), with hybrid compute support.
-func CallHC(hcs *vm.HCService, evm vm.VMInterface, msg core.Message, gp *core.GasPool, refunds bool, gasBailout bool) (result *core.ExecutionResult, err error) {
+func CallHC(hcs *vm.HCService, evm *vm.EVM, msg core.Message, gp *core.GasPool, refunds bool, gasBailout bool) (result *core.ExecutionResult, err error) {
 
 	var hc *vm.HCContext
 

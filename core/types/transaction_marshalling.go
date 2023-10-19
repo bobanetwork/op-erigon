@@ -113,6 +113,26 @@ func (tx DynamicFeeTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&enc)
 }
 
+func (tx DepositTransaction) MarshalJSON() ([]byte, error) {
+	var enc txJSON
+	// These are set for all tx types.
+	enc.Hash = tx.Hash()
+	enc.Type = hexutil.Uint64(tx.Type())
+	enc.ChainID = (*hexutil.Big)(libcommon.Big0)
+	enc.Gas = (*hexutil.Uint64)(&tx.GasLimit)
+	enc.Value = (*hexutil.Big)(tx.Value.ToBig())
+	enc.Data = (*hexutility.Bytes)(&tx.Data)
+	enc.To = tx.To
+	enc.SourceHash = tx.SourceHash
+	enc.From = tx.From
+	if tx.Mint != nil {
+		enc.Mint = (*hexutil.Big)(tx.Mint.ToBig())
+	}
+	enc.IsSystemTx = &tx.IsSystemTx
+	// other fields will show up as null.
+	return json.Marshal(&enc)
+}
+
 func toBlobTxJSON(tx *BlobTx) *txJSON {
 	var enc txJSON
 	// These are set for all tx types.

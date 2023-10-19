@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/kv/membatchwithdb"
 	"github.com/ledgerwatch/log/v3"
 	"google.golang.org/grpc"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
 	txpool_proto "github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv"
-	"github.com/ledgerwatch/erigon-lib/kv/memdb"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
@@ -348,7 +348,7 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 // minutes on mainnet.  The current limit has been chosen arbitrarily as
 // 'useful' without likely being overly computationally intense.  This parameter
 // could possibly be made configurable in the future if needed.
-var maxGetProofRewindBlockCount uint64 = 100_000
+var maxGetProofRewindBlockCount uint64 = 2_000_000
 
 // GetProof is partially implemented; no Storage proofs, and proofs must be for
 // blocks within maxGetProofRewindBlockCount blocks of the head.
@@ -408,7 +408,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 		if latestBlock-blockNr > maxGetProofRewindBlockCount {
 			return nil, fmt.Errorf("requested block is too old, block must be within %d blocks of the head block number (currently %d)", maxGetProofRewindBlockCount, latestBlock)
 		}
-		batch := memdb.NewMemoryBatch(tx, api.dirs.Tmp)
+		batch := membatchwithdb.NewMemoryBatch(tx, api.dirs.Tmp)
 		defer batch.Rollback()
 
 		unwindState := &stagedsync.UnwindState{UnwindPoint: blockNr}
