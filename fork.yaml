@@ -43,9 +43,9 @@ def:
                 - "core/types/rollup_l1_cost.go"
                 - "core/types/transaction.go"
                 - "core/vm/evmtypes/evmtypes.go"
-                - "cmd/rpcdaemon/commands/trace_adhoc.go"
-                - "cmd/rpcdaemon/commands/trace_filtering.go"
-                - "cmd/rpcdaemon/commands/tracing.go"
+                - "turbo/jsonrpc/trace_adhoc.go"
+                - "turbo/jsonrpc/trace_filtering.go"
+                - "turbo/jsonrpc/tracing.go"
                 - "turbo/transactions/call.go"
                 - "turbo/transactions/tracing.go"
             - title: "Transaction processing"
@@ -70,7 +70,7 @@ def:
           description: |
             The Engine API is extended to insert transactions into the block and optionally exclude the tx-pool, to reproduce the exact block of the sequencer from just the inputs, as derived from L1 by the rollup-node. See [L2 execution engine specs](https://github.com/ethereum-optimism/optimism/blob/develop/specs/exec-engine.md).
           globs:
-            - "cmd/rpcdaemon/commands/engine_api.go"
+            - "turbo/jsonrpc/engine_api.go"
             - "ethdb/privateapi/ethbackend.go"
         - title: "Block-building modifications"
           description: |
@@ -130,8 +130,8 @@ def:
           globs:
             - "core/types/receipt.go"
             - "core/types/receipt_test.go"
-            - "cmd/rpcdaemon/commands/eth_receipts.go"
-            - "cmd/rpcdaemon/commands/erigon_receipts_test.go"
+            - "turbo/jsonrpc/eth_receipts.go"
+            - "turbo/jsonrpc/erigon_receipts_test.go"
             - "accounts/abi/bind/backends/simulated.go"
             - "core/rawdb/accessors_chain.go"
             - "core/rawdb/accessors_chain_test.go"
@@ -142,30 +142,30 @@ def:
             Forward transactions to the sequencer or historical node if configured.
           globs:
             - "cmd/erigon-el/backend/backend.go"
-            - "cmd/rpcdaemon/commands/daemon.go"
+            - "turbo/jsonrpc/daemon.go"
             - "eth/backend.go"
-            - "cmd/rpcdaemon/commands/eth_accounts.go"
-            - "cmd/rpcdaemon/commands/eth_call.go"
-            - "cmd/rpcdaemon/commands/send_transaction.go"
+            - "turbo/jsonrpc/eth_accounts.go"
+            - "turbo/jsonrpc/eth_call.go"
+            - "turbo/jsonrpc/send_transaction.go"
             - "rpc/errors.go"
         - title: "Transaction & Block response"
           description: |
             Format deposit and L1-cost data in transaction responses.
           globs:
-            - "cmd/rpcdaemon/commands/eth_api.go"
+            - "turbo/jsonrpc/eth_api.go"
             - "turbo/adapter/ethapi/api.go"
             - "turbo/adapter/ethapi/internal.go"
-            - "cmd/rpcdaemon/commands/erigon_block.go"
-            - "cmd/rpcdaemon/commands/eth_block.go"
-            - "cmd/rpcdaemon/commands/eth_txs.go"
-            - "cmd/rpcdaemon/commands/eth_uncles.go"
+            - "turbo/jsonrpc/erigon_block.go"
+            - "turbo/jsonrpc/eth_block.go"
+            - "turbo/jsonrpc/eth_txs.go"
+            - "turbo/jsonrpc/eth_uncles.go"
         - title: "Otterscan API"
           globs:
-            - "cmd/rpcdaemon/commands/otterscan_api.go"
-            - "cmd/rpcdaemon/commands/otterscan_block_details.go"
-            - "cmd/rpcdaemon/commands/otterscan_contract_creator.go"
-            - "cmd/rpcdaemon/commands/otterscan_generic_tracer.go"
-            - "cmd/rpcdaemon/commands/otterscan_search_trace.go"
+            - "turbo/jsonrpc/otterscan_api.go"
+            - "turbo/jsonrpc/otterscan_block_details.go"
+            - "turbo/jsonrpc/otterscan_contract_creator.go"
+            - "turbo/jsonrpc/otterscan_generic_tracer.go"
+            - "turbo/jsonrpc/otterscan_search_trace.go"
     - title: "Generated files"
       globs:
         - "core/types/receipt_codecgen_gen.go"
