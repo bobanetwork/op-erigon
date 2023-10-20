@@ -533,28 +533,34 @@ LOOP:
 			continue
 		}
 
-		// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
-		// an OffchainTx into the queue ahead of it to populate the on-chain helper
-		if hcs != nil {
-			hc = hcs.GetHC(mh)
-		}
-		if hc != nil && hc.State == vm.HC_STATE_READY && len(hc.Response) > 0 {
-			log.Debug("HC Found a prepared response", "hc.Response", hexutility.Bytes(hc.Response))
-			txnGas := txn.GetGas()
-			txn = types.NewOffchainTx(mh, hc.Response, txnGas)
-			hc.State = vm.HC_STATE_PREPARED
-			log.Debug("HC Inserting OffchainTx", "txn", txn)
-			hcOffchain = true
-		}
+		// A transaction initiated on L1 and bridged to L2 as a Deposit is not allowed to use Hybrid Compute. This is
+		// because all Deposit transactions must appear at the start of a block in the order specified by op-node and
+		// there is no opportunity to introduce an Offchain tx ahead of a deposit. With no "hc" context, the transaction
+		// will revert in the Helper contract GetResponse() with "HC: Missing cache entry".
+		if txn.Type() != types.DepositTxType {
+			// Intercept point for Hybrid Compute. If Txn was previously simulated to populate a cache entry, then insert
+			// an OffchainTx into the queue ahead of it to populate the on-chain helper
+			if hcs != nil {
+				hc = hcs.GetHC(mh)
+			}
+			if hc != nil && hc.State == vm.HC_STATE_READY && len(hc.Response) > 0 {
+				log.Debug("HC Found a prepared response", "hc.Response", hexutility.Bytes(hc.Response))
+				txnGas := txn.GetGas()
+				txn = types.NewOffchainTx(mh, hc.Response, txnGas)
+				hc.State = vm.HC_STATE_PREPARED
+				log.Debug("HC Inserting OffchainTx", "txn", txn)
+				hcOffchain = true
+			}
 
-		if hcs != nil && hc == nil {
-			hc = new(vm.HCContext)
+			if hcs != nil && hc == nil {
+				hc = new(vm.HCContext)
+			}
 		}
 
 		// Start executing the transaction
 		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current, hc)
 
-		if err == vm.ErrHCReverted && hcs != nil {
+		if err == vm.ErrHCReverted && hc != nil {
 			hcs.PutHC(mh, hc)
 
 			if hc.State == vm.HC_STATE_TRIGGERED {
