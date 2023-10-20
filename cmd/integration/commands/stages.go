@@ -964,6 +964,7 @@ func stageTrie(db kv.RwDB, ctx context.Context, logger log.Logger) error {
 	defer agg.Close()
 	_, _, sync, _, _ := newSync(ctx, db, nil /* miningConfig */, logger)
 	must(sync.SetCurrentStage(stages.IntermediateHashes))
+	chainConfig := fromdb.ChainConfig(db)
 
 	if warmup {
 		return reset2.Warmup(ctx, db, log.LvlInfo, stages.IntermediateHashes)
@@ -1006,7 +1007,7 @@ func stageTrie(db kv.RwDB, ctx context.Context, logger log.Logger) error {
 			return err
 		}
 	} else {
-		if _, err := stagedsync.SpawnIntermediateHashesStage(s, sync /* Unwinder */, tx, cfg, ctx, logger); err != nil {
+		if _, err := stagedsync.SpawnIntermediateHashesStage(s, sync /* Unwinder */, tx, cfg, ctx, chainConfig, logger); err != nil {
 			return err
 		}
 	}
