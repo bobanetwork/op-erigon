@@ -155,7 +155,6 @@ const (
 	ConsensusDB  Label = 3
 	DownloaderDB Label = 4
 	InMem        Label = 5
-	AcctProofDB  Label = 99
 )
 
 func (l Label) String() string {
@@ -172,8 +171,6 @@ func (l Label) String() string {
 		return "downloader"
 	case InMem:
 		return "inMem"
-	case AcctProofDB:
-		return "proofdb"
 	default:
 		return "unknown"
 	}
