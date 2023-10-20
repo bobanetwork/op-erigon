@@ -164,7 +164,10 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 					return err
 				}
 
-				if !txs.Empty() {
+				if len(current.Deposits) == 0 && !txs.Empty() {
+					log.Warn("HC Not adding transactions to non-deposit block", "blk", current.Header.Number)
+					break
+				} else if !txs.Empty() {
 					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger, cfg.hcService)
 					log.Debug("addTransactionsToMiningBlock (regular)", "err", err, "logs", logs, "stop", stop)
 					if err != nil {
