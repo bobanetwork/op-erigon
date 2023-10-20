@@ -144,10 +144,10 @@ func (tx OffchainTransaction) EncodeRLP(w io.Writer) error {
 			return err
 		}
 	}
-/*	if err := tx.Value.EncodeRLP(w); err != nil {
-		return err
-	}
-*/
+	/*	if err := tx.Value.EncodeRLP(w); err != nil {
+			return err
+		}
+	*/
 	if err := rlp.EncodeInt(tx.GasLimit, w, b[:]); err != nil {
 		return err
 	}
@@ -173,10 +173,10 @@ func (tx OffchainTransaction) payloadSize() int {
 		payloadSize += len(tx.To)
 	}
 
-/*	// Value
-	payloadSize++
-	payloadSize += rlp.Uint256LenExcludingHead(tx.Value)
-*/
+	/*	// Value
+		payloadSize++
+		payloadSize += rlp.Uint256LenExcludingHead(tx.Value)
+	*/
 	// GasLimit
 	payloadSize++
 	payloadSize += rlp.IntLenExcludingHead(tx.GasLimit)
@@ -196,7 +196,6 @@ func (tx OffchainTransaction) payloadSize() int {
 	}
 	return payloadSize
 }
-
 
 // DecodeRLP decodes OffchainTransaction but with the list token already consumed and encodingSize being presented
 func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
@@ -234,12 +233,12 @@ func (tx *OffchainTransaction) DecodeRLP(s *rlp.Stream) error {
 	default:
 		return fmt.Errorf("wrong size for To: %d", len(b))
 	}
-/*
-	if b, err = s.Uint256Bytes(); err != nil {
-		return fmt.Errorf("read Value: %w", err)
-	}
-	tx.Value = new(uint256.Int).SetBytes(b)
-*/
+	/*
+		if b, err = s.Uint256Bytes(); err != nil {
+			return fmt.Errorf("read Value: %w", err)
+		}
+		tx.Value = new(uint256.Int).SetBytes(b)
+	*/
 	if tx.GasLimit, err = s.Uint(); err != nil {
 		return fmt.Errorf("read GasLimit: %w", err)
 	}

@@ -60,7 +60,7 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 		if extra != 0 {
 			// For Hybrid Compute. In an eth_call, msg.rollupDataGas is not
 			// populated for the incomplete transaction, so we have to estimate it
-			rollupDataGas = msg.EstimateRDG(config.Rules(blockNum,0))
+			rollupDataGas = msg.EstimateRDG(config.Rules(blockNum, 0))
 		} else {
 			rollupDataGas = msg.RollupDataGas()
 		}
