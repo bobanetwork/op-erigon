@@ -135,7 +135,7 @@ func RollupDataGas(tx binMarshalable, rules *chain.Rules) uint64 {
 	var buf bytes.Buffer
 	if err := tx.MarshalBinary(&buf); err != nil {
 		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
-		//log.Error("failed to encode tx for L1 cost computation", "err", err)
+		log.Error("failed to encode tx for L1 cost computation", "err", err)
 		return 0
 	}
 	var zeroes uint64

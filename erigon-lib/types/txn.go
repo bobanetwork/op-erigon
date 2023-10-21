@@ -398,6 +398,7 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 	} else {
 		// Next follows the nonce, which we need to parse
 		p, slot.Nonce, err = rlp.U64(payload, p)
+
 		if err != nil {
 			return 0, fmt.Errorf("%w: nonce: %s", ErrParseTxn, err) //nolint
 		}

@@ -20,7 +20,7 @@ import (
 func APIList(db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
 	filters *rpchelper.Filters, stateCache kvcache.Cache,
 	blockReader services.FullBlockReader, agg *libstate.AggregatorV3, cfg httpcfg.HttpCfg, engine consensus.EngineReader,
-	seqRPCService, historicalRPCService *rpc.Client, hybridComputeService *vm.HCService, logger log.Logger,
+	seqRPCService, historicalRPCService *rpc.Client, logger log.Logger, hybridComputeService *vm.HCService,
 ) (list []rpc.API) {
 	base := NewBaseApiHC(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, cfg.Dirs, seqRPCService, historicalRPCService, hybridComputeService)
 	ethImpl := NewEthAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit, cfg.AllowUnprotectedTxs, logger)

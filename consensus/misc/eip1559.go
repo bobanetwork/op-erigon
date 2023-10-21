@@ -36,7 +36,7 @@ func VerifyEip1559Header(config *chain.Config, parent, header *types.Header, ski
 		// Verify that the gas limit remains within allowed bounds
 		parentGasLimit := parent.GasLimit
 		if !config.IsLondon(parent.Number.Uint64()) {
-			parentGasLimit = parent.GasLimit * params.ElasticityMultiplier
+			parentGasLimit = parent.GasLimit * config.ElasticityMultiplier(params.ElasticityMultiplier)
 		}
 
 		if config.Optimism == nil {
@@ -71,7 +71,7 @@ func CalcBaseFee(config *chain.Config, parent *types.Header) *big.Int {
 	}
 
 	var (
-		parentGasTarget          = parent.GasLimit / params.ElasticityMultiplier
+		parentGasTarget          = parent.GasLimit / config.ElasticityMultiplier(params.ElasticityMultiplier)
 		parentGasTargetBig       = new(big.Int).SetUint64(parentGasTarget)
 		baseFeeChangeDenominator = new(big.Int).SetUint64(getBaseFeeChangeDenominator(config, parent.Number.Uint64()))
 	)
@@ -111,5 +111,5 @@ func getBaseFeeChangeDenominator(config *chain.Config, number uint64) uint64 {
 	}
 
 	// Return the original once for other chains and pre-fork cases
-	return params.BaseFeeChangeDenominator
+	return config.BaseFeeChangeDenominator(params.BaseFeeChangeDenominator)
 }
