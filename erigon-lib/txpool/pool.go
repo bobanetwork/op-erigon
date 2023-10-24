@@ -218,6 +218,8 @@ type TxPool struct {
 	blockGasLimit           atomic.Uint64
 	shanghaiTime            *uint64
 	isPostShanghai          atomic.Bool
+	agraBlock               *uint64
+	isPostAgra              atomic.Bool
 	cancunTime              *uint64
 	isPostCancun            atomic.Bool
 	maxBlobsPerBlock        uint64
@@ -230,7 +232,7 @@ type TxPoolDropRemote struct {
 }
 
 func New(newTxs chan types.Announcements, coreDB kv.RoDB, cfg txpoolcfg.Config, cache kvcache.Cache,
-	chainID uint256.Int, shanghaiTime, cancunTime *big.Int, maxBlobsPerBlock uint64, logger log.Logger,
+	chainID uint256.Int, shanghaiTime, agraBlock, cancunTime *big.Int, maxBlobsPerBlock uint64, logger log.Logger,
 ) (*TxPool, error) {
 	localsHistory, err := simplelru.NewLRU[string, struct{}](10_000, nil)
 	if err != nil {
@@ -282,6 +284,13 @@ func New(newTxs chan types.Announcements, coreDB kv.RoDB, cfg txpoolcfg.Config, 
 		}
 		shanghaiTimeU64 := shanghaiTime.Uint64()
 		res.shanghaiTime = &shanghaiTimeU64
+	}
+	if agraBlock != nil {
+		if !agraBlock.IsUint64() {
+			return nil, errors.New("agraBlock overflow")
+		}
+		agraBlockU64 := agraBlock.Uint64()
+		res.agraBlock = &agraBlockU64
 	}
 	if cancunTime != nil {
 		if !cancunTime.IsUint64() {
@@ -616,7 +625,7 @@ func (p *TxPool) best(n uint16, txs *types.TxsRlp, tx kv.Tx, onTopOf, availableG
 		return false, 0, nil // Too early
 	}
 
-	isShanghai := p.isShanghai()
+	isShanghai := p.isShanghai() || p.isAgra()
 	best := p.pending.best
 
 	txs.Resize(uint(cmp.Min(int(n), len(best.ms))))
@@ -736,7 +745,7 @@ func toBlobs(_blobs [][]byte) []gokzg4844.Blob {
 }
 
 func (p *TxPool) validateTx(txn *types.TxSlot, isLocal bool, stateCache kvcache.CacheView) txpoolcfg.DiscardReason {
-	isShanghai := p.isShanghai()
+	isShanghai := p.isShanghai() || p.isAgra()
 	if isShanghai {
 		if txn.DataLen > fixedgas.MaxInitCodeSize {
 			return txpoolcfg.InitCodeTooLarge
@@ -887,6 +896,42 @@ func (p *TxPool) isShanghai() bool {
 	activated := uint64(now) >= shanghaiTime
 	if activated {
 		p.isPostShanghai.Swap(true)
+	}
+	return activated
+}
+
+func (p *TxPool) isAgra() bool {
+	// once this flag has been set for the first time we no longer need to check the timestamp
+	set := p.isPostAgra.Load()
+	if set {
+		return true
+	}
+	if p.agraBlock == nil {
+		return false
+	}
+	agraBlock := *p.agraBlock
+
+	// a zero here means Agra is always active
+	if agraBlock == 0 {
+		p.isPostAgra.Swap(true)
+		return true
+	}
+
+	tx, err := p._chainDB.BeginRo(context.Background())
+	if err != nil {
+		return false
+	}
+	defer tx.Rollback()
+
+	head_block, err := chain.CurrentBlockNumber(tx)
+	if head_block == nil || err != nil {
+		return false
+	}
+	// A new block is built on top of the head block, so when the head is agraBlock-1,
+	// the new block should use the Agra rules.
+	activated := (*head_block + 1) >= agraBlock
+	if activated {
+		p.isPostAgra.Swap(true)
 	}
 	return activated
 }

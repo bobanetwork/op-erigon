@@ -32,7 +32,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
-	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
 )
@@ -104,7 +103,7 @@ func (tx DepositTransaction) copy() *DepositTransaction {
 		Value:      tx.Value,
 		GasLimit:   tx.GasLimit,
 		IsSystemTx: tx.IsSystemTx,
-		Data:       common.CopyBytes(tx.Data),
+		Data:       libcommon.CopyBytes(tx.Data),
 	}
 
 	return cpy

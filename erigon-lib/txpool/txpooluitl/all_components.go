@@ -19,6 +19,7 @@ package txpooluitl
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/c2h5oh/datasize"
@@ -133,17 +134,20 @@ func AllComponents(ctx context.Context, cfg txpoolcfg.Config, cache kvcache.Cach
 	maxBlobsPerBlock := chainConfig.GetMaxBlobsPerBlock()
 
 	shanghaiTime := chainConfig.ShanghaiTime
+	var agraBlock *big.Int
+	if chainConfig.Bor != nil {
+		agraBlock = chainConfig.Bor.AgraBlock
+	}
 	cancunTime := chainConfig.CancunTime
 	if cfg.OverrideCancunTime != nil {
 		cancunTime = cfg.OverrideCancunTime
 	}
 
-	var pool txpool.Pool
-	txPool, err := txpool.New(newTxs, chainDB, cfg, cache, *chainID, shanghaiTime, cancunTime, maxBlobsPerBlock, logger)
+	txPool, err := txpool.New(newTxs, chainDB, cfg, cache, *chainID, shanghaiTime, agraBlock, cancunTime, maxBlobsPerBlock, logger)
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
-	pool = txpool.Pool(txPool)
+	pool := txpool.Pool(txPool)
 	if cfg.NoTxGossip {
 		pool = txpool.Pool(txpool.NewTxPoolDropRemote(txPool))
 	}
