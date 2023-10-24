@@ -232,6 +232,7 @@ func getNextTransactions(
 		counter := 0
 		for !onTime && counter < 500 {
 			remainingGas := header.GasLimit - header.GasUsed
+
 			remainingBlobGas := uint64(0)
 			if header.BlobGasUsed != nil {
 				remainingBlobGas = cfg.chainConfig.GetMaxBlobGasPerBlock() - *header.BlobGasUsed
@@ -309,7 +310,6 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 			continue
 		}
 		if int(transaction.Type()) == types.DepositTxType {
-			// FIXME - may need to include some of the later checks
 			log.Debug("Bypassing filterBadTransactions for Deposit tx", "transaction", transaction)
 			filtered = append(filtered, transaction)
 			transactions = transactions[1:]
@@ -479,14 +479,6 @@ LOOP:
 		if gasPool.Gas() < params.TxGas {
 			logger.Debug(fmt.Sprintf("[%s] Not enough gas for further transactions", logPrefix), "have", gasPool, "want", params.TxGas)
 			log.Debug("HC stage_mining_exec has reached gas limit", "len", len(current.Txs), "gpGas", gasPool.Gas(), "txGas", params.TxGas)
-			if len(current.Txs) > 0 {
-				last := current.Txs[len(current.Txs)-1]
-				if last.Type() == types.OffchainTxType {
-					log.Warn("HC Block ends on Offchain Tx", "last", last, "current", current)
-					// FIXME - remove it, reset hc state so it can try again in the next block
-					//panic("not implemented")
-				}
-			}
 			done = true
 			break
 		}
@@ -562,7 +554,6 @@ LOOP:
 
 		if err == vm.ErrHCReverted && hc != nil {
 			hcs.PutHC(mh, hc)
-
 			if hc.State == vm.HC_STATE_TRIGGERED {
 				// This is a first-time trigger for a Txn which didn't go through EstimateGas
 				log.Debug("HC Inserting HCActive in stage_mining_exec", "hc", hc, "mh", mh, "txn", txn)
@@ -579,9 +570,11 @@ LOOP:
 
 				continue
 			} else {
-				log.Warn("HC got an unexpected ErrHCReverted", "hc", hc, "mh", mh)
+				log.Warn("HC got an unexpected ErrHCReverted", "mh", mh, "state", hc.State, "caller", hc.Caller, "nonce", hc.ReqNonce)
 				// We inserted an OffchainResponse ahead of this Tx but it still failed.
-				// FIXME - This may leave a cache entry in the helper contract. Should have a way to clean up.
+				// This may leave a stored response in the helper contract. A future enhancement could provide a mechanism
+				// for an external process to detect such cases (by following logs and/or by adding Put/Get events) and
+				// manually call a function to remove the stale entries. TBD whether it's a common enough problem to need this.
 				hc.State = vm.HC_STATE_FAILED
 			}
 
@@ -589,12 +582,16 @@ LOOP:
 		} else if err == nil && hc != nil && hc.State == vm.HC_STATE_PREPARED {
 			hc.State = vm.HC_STATE_STORED
 		}
-
+		if header.GasUsed > 0 {
+			log.Debug("MMDBG-HC Checking GasLimit", "headerUsed", header.GasUsed, "err", err, "gp", gasPool)
+		}
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
 			if hc != nil && hc.State != vm.HC_STATE_NONE {
 				log.Warn("HC ErrGasLimitReached", "hc", hc)
-				// FIXME
+				if hc.State != vm.HC_STATE_FAILED {
+					hc.RetryCount += 1
+				}
 			}
 			logger.Debug(fmt.Sprintf("[%s] Gas limit exceeded for env block", logPrefix), "hash", txn.Hash(), "sender", from)
 			txs.Pop()
@@ -626,6 +623,29 @@ LOOP:
 			// nonce-too-high clause will prevent us from executing in vain).
 			logger.Debug(fmt.Sprintf("[%s] Skipping transaction", logPrefix), "hash", txn.Hash(), "sender", from, "err", err)
 			txs.Shift()
+		}
+	}
+
+	if hc != nil && len(current.Txs) > 1 {
+		numTx := len(current.Txs)
+		if numTx != len(current.Receipts) {
+			log.Error("Mismatched Txs/Receipts in stage_mining_exec", "current", current)
+			return nil, true, vm.ErrHCFailed
+		}
+		last := current.Txs[numTx-1]
+		if last.Type() == types.OffchainTxType {
+			log.Warn("HC Block ends on Offchain Tx", "blk", current.Header.Number, "txs", current.Txs, "hcState", hc.State)
+			current.Txs = current.Txs[:numTx-1]
+			current.Receipts = current.Receipts[:numTx-1]
+
+			// A 'split' Offchain Tx is removed from this block but may still be retried in a future block.
+			// Currently only retried once.
+			if len(current.Txs) > 1 && hc.RetryCount == 1 {
+				log.Debug("HC Removed trailing Offchan transaction, will retry", "blk", current.Header.Number, "len", len(current.Txs), "hcState", hc.State)
+				hc.State = vm.HC_STATE_READY
+			} else {
+				log.Warn("HC Removed trailing Offchan transaction, will not retry", "blk", current.Header.Number, "len", len(current.Txs), "hcState", hc.State)
+			}
 		}
 	}
 

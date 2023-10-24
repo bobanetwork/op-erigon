@@ -72,13 +72,14 @@ var (
 */
 
 type HCContext struct {
-	State    HcState
-	OpType   uint32
-	Caller   libcommon.Address
-	Request  []byte
-	Response []byte
-	ReqNonce uint64
-	expires  time.Time
+	State      HcState
+	OpType     uint32
+	Caller     libcommon.Address
+	Request    []byte
+	Response   []byte
+	ReqNonce   uint64
+	expires    time.Time
+	RetryCount uint32
 }
 
 type RandomCacheEntry struct {
