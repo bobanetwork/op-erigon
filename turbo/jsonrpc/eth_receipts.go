@@ -44,10 +44,6 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 		return cached, nil
 	}
 
-	if chainConfig.IsOptimismPreBedrock(block.NumberU64()) {
-		return nil, fmt.Errorf("Critical: cannot get receipts for pre-bedrock blocks")
-	}
-
 	engine := api.engine()
 
 	_, _, _, ibs, _, err := transactions.ComputeTxEnv(ctx, engine, block, chainConfig, api._blockReader, tx, 0, api.historyV3(tx))

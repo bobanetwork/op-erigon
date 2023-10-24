@@ -383,3 +383,5 @@ func (tx *DepositTransaction) SetSender(addr libcommon.Address) {
 	}
 	// otherwise a NOP
 }
+
+func (tx *DepositTransaction) IsLegacyDepositTx() bool { return false }

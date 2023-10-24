@@ -477,7 +477,15 @@ LOOP:
 		}
 
 		// We use the eip155 signer regardless of the env hf.
-		from, err := txn.Sender(*signer)
+		var (
+			from libcommon.Address
+			err  error
+		)
+		if chainConfig.IsBobaLegacyBlock(header.Number.Uint64()) && txn.IsLegacyDepositTx() {
+			from = libcommon.Address{}
+		} else {
+			from, err = txn.Sender(*signer)
+		}
 		if err != nil {
 			logger.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
 			txs.Pop()

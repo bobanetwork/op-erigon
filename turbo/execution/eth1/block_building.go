@@ -130,8 +130,15 @@ func (e *EthereumExecutionModule) GetAssembledBlock(ctx context.Context, req *ex
 	block := blockWithReceipts.Block
 	header := block.Header()
 
-	baseFee := new(uint256.Int)
-	baseFee.SetFromBig(header.BaseFee)
+	var (
+		baseFee       *uint256.Int
+		baseFeePerGas *types2.H256
+	)
+	if !e.config.IsBobaLegacyBlock(block.NumberU64()) {
+		baseFee := new(uint256.Int)
+		baseFee.SetFromBig(header.BaseFee)
+		baseFeePerGas = gointerfaces.ConvertUint256IntToH256(baseFee)
+	}
 
 	encodedTransactions, err := types.MarshalTransactionsBinary(block.Transactions())
 	if err != nil {
@@ -151,7 +158,7 @@ func (e *EthereumExecutionModule) GetAssembledBlock(ctx context.Context, req *ex
 		GasUsed:       block.GasUsed(),
 		BlockNumber:   block.NumberU64(),
 		ExtraData:     block.Extra(),
-		BaseFeePerGas: gointerfaces.ConvertUint256IntToH256(baseFee),
+		BaseFeePerGas: baseFeePerGas,
 		BlockHash:     gointerfaces.ConvertHashToH256(block.Hash()),
 		Transactions:  encodedTransactions,
 	}
@@ -166,7 +173,13 @@ func (e *EthereumExecutionModule) GetAssembledBlock(ctx context.Context, req *ex
 		payload.ExcessBlobGas = header.ExcessBlobGas
 	}
 
-	blockValue := blockValue(blockWithReceipts, baseFee)
+	var rBlockValue *uint256.Int
+	if e.config.IsBobaLegacyBlock(block.NumberU64()) {
+		payload.BaseFeePerGas = nil
+		rBlockValue = blockValue(blockWithReceipts, uint256.NewInt(0))
+	} else {
+		rBlockValue = blockValue(blockWithReceipts, baseFee)
+	}
 
 	blobsBundle := &types2.BlobsBundleV1{}
 	for i, tx := range block.Transactions() {
@@ -203,7 +216,7 @@ func (e *EthereumExecutionModule) GetAssembledBlock(ctx context.Context, req *ex
 	return &execution.GetAssembledBlockResponse{
 		Data: &execution.AssembledBlockData{
 			ExecutionPayload: payload,
-			BlockValue:       gointerfaces.ConvertUint256IntToH256(blockValue),
+			BlockValue:       gointerfaces.ConvertUint256IntToH256(rBlockValue),
 			BlobsBundle:      blobsBundle,
 		},
 		Busy: false,

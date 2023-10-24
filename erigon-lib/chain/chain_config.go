@@ -31,7 +31,7 @@ var (
 	// Goerli
 	BobaGoerliChainId = big.NewInt(2888)
 	// TODO - update this when we know the exact block
-	BobaGoerliBedrockBlock = big.NewInt(40500)
+	BobaGoerliBedrockBlock = 40500
 	// Boba Goerli genesis gas limit
 	BobaGoerliGenesisGasLimit = 11000000
 	// Boba Goerli genesis block coinbase
@@ -44,7 +44,7 @@ var (
 	// Mainnet
 	BobaMainnetChainId = big.NewInt(288)
 	// TODO - update this when we know the exact block
-	BobaMainnetBedrockBlock = big.NewInt(1000100)
+	BobaMainnetBedrockBlock = 1000100
 	// Boba Mainnet genesis gas limit
 	BobaMainnetGenesisGasLimit = 11000000
 	// Boba Mainnet genesis block coinbase
@@ -324,14 +324,14 @@ func (c *Config) GetMaxBlobsPerBlock() uint64 {
 	return c.GetMaxBlobGasPerBlock() / fixedgas.BlobGasPerBlob
 }
 
-func (c *Config) IsBobaLegacyBlock(num *big.Int) bool {
+func (c *Config) IsBobaLegacyBlock(num uint64) bool {
 	// Boba Goerli
 	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
-		return BobaGoerliBedrockBlock.Cmp(num) > 0
+		return BobaGoerliBedrockBlock > int(num)
 	}
 	// Boba Mainnet
 	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
-		return BobaMainnetBedrockBlock.Cmp(num) > 0
+		return BobaMainnetBedrockBlock > int(num)
 	}
 	return false
 }

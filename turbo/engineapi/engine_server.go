@@ -191,6 +191,11 @@ func (s *EngineServer) newPayload(ctx context.Context, req *engine_types.Executi
 		return nil, err
 	}
 
+	if s.config.IsBobaLegacyBlock(uint64(req.BlockNumber)) {
+		header.BaseFee = nil
+		header.Difficulty = libcommon.Big2
+	}
+
 	if version >= clparams.DenebVersion {
 		if req.BlobGasUsed == nil || req.ExcessBlobGas == nil || parentBeaconBlockRoot == nil {
 			return nil, &rpc.InvalidParamsError{Message: "blobGasUsed/excessBlobGas/beaconRoot missing"}
@@ -421,8 +426,10 @@ func (s *EngineServer) getPayload(ctx context.Context, payloadId uint64, version
 		return nil, &rpc.UnsupportedForkError{Message: "Unsupported fork"}
 	}
 
+	isBobaLegacyBlock := s.config.IsBobaLegacyBlock(data.ExecutionPayload.BlockNumber)
+
 	return &engine_types.GetPayloadResponse{
-		ExecutionPayload: engine_types.ConvertPayloadFromRpc(data.ExecutionPayload),
+		ExecutionPayload: engine_types.ConvertPayloadFromRpc(data.ExecutionPayload, isBobaLegacyBlock),
 		BlockValue:       (*hexutil.Big)(gointerfaces.ConvertH256ToUint256Int(data.BlockValue).ToBig()),
 		BlobsBundle:      engine_types.ConvertBlobsFromRpc(data.BlobsBundle),
 	}, nil
@@ -509,12 +516,15 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	log.Debug("Continuing EngineForkChoiceUpdated", "headNumber", headHeader.Number, "headHash", headHeader.Hash(), "numDeposits", len(payloadAttributes.Transactions))
 
 	timestamp := uint64(payloadAttributes.Timestamp)
-	if headHeader.Time >= timestamp {
-		return nil, &engine_helpers.InvalidPayloadAttributesErr
-	}
 
-	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
-		return nil, &engine_helpers.InvalidPayloadAttributesErr
+	if !s.config.IsBobaLegacyBlock(headHeader.Number.Uint64()) {
+		if headHeader.Time >= timestamp {
+			return nil, &engine_helpers.InvalidPayloadAttributesErr
+		}
+
+		if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
+			return nil, &engine_helpers.InvalidPayloadAttributesErr
+		}
 	}
 
 	req := &execution.AssembleBlockRequest{

@@ -274,7 +274,7 @@ func write(tx kv.RwTx, g *types.Genesis, tmpDir string) (*types.Block, *state.In
 	}
 
 	difficulty := g.Difficulty
-	if g.Config.IsBobaLegacyBlock(new(big.Int).SetUint64(block.NumberU64())) {
+	if g.Config.IsBobaLegacyBlock(block.NumberU64()) {
 		difficulty = libcommon.Big1
 	}
 	if err := rawdb.WriteTd(tx, block.Hash(), block.NumberU64(), difficulty); err != nil {
@@ -514,7 +514,7 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 
 	baseFee := g.BaseFee
 	isBobaLegacyBlock := false
-	if g.Config.IsBobaLegacyBlock(new(big.Int).SetUint64(g.Number)) {
+	if g.Config.IsBobaLegacyBlock(g.Number) {
 		isBobaLegacyBlock = true
 		baseFee = nil
 	}
