@@ -32,7 +32,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
-	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/log/v3"
 )
@@ -101,7 +100,7 @@ func (tx OffchainTransaction) copy() *OffchainTransaction {
 		From:       tx.From,
 		To:         tx.To,
 		GasLimit:   tx.GasLimit,
-		Data:       common.CopyBytes(tx.Data),
+		Data:       libcommon.CopyBytes(tx.Data),
 	}
 
 	return cpy
@@ -356,7 +355,7 @@ func NewOffchainTx(hcHash libcommon.Hash, data []byte, gasLimit uint64) *Offchai
 		From:       &hcFrom,
 		To:         &hcHelper,
 		GasLimit:   gasLimit,
-		Data:       common.CopyBytes(data),
+		Data:       libcommon.CopyBytes(data),
 	}
 
 	return ret
