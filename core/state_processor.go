@@ -101,7 +101,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 			if err != nil {
 				return nil, nil, err
 			}
-			*usedGas = uint64(legacyReceipt.GasUsed)
+			*usedGas = legacyReceipt.GasUsed
 		} else {
 			return nil, nil, fmt.Errorf("legacy block must be handled by the historicalRPCService")
 		}
