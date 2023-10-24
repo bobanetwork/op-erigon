@@ -5,8 +5,9 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/holiman/uint256"
@@ -783,7 +784,7 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	}
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(txn.GetPrice().Uint64())
-	} else {
+	} else if header.BaseFee != nil {
 		baseFee, _ := uint256.FromBig(header.BaseFee)
 		gasPrice := new(big.Int).Add(header.BaseFee, txn.GetEffectiveGasTip(baseFee).ToBig())
 		fields["effectiveGasPrice"] = hexutil.Uint64(gasPrice.Uint64())
