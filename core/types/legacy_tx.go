@@ -28,7 +28,6 @@ import (
 	rlp2 "github.com/ledgerwatch/erigon-lib/rlp"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
-	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/rlp"
 )
@@ -85,6 +84,11 @@ func (ct CommonTx) Protected() bool {
 
 func (ct CommonTx) IsContractDeploy() bool {
 	return ct.GetTo() == nil
+}
+
+// IsDepositTx returns true if the transaction is a deposit tx type.
+func (ct CommonTx) IsDepositTx() bool {
+	return false
 }
 
 func (ct *CommonTx) GetBlobHashes() []libcommon.Hash {
@@ -175,7 +179,7 @@ func (tx LegacyTx) copy() *LegacyTx {
 			},
 			Nonce: tx.Nonce,
 			To:    tx.To, // TODO: copy pointed-to address
-			Data:  common.CopyBytes(tx.Data),
+			Data:  libcommon.CopyBytes(tx.Data),
 			Gas:   tx.Gas,
 			// These are initialized below.
 			Value: new(uint256.Int),
@@ -350,18 +354,19 @@ func (tx *LegacyTx) DecodeRLP(s *rlp.Stream, encodingSize uint64) error {
 }
 
 // AsMessage returns the transaction as a core.Message.
-func (tx LegacyTx) AsMessage(s Signer, _ *big.Int, _ *chain.Rules) (Message, error) {
+func (tx LegacyTx) AsMessage(s Signer, _ *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
-		nonce:      tx.Nonce,
-		gasLimit:   tx.Gas,
-		gasPrice:   *tx.GasPrice,
-		tip:        *tx.GasPrice,
-		feeCap:     *tx.GasPrice,
-		to:         tx.To,
-		amount:     *tx.Value,
-		data:       tx.Data,
-		accessList: nil,
-		checkNonce: true,
+		nonce:         tx.Nonce,
+		gasLimit:      tx.Gas,
+		gasPrice:      *tx.GasPrice,
+		tip:           *tx.GasPrice,
+		feeCap:        *tx.GasPrice,
+		to:            tx.To,
+		amount:        *tx.Value,
+		data:          tx.Data,
+		accessList:    nil,
+		checkNonce:    true,
+		rollupDataGas: RollupDataGas(tx, rules),
 	}
 
 	var err error

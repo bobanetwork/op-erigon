@@ -2,7 +2,9 @@ package jsonrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
 	"time"
 
@@ -13,7 +15,6 @@ import (
 
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 
-	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
@@ -191,6 +192,22 @@ func (api *PrivateDebugAPIImpl) TraceTransaction(ctx context.Context, hash commo
 		return nil
 	}
 
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService != nil {
+			treeResult := &GethTrace{}
+			if err := api.historicalRPCService.CallContext(ctx, treeResult, "debug_traceTransaction", hash, config); err != nil {
+				return fmt.Errorf("historical backend failed: %w", err)
+			}
+			result, err := json.Marshal(treeResult)
+			if err != nil {
+				return err
+			}
+			stream.WriteRaw(string(result))
+			return nil
+		}
+		return rpc.ErrNoHistoricalFallback
+	}
+
 	// check pruning to ensure we have history at this block level
 	err = api.BaseAPI.checkPruneHistory(tx, blockNum)
 	if err != nil {
@@ -309,7 +326,8 @@ func (api *PrivateDebugAPIImpl) TraceCall(ctx context.Context, args ethapi.CallA
 		return fmt.Errorf("convert args to msg: %v", err)
 	}
 
-	blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, dbtx, api._blockReader)
+	l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
+	blockCtx := transactions.NewEVMBlockContext(engine, header, blockNrOrHash.RequireCanonical, dbtx, api._blockReader, l1CostFunc)
 	txCtx := core.NewEVMTxContext(msg)
 	// Trace the transaction and return
 	return transactions.TraceTx(ctx, msg, blockCtx, txCtx, ibs, config, chainConfig, stream, api.evmCallTimeout)
@@ -431,6 +449,7 @@ func (api *PrivateDebugAPIImpl) TraceCallMany(ctx context.Context, bundles []Bun
 		Difficulty:  new(big.Int).Set(parent.Difficulty),
 		GasLimit:    parent.GasLimit,
 		BaseFee:     &baseFee,
+		L1CostFunc:  types.NewL1CostFunc(chainConfig, st),
 	}
 
 	// Get a new instance of the EVM

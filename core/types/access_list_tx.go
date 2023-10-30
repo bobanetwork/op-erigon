@@ -31,7 +31,6 @@ import (
 	rlp2 "github.com/ledgerwatch/erigon-lib/rlp"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
-	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/rlp"
 )
@@ -53,7 +52,7 @@ func (tx AccessListTx) copy() *AccessListTx {
 				},
 				Nonce: tx.Nonce,
 				To:    tx.To, // TODO: copy pointed-to address
-				Data:  common.CopyBytes(tx.Data),
+				Data:  libcommon.CopyBytes(tx.Data),
 				Gas:   tx.Gas,
 				// These are copied below.
 				Value: new(uint256.Int),
@@ -420,16 +419,17 @@ func (tx *AccessListTx) DecodeRLP(s *rlp.Stream) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx AccessListTx) AsMessage(s Signer, _ *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
-		nonce:      tx.Nonce,
-		gasLimit:   tx.Gas,
-		gasPrice:   *tx.GasPrice,
-		tip:        *tx.GasPrice,
-		feeCap:     *tx.GasPrice,
-		to:         tx.To,
-		amount:     *tx.Value,
-		data:       tx.Data,
-		accessList: tx.AccessList,
-		checkNonce: true,
+		nonce:         tx.Nonce,
+		gasLimit:      tx.Gas,
+		gasPrice:      *tx.GasPrice,
+		tip:           *tx.GasPrice,
+		feeCap:        *tx.GasPrice,
+		to:            tx.To,
+		amount:        *tx.Value,
+		data:          tx.Data,
+		accessList:    tx.AccessList,
+		checkNonce:    true,
+		rollupDataGas: RollupDataGas(tx, rules),
 	}
 
 	if !rules.IsBerlin {

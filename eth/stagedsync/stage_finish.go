@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/ledgerwatch/erigon-lib/kv/dbutils"
 	"time"
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -17,8 +18,6 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/log/v3"
 
-	common2 "github.com/ledgerwatch/erigon/common"
-	"github.com/ledgerwatch/erigon/common/dbutils"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/ethdb/cbor"
@@ -54,9 +53,6 @@ func FinishForward(s *StageState, tx kv.RwTx, cfg FinishCfg, initialCycle bool) 
 	var err error
 	if executionAt, err = s.ExecutionAt(tx); err != nil {
 		return err
-	}
-	if s.BlockNumber > executionAt { // Erigon will self-heal (download missed blocks) eventually
-		return nil
 	}
 	if executionAt <= s.BlockNumber {
 		return nil
@@ -161,7 +157,7 @@ func NotifyNewHeaders(ctx context.Context, finishStageBeforeSync uint64, finishS
 
 		headerHash := libcommon.BytesToHash(k[8:])
 		if notifyToHash == headerHash {
-			headersRlp = append(headersRlp, common2.CopyBytes(headerRLP))
+			headersRlp = append(headersRlp, libcommon.CopyBytes(headerRLP))
 		}
 
 		return libcommon.Stopped(ctx.Done())

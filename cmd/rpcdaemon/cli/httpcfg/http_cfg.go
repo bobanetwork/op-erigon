@@ -67,4 +67,9 @@ type HttpCfg struct {
 	MaxGetProofRewindBlockCount int  //Max GetProof rewind block count
 	// Ots API
 	OtsMaxPageSize uint64
+
+	RollupSequencerHTTP        string
+	RollupHistoricalRPC        string
+	RollupHistoricalRPCTimeout time.Duration
+	RollupDisableTxPoolGossip  bool
 }

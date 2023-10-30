@@ -19,6 +19,7 @@ package core
 
 import (
 	"fmt"
+	"github.com/ledgerwatch/erigon-lib/metrics"
 	"time"
 
 	"golang.org/x/crypto/sha3"
@@ -37,7 +38,6 @@ import (
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
-	"github.com/ledgerwatch/erigon/metrics"
 	"github.com/ledgerwatch/erigon/rlp"
 )
 
@@ -220,6 +220,7 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 		data, nil, false,
 		true, // isFree
 		nil,  // maxFeePerBlobGas
+		0,    // rollupDataGas
 	)
 	vmConfig := vm.Config{NoReceipts: true, RestoreState: constCall}
 	// Create a new context to be used in the EVM environment
@@ -233,7 +234,8 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 		author = &state.SystemAddress
 		txContext = NewEVMTxContext(msg)
 	}
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author)
+	l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author, l1CostFunc)
 	evm := vm.NewEVM(blockContext, txContext, ibs, chainConfig, vmConfig)
 
 	ret, _, err := evm.Call(
@@ -262,12 +264,14 @@ func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config
 		data, nil, false,
 		true, // isFree
 		nil,  // maxFeePerBlobGas
+		0,    // rollupDataGas
 	)
 	vmConfig := vm.Config{NoReceipts: true}
 	// Create a new context to be used in the EVM environment
 	author := &contract
 	txContext := NewEVMTxContext(msg)
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author)
+	l1CostFunc := types.NewL1CostFunc(&chainConfig, ibs)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author, l1CostFunc)
 	evm := vm.NewEVM(blockContext, txContext, ibs, &chainConfig, vmConfig)
 
 	ret, _, err := evm.SysCreate(

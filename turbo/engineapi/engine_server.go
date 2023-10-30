@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
+	"github.com/ledgerwatch/erigon/cl/clparams"
 	"math/big"
 	"reflect"
 	"sync"
@@ -22,11 +24,9 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
 	libstate "github.com/ledgerwatch/erigon-lib/state"
 
-	"github.com/ledgerwatch/erigon/cl/clparams"
 	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/cli"
 	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/cli/httpcfg"
 	"github.com/ledgerwatch/erigon/common"
-	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/merge"
@@ -77,8 +77,10 @@ func NewEngineServer(ctx context.Context, logger log.Logger, config *chain.Confi
 
 func (e *EngineServer) Start(httpConfig httpcfg.HttpCfg, db kv.RoDB, blockReader services.FullBlockReader,
 	filters *rpchelper.Filters, stateCache kvcache.Cache, agg *libstate.AggregatorV3, engineReader consensus.EngineReader,
-	eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient) {
-	base := jsonrpc.NewBaseApi(filters, stateCache, blockReader, agg, httpConfig.WithDatadir, httpConfig.EvmCallTimeout, engineReader, httpConfig.Dirs)
+	eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
+	seqRPCService, historicalRPCService *rpc.Client,
+) {
+	base := jsonrpc.NewBaseApi(filters, stateCache, blockReader, agg, httpConfig.WithDatadir, httpConfig.EvmCallTimeout, engineReader, httpConfig.Dirs, seqRPCService, historicalRPCService)
 
 	ethImpl := jsonrpc.NewEthAPI(base, db, eth, txPool, mining, httpConfig.Gascap, httpConfig.ReturnDataLimit, httpConfig.AllowUnprotectedTxs, httpConfig.MaxGetProofRewindBlockCount, e.logger)
 
@@ -429,9 +431,15 @@ func (s *EngineServer) getPayload(ctx context.Context, payloadId uint64, version
 // engineForkChoiceUpdated either states new block head or request the assembling of a new block
 func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *engine_types.ForkChoiceState, payloadAttributes *engine_types.PayloadAttributes, version clparams.StateVersion,
 ) (*engine_types.ForkChoiceUpdatedResponse, error) {
-	status, err := s.getQuickPayloadStatusIfPossible(forkchoiceState.HeadHash, 0, libcommon.Hash{}, forkchoiceState, false)
-	if err != nil {
-		return nil, err
+	var status *engine_types.PayloadStatus
+	var err error
+	// In the Optimism case, we allow arbitrary rewinding of the safe block
+	// hash, so we skip the path which might short-circuit that
+	if s.config.Optimism == nil {
+		status, err = s.getQuickPayloadStatusIfPossible(forkchoiceState.HeadHash, 0, libcommon.Hash{}, forkchoiceState, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -484,20 +492,28 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	headHeader := s.chainRW.GetHeaderByHash(forkchoiceState.HeadHash)
 
 	if headHeader.Hash() != forkchoiceState.HeadHash {
-		// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
-		// Client software MAY skip an update of the forkchoice state and
-		// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
-		// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
-		// In the case of such an event, client software MUST return
-		// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
+		// Optimism deviates slightly and allows arbitrary depth re-orgs.
+		if s.config.Optimism == nil {
+			// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
+			// Client software MAY skip an update of the forkchoice state and
+			// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
+			// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
+			// In the case of such an event, client software MUST return
+			// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
 
-		s.logger.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
-			"forkChoice.HeadBlockHash", forkchoiceState.HeadHash, "headHeader.Hash", headHeader.Hash())
-		return &engine_types.ForkChoiceUpdatedResponse{PayloadStatus: status}, nil
+			s.logger.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
+				"forkChoice.HeadBlockHash", forkchoiceState.HeadHash, "headHeader.Hash", headHeader.Hash())
+			return &engine_types.ForkChoiceUpdatedResponse{PayloadStatus: status}, nil
+		}
 	}
+	log.Debug("Continuing EngineForkChoiceUpdated", "headNumber", headHeader.Number, "headHash", headHeader.Hash(), "numDeposits", len(payloadAttributes.Transactions))
 
 	timestamp := uint64(payloadAttributes.Timestamp)
 	if headHeader.Time >= timestamp {
+		return nil, &engine_helpers.InvalidPayloadAttributesErr
+	}
+
+	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
 
@@ -506,6 +522,15 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		Timestamp:             timestamp,
 		PrevRandao:            gointerfaces.ConvertHashToH256(payloadAttributes.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
+		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
+		Transactions: func() [][]byte {
+			res := make([][]byte, len(payloadAttributes.Transactions))
+			for i, tx := range payloadAttributes.Transactions {
+				res[i] = []byte(tx)
+			}
+			return res
+		}(),
+		NoTxPool: payloadAttributes.NoTxPool,
 	}
 
 	if version >= clparams.CapellaVersion {
@@ -523,6 +548,7 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	if resp.Busy {
 		return nil, errors.New("[ForkChoiceUpdated]: execution service is busy, cannot assemble blocks")
 	}
+
 	return &engine_types.ForkChoiceUpdatedResponse{
 		PayloadStatus: &engine_types.PayloadStatus{
 			Status:          engine_types.ValidStatus,

@@ -111,6 +111,7 @@ func (s *EthBackendServer) PendingBlock(ctx context.Context, _ *emptypb.Empty) (
 		}
 	}
 
+	// TODO(jky) this seems to return a bad encoding now
 	blockRlp, err := rlp.EncodeToBytes(pendingBlock)
 	if err != nil {
 		return nil, err

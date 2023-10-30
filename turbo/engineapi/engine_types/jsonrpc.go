@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
+
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/execution"
 	types2 "github.com/ledgerwatch/erigon-lib/gointerfaces/types"
-	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/core/types"
 )
 
@@ -49,6 +50,9 @@ type PayloadAttributes struct {
 	SuggestedFeeRecipient common.Address      `json:"suggestedFeeRecipient" gencodec:"required"`
 	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
 	ParentBeaconBlockRoot *common.Hash        `json:"parentBeaconBlockRoot"`
+	GasLimit              *hexutil.Uint64     `json:"gasLimit,omitempty"`
+	Transactions          []hexutility.Bytes  `json:"transactions,omitempty"`
+	NoTxPool              bool                `json:"noTxPool,omitempty"`
 }
 
 // TransitionConfiguration represents the correct configurations of the CL and the EL

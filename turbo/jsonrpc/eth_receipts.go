@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
 
 	"github.com/RoaringBitmap/roaring"
@@ -20,7 +21,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/order"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
 
-	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core"
@@ -40,7 +40,7 @@ import (
 const PendingBlockNumber int64 = -2
 
 func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chain.Config, block *types.Block, senders []common.Address) (types.Receipts, error) {
-	if cached := rawdb.ReadReceipts(tx, block, senders); cached != nil {
+	if cached := rawdb.ReadReceipts(chainConfig, tx, block, senders); cached != nil {
 		return cached, nil
 	}
 	engine := api.engine()
@@ -69,6 +69,7 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	for i, txn := range block.Transactions() {
 		ibs.SetTxContext(txn.Hash(), block.Hash(), i)
 		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, usedBlobGas, vm.Config{})
+		log.Debug("Computed receipt for tx", "txhash", txn.Hash(), "l1Fee", receipt.L1Fee)
 		if err != nil {
 			return nil, err
 		}
@@ -532,7 +533,8 @@ func txnExecutor(tx kv.TemporalTx, chainConfig *chain.Config, engine consensus.E
 
 func (e *intraBlockExec) changeBlock(header *types.Header) {
 	e.blockNum = header.Number.Uint64()
-	blockCtx := transactions.NewEVMBlockContext(e.engine, header, true /* requireCanonical */, e.tx, e.br)
+	l1CostFunc := types.NewL1CostFunc(e.chainConfig, e.ibs) // FIXME? is ibs current?
+	blockCtx := transactions.NewEVMBlockContext(e.engine, header, true /* requireCanonical */, e.tx, e.br, l1CostFunc)
 	e.blockCtx = &blockCtx
 	e.blockHash = header.Hash()
 	e.header = header
@@ -743,6 +745,8 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		if t.Protected() {
 			chainId = types.DeriveChainId(&t.V).ToBig()
 		}
+	case *types.DepositTransaction:
+		chainId = chainConfig.ChainID
 	default:
 		chainId = txn.GetChainID().ToBig()
 	}
@@ -767,7 +771,15 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
 	}
-
+	if chainConfig.Optimism != nil && !txn.IsDepositTx() {
+		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
+		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
+		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
+		fields["l1FeeScalar"] = receipt.FeeScalar.String()
+	}
+	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositNonce != nil {
+		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
+	}
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(txn.GetPrice().Uint64())
 	} else {

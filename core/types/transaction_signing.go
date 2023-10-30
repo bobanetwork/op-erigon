@@ -268,6 +268,10 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 		// id, add 27 to become equivalent to unprotected Homestead signatures.
 		V.Add(&t.V, u256.Num27)
 		R, S = &t.R, &t.S
+	case *DepositTransaction:
+		// This type contains an explicit From: field
+		sender, _ := tx.GetSender()
+		return sender, nil
 	default:
 		return libcommon.Address{}, ErrTxTypeNotSupported
 	}
@@ -307,6 +311,8 @@ func (sg Signer) SignatureValues(tx Transaction, sig []byte) (R, S, V *uint256.I
 			return nil, nil, nil, ErrInvalidChainId
 		}
 		R, S, V = decodeSignature(sig)
+	case *DepositTransaction:
+		return nil, nil, nil, fmt.Errorf("deposits do not have a signature")
 	default:
 		return nil, nil, nil, ErrTxTypeNotSupported
 	}

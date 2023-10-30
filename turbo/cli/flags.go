@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"time"
 
 	"github.com/ledgerwatch/erigon-lib/txpool/txpoolcfg"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/cli/httpcfg"
 	"github.com/ledgerwatch/erigon/cmd/utils"
-	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/ethdb/prune"
 	"github.com/ledgerwatch/erigon/node/nodecfg"
@@ -404,6 +404,10 @@ func setEmbeddedRpcDaemon(ctx *cli.Context, cfg *nodecfg.Config, logger log.Logg
 		TxPoolApiAddr: ctx.String(utils.TxpoolApiAddrFlag.Name),
 
 		StateCache: kvcache.DefaultCoherentConfig,
+
+		RollupSequencerHTTP:        ctx.String(utils.RollupSequencerHTTPFlag.Name),
+		RollupHistoricalRPC:        ctx.String(utils.RollupHistoricalRPCFlag.Name),
+		RollupHistoricalRPCTimeout: ctx.Duration(utils.RollupHistoricalRPCTimeoutFlag.Name),
 	}
 	if ctx.IsSet(utils.HttpCompressionFlag.Name) {
 		c.HttpCompression = ctx.Bool(utils.HttpCompressionFlag.Name)

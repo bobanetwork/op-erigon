@@ -24,7 +24,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/txpool/txpoolcfg"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
-	"github.com/ledgerwatch/erigon/common"
 	cmath "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus/misc"
@@ -32,6 +31,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
+	"github.com/ledgerwatch/log/v3"
 )
 
 var emptyCodeHash = crypto.Keccak256Hash(nil)
@@ -95,6 +95,10 @@ type Message interface {
 	BlobHashes() []libcommon.Hash
 
 	IsFree() bool
+	IsSystemTx() bool
+	IsDepositTx() bool
+	RollupDataGas() uint64
+	Mint() *uint256.Int
 }
 
 // ExecutionResult includes all output after executing given evm
@@ -120,7 +124,7 @@ func (result *ExecutionResult) Return() []byte {
 	if result.Err != nil {
 		return nil
 	}
-	return common.CopyBytes(result.ReturnData)
+	return libcommon.CopyBytes(result.ReturnData)
 }
 
 // Revert returns the concrete revert reason if the execution is aborted by `REVERT`
@@ -129,7 +133,7 @@ func (result *ExecutionResult) Revert() []byte {
 	if result.Err != vm.ErrExecutionReverted {
 		return nil
 	}
-	return common.CopyBytes(result.ReturnData)
+	return libcommon.CopyBytes(result.ReturnData)
 }
 
 // IntrinsicGas computes the 'intrinsic gas' for a message with the given data.
@@ -180,7 +184,7 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 // state and would never be accepted within a block.
 // `refunds` is false when it is not required to apply gas refunds
 // `gasBailout` is true when it is not required to fail transaction if the balance is not enough to pay gas.
-// for trace_call to replicate OE/Pariry behaviour
+// for trace_call to replicate OE/Parity behaviour
 func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool, refunds bool, gasBailout bool) (*ExecutionResult, error) {
 	return NewStateTransition(evm, msg, gp).TransitionDb(refunds, gasBailout)
 }
@@ -199,6 +203,15 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 	gasVal, overflow := gasVal.MulOverflow(gasVal, st.gasPrice)
 	if overflow {
 		return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
+	}
+	var l1Cost *uint256.Int
+	if st.evm.ChainRules().IsBedrock {
+		l1Cost = st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
+		if l1Cost != nil {
+			if _, overflow = gasVal.AddOverflow(gasVal, l1Cost); overflow {
+				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
+			}
+		}
 	}
 
 	// compute blob fee for eip-4844 data blobs if any
@@ -230,6 +243,12 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 		balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, st.value)
 		if overflow {
 			return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
+		}
+		if l1Cost != nil {
+			balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, l1Cost) // FIXME - combine with dgval below
+			if overflow {
+				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
+			}
 		}
 		balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, blobGasVal)
 		if overflow {
@@ -273,6 +292,26 @@ func CheckEip1559TxGasFeeCap(from libcommon.Address, gasFeeCap, tip, baseFee *ui
 
 // DESCRIBED: docs/programmers_guide/guide.md#nonce
 func (st *StateTransition) preCheck(gasBailout bool) error {
+	if st.msg.IsDepositTx() {
+		log.Debug("preCheck for Deposit txn", "from", st.msg.From(), "to", st.msg.To(), "mint", st.msg.Mint(), "value", st.msg.Mint())
+
+		// Following section copied from Optimism patchset
+
+		// No fee fields to check, no nonce to check, and no need to check if EOA (L1 already verified it for us)
+		// Gas is free, but no refunds!
+		st.initialGas = st.msg.Gas()
+		st.gas += st.msg.Gas() // Add gas here in order to be able to execute calls.
+		// Don't touch the gas pool for system transactions
+		if st.msg.IsSystemTx() {
+			if st.evm.ChainRules().IsOptimismRegolith {
+				return fmt.Errorf("%w: address %v", ErrSystemTxNotSupported,
+					st.msg.From().Hex())
+			}
+			return nil
+		}
+		return st.gp.SubGas(st.msg.Gas()) // gas used by deposits may not be used by other txs
+	}
+
 	// Make sure this transaction's nonce is correct.
 	if st.msg.CheckNonce() {
 		stNonce := st.state.GetNonce(st.msg.From())
@@ -325,6 +364,38 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 	return st.buyGas(gasBailout)
 }
 
+func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
+	if mint := st.msg.Mint(); mint != nil {
+		st.state.AddBalance(st.msg.From(), mint)
+	}
+	var snap int
+	if st.msg.IsDepositTx() {
+		snap = st.state.Snapshot()
+	}
+
+	result, err := st.innerTransitionDb(refunds, gasBailout)
+	// Failed deposits must still be included. Unless we cannot produce the block at all due to the gas limit.
+	// On deposit failure, we rewind any state changes from after the minting, and increment the nonce.
+	if err != nil && err != ErrGasLimitReached && st.msg.IsDepositTx() {
+		st.state.RevertToSnapshot(snap)
+		// Even though we revert the state changes, always increment the nonce for the next deposit transaction
+		st.state.SetNonce(st.msg.From(), st.state.GetNonce(st.msg.From())+1)
+		// Record deposits as using all their gas (matches the gas pool)
+		// System Transactions are special & are not recorded as using any gas (anywhere)
+		gasUsed := st.msg.Gas()
+		if st.msg.IsSystemTx() && !st.evm.ChainConfig().IsOptimismRegolith(st.evm.Context().Time) {
+			gasUsed = 0
+		}
+		result = &ExecutionResult{
+			UsedGas:    gasUsed,
+			Err:        fmt.Errorf("failed deposit: %w", err),
+			ReturnData: nil,
+		}
+		err = nil
+	}
+	return result, err
+}
+
 // TransitionDb will transition the state by applying the current message and
 // returning the evm execution result with following fields.
 //
@@ -338,7 +409,7 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 //
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
-func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
+func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*ExecutionResult, error) {
 	coinbase := st.evm.Context().Coinbase
 
 	var input1 *uint256.Int
@@ -420,12 +491,40 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value, bailout)
 	}
 	if refunds {
+
+		// if deposit: skip refunds, skip tipping coinbase
+		// Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
+		if st.msg.IsDepositTx() && !rules.IsOptimismRegolith {
+			// Record deposits as using all their gas (matches the gas pool)
+			// System Transactions are special & are not recorded as using any gas (anywhere)
+			gasUsed := st.msg.Gas()
+			if st.msg.IsSystemTx() {
+				gasUsed = 0
+			}
+			return &ExecutionResult{
+				UsedGas:    gasUsed,
+				Err:        vmerr,
+				ReturnData: ret,
+			}, nil
+		}
+		// Note for deposit tx there is no ETH refunded for unused gas, but that's taken care of by the fact that gasPrice
+		// is always 0 for deposit tx. So calling refundGas will ensure the gasUsed accounting is correct without actually
+		// changing the sender's balance
 		if rules.IsLondon {
 			// After EIP-3529: refunds are capped to gasUsed / 5
 			st.refundGas(params.RefundQuotientEIP3529)
 		} else {
 			// Before EIP-3529: refunds were capped to gasUsed / 2
 			st.refundGas(params.RefundQuotient)
+		}
+
+		if st.msg.IsDepositTx() && rules.IsOptimismRegolith {
+			// Skip coinbase payments for deposit tx in Regolith
+			return &ExecutionResult{
+				UsedGas:    st.gasUsed(),
+				Err:        vmerr,
+				ReturnData: ret,
+			}, nil
 		}
 	}
 	effectiveTip := st.gasPrice
@@ -439,10 +538,12 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 	amount := new(uint256.Int).SetUint64(st.gasUsed())
 	amount.Mul(amount, effectiveTip) // gasUsed * effectiveTip = how much goes to the block producer (miner, validator)
 	st.state.AddBalance(coinbase, amount)
-	if !msg.IsFree() && rules.IsLondon && rules.IsEip1559FeeCollector {
-		burntContractAddress := *st.evm.ChainConfig().Eip1559FeeCollector
-		burnAmount := new(uint256.Int).Mul(new(uint256.Int).SetUint64(st.gasUsed()), st.evm.Context().BaseFee)
-		st.state.AddBalance(burntContractAddress, burnAmount)
+	if !msg.IsFree() && rules.IsLondon {
+		burntContractAddress := st.evm.ChainConfig().GetBurntContract(st.evm.Context().BlockNumber)
+		if burntContractAddress != nil {
+			burnAmount := new(uint256.Int).Mul(new(uint256.Int).SetUint64(st.gasUsed()), st.evm.Context().BaseFee)
+			st.state.AddBalance(*burntContractAddress, burnAmount)
+		}
 	}
 	if st.isBor {
 		// Deprecating transfer log and will be removed in future fork. PLEASE DO NOT USE this transfer log going forward. Parameters won't get updated as expected going forward with EIP1559
@@ -461,6 +562,19 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 			output1.Sub(output1, amount),
 			output2.Add(output2, amount),
 		)
+	}
+
+	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
+	if rules.IsBedrock {
+		st.state.AddBalance(params.OptimismBaseFeeRecipient, new(uint256.Int).Mul(uint256.NewInt(st.gasUsed()), st.evm.Context().BaseFee))
+		if st.evm.Context().L1CostFunc == nil {
+			log.Error("Expected L1CostFunc to be set, but it is not")
+		}
+		cost := st.evm.Context().L1CostFunc(st.evm.Context().BlockNumber, st.msg)
+		log.Info("Calculated Optimism fees", "gasUsed", st.gasUsed, "baseFee", st.evm.Context().BaseFee, "L1Cost", cost)
+		if cost != nil {
+			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
+		}
 	}
 
 	return &ExecutionResult{

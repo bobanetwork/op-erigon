@@ -68,20 +68,26 @@ type Config struct {
 	CancunTime   *big.Int `json:"cancunTime,omitempty"`
 	PragueTime   *big.Int `json:"pragueTime,omitempty"`
 
+	// Optimism Forks
+	BedrockBlock *big.Int `json:"bedrockBlock,omitempty"` // bedrockSwitch block (nil = no fork, 0 = already actived)
+	// RegolithTime is *uint64 in op-geth
+	RegolithTime *big.Int `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
+
 	// Optional EIP-4844 parameters
 	MinBlobGasPrice            *uint64 `json:"minBlobGasPrice,omitempty"`
 	MaxBlobGasPerBlock         *uint64 `json:"maxBlobGasPerBlock,omitempty"`
 	TargetBlobGasPerBlock      *uint64 `json:"targetBlobGasPerBlock,omitempty"`
 	BlobGasPriceUpdateFraction *uint64 `json:"blobGasPriceUpdateFraction,omitempty"`
 
-	Eip1559FeeCollector           *common.Address `json:"eip1559FeeCollector,omitempty"`           // (Optional) Address where burnt EIP-1559 fees go to
-	Eip1559FeeCollectorTransition *big.Int        `json:"eip1559FeeCollectorTransition,omitempty"` // (Optional) Block from which burnt EIP-1559 fees go to the Eip1559FeeCollector
+	// (Optional) governance contract where EIP-1559 fees will be sent to that otherwise would be burnt since the London fork
+	BurntContract map[string]common.Address `json:"burntContract,omitempty"`
 
 	// Various consensus engines
-	Ethash *EthashConfig `json:"ethash,omitempty"`
-	Clique *CliqueConfig `json:"clique,omitempty"`
-	Aura   *AuRaConfig   `json:"aura,omitempty"`
-	Bor    *BorConfig    `json:"bor,omitempty"`
+	Ethash   *EthashConfig   `json:"ethash,omitempty"`
+	Clique   *CliqueConfig   `json:"clique,omitempty"`
+	Aura     *AuRaConfig     `json:"aura,omitempty"`
+	Bor      *BorConfig      `json:"bor,omitempty"`
+	Optimism *OptimismConfig `json:"optimism,omitempty"`
 }
 
 func (c *Config) String() string {
@@ -121,6 +127,8 @@ func (c *Config) getEngine() string {
 		return c.Bor.String()
 	case c.Aura != nil:
 		return c.Aura.String()
+	case c.Optimism != nil:
+		return c.Optimism.String()
 	default:
 		return "unknown"
 	}
@@ -198,6 +206,17 @@ func (c *Config) IsShanghai(time uint64) bool {
 	return isForked(c.ShanghaiTime, time)
 }
 
+// IsAgra returns whether num is either equal to the Agra fork block or greater.
+// The Agra hard fork is based on the Shanghai hard fork, but it doesn't include withdrawals.
+// Also Agra is activated based on the block number rather than the timestamp.
+// Refer to https://forum.polygon.technology/t/pip-28-agra-hardfork
+func (c *Config) IsAgra(num uint64) bool {
+	if c == nil || c.Bor == nil {
+		return false
+	}
+	return isForked(c.Bor.AgraBlock, num)
+}
+
 // IsCancun returns whether time is either equal to the Cancun fork time or greater.
 func (c *Config) IsCancun(time uint64) bool {
 	return isForked(c.CancunTime, time)
@@ -208,8 +227,55 @@ func (c *Config) IsPrague(time uint64) bool {
 	return isForked(c.PragueTime, time)
 }
 
-func (c *Config) IsEip1559FeeCollector(num uint64) bool {
-	return c.Eip1559FeeCollector != nil && isForked(c.Eip1559FeeCollectorTransition, num)
+func (c *Config) IsBedrock(num uint64) bool {
+	return isForked(c.BedrockBlock, num)
+}
+
+func (c *Config) IsRegolith(time uint64) bool {
+	return isForked(c.RegolithTime, time)
+}
+
+// IsOptimism returns whether the node is an optimism node or not.
+func (c *Config) IsOptimism() bool {
+	return c.Optimism != nil
+}
+
+func (c *Config) IsOptimismBedrock(num uint64) bool {
+	return c.IsOptimism() && c.IsBedrock(num)
+}
+
+func (c *Config) IsOptimismRegolith(time uint64) bool {
+	// Optimism op-geth has additional complexity which is not yet ported here.
+	return /* c.IsOptimism() && */ c.IsRegolith(time)
+}
+
+// IsOptimismPreBedrock returns true iff this is an optimism node & bedrock is not yet active
+func (c *Config) IsOptimismPreBedrock(num uint64) bool {
+	return c.IsOptimism() && !c.IsBedrock(num)
+}
+
+func (c *Config) GetBurntContract(num uint64) *common.Address {
+	if len(c.BurntContract) == 0 {
+		return nil
+	}
+	addr := borKeyValueConfigHelper(c.BurntContract, num)
+	return &addr
+}
+
+// BaseFeeChangeDenominator bounds the amount the base fee can change between blocks.
+func (c *Config) BaseFeeChangeDenominator(defaultParam int) uint64 {
+	if c.IsOptimism() {
+		return c.Optimism.EIP1559Denominator
+	}
+	return uint64(defaultParam)
+}
+
+// ElasticityMultiplier bounds the maximum gas limit an EIP-1559 block may have.
+func (c *Config) ElasticityMultiplier(defaultParam int) uint64 {
+	if c.IsOptimism() {
+		return c.Optimism.EIP1559Elasticity
+	}
+	return uint64(defaultParam)
 }
 
 func (c *Config) GetMinBlobGasPrice() uint64 {
@@ -437,6 +503,17 @@ func (c *CliqueConfig) String() string {
 	return "clique"
 }
 
+// OptimismConfig is the optimism config.
+type OptimismConfig struct {
+	EIP1559Elasticity  uint64 `json:"eip1559Elasticity"`
+	EIP1559Denominator uint64 `json:"eip1559Denominator"`
+}
+
+// String implements the stringer interface, returning the optimism fee config details.
+func (o *OptimismConfig) String() string {
+	return "optimism"
+}
+
 // BorConfig is the consensus engine configs for Matic bor based sealing.
 type BorConfig struct {
 	Period                map[string]uint64 `json:"period"`                // Number of seconds between blocks to enforce
@@ -449,10 +526,10 @@ type BorConfig struct {
 	OverrideStateSyncRecords map[string]int         `json:"overrideStateSyncRecords"` // override state records count
 	BlockAlloc               map[string]interface{} `json:"blockAlloc"`
 
-	JaipurBlock *big.Int `json:"jaipurBlock"` // Jaipur switch block (nil = no fork, 0 = already on jaipur)
-	DelhiBlock  *big.Int `json:"delhiBlock"`  // Delhi switch block (nil = no fork, 0 = already on delhi)
-	IndoreBlock *big.Int `json:"indoreBlock"` // Indore switch block (nil = no fork, 0 = already on indore)
-
+	JaipurBlock                *big.Int          `json:"jaipurBlock"`                // Jaipur switch block (nil = no fork, 0 = already on jaipur)
+	DelhiBlock                 *big.Int          `json:"delhiBlock"`                 // Delhi switch block (nil = no fork, 0 = already on delhi)
+	IndoreBlock                *big.Int          `json:"indoreBlock"`                // Indore switch block (nil = no fork, 0 = already on indore)
+	AgraBlock                  *big.Int          `json:"agraBlock"`                  // Agra switch block (nil = no fork, 0 = already in agra)
 	StateSyncConfirmationDelay map[string]uint64 `json:"stateSyncConfirmationDelay"` // StateSync Confirmation Delay, in seconds, to calculate `to`
 
 	sprints sprints
@@ -527,11 +604,11 @@ func (c *BorConfig) CalculateSprintCount(from, to uint64) int {
 }
 
 func (c *BorConfig) CalculateBackupMultiplier(number uint64) uint64 {
-	return c.calcConfig(c.BackupMultiplier, number)
+	return borKeyValueConfigHelper(c.BackupMultiplier, number)
 }
 
 func (c *BorConfig) CalculatePeriod(number uint64) uint64 {
-	return c.calcConfig(c.Period, number)
+	return borKeyValueConfigHelper(c.Period, number)
 }
 
 func (c *BorConfig) IsJaipur(number uint64) bool {
@@ -550,40 +627,25 @@ func (c *BorConfig) CalculateStateSyncDelay(number uint64) uint64 {
 	return borKeyValueConfigHelper(c.StateSyncConfirmationDelay, number)
 }
 
-func (c *BorConfig) calcConfig(field map[string]uint64, number uint64) uint64 {
-	keys := sortMapKeys(field)
-	for i := 0; i < len(keys)-1; i++ {
-		valUint, _ := strconv.ParseUint(keys[i], 10, 64)
-		valUintNext, _ := strconv.ParseUint(keys[i+1], 10, 64)
-		if number > valUint && number < valUintNext {
-			return field[keys[i]]
+func borKeyValueConfigHelper[T uint64 | common.Address](field map[string]T, number uint64) T {
+	fieldUint := make(map[uint64]T)
+	for k, v := range field {
+		keyUint, err := strconv.ParseUint(k, 10, 64)
+		if err != nil {
+			panic(err)
 		}
+		fieldUint[keyUint] = v
 	}
-	return field[keys[len(keys)-1]]
-}
 
-func borKeyValueConfigHelper(field map[string]uint64, number uint64) uint64 {
-	keys := sortMapKeys(field)
+	keys := common.SortedKeys(fieldUint)
+
 	for i := 0; i < len(keys)-1; i++ {
-		valUint, _ := strconv.ParseUint(keys[i], 10, 64)
-		valUintNext, _ := strconv.ParseUint(keys[i+1], 10, 64)
-
-		if number >= valUint && number < valUintNext {
-			return field[keys[i]]
+		if number >= keys[i] && number < keys[i+1] {
+			return fieldUint[keys[i]]
 		}
 	}
 
-	return field[keys[len(keys)-1]]
-}
-
-func sortMapKeys(m map[string]uint64) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	return keys
+	return fieldUint[keys[len(keys)-1]]
 }
 
 type sprint struct {
@@ -629,7 +691,8 @@ type Rules struct {
 	IsHomestead, IsTangerineWhistle, IsSpuriousDragon       bool
 	IsByzantium, IsConstantinople, IsPetersburg, IsIstanbul bool
 	IsBerlin, IsLondon, IsShanghai, IsCancun, IsPrague      bool
-	IsEip1559FeeCollector, IsAura                           bool
+	IsAura                                                  bool
+	IsBedrock, IsOptimismRegolith                           bool
 }
 
 // Rules ensures c's ChainID is not nil and returns a new Rules instance
@@ -640,21 +703,22 @@ func (c *Config) Rules(num uint64, time uint64) *Rules {
 	}
 
 	return &Rules{
-		ChainID:               new(big.Int).Set(chainID),
-		IsHomestead:           c.IsHomestead(num),
-		IsTangerineWhistle:    c.IsTangerineWhistle(num),
-		IsSpuriousDragon:      c.IsSpuriousDragon(num),
-		IsByzantium:           c.IsByzantium(num),
-		IsConstantinople:      c.IsConstantinople(num),
-		IsPetersburg:          c.IsPetersburg(num),
-		IsIstanbul:            c.IsIstanbul(num),
-		IsBerlin:              c.IsBerlin(num),
-		IsLondon:              c.IsLondon(num),
-		IsShanghai:            c.IsShanghai(time),
-		IsCancun:              c.IsCancun(time),
-		IsPrague:              c.IsPrague(time),
-		IsEip1559FeeCollector: c.IsEip1559FeeCollector(num),
-		IsAura:                c.Aura != nil,
+		ChainID:            new(big.Int).Set(chainID),
+		IsHomestead:        c.IsHomestead(num),
+		IsTangerineWhistle: c.IsTangerineWhistle(num),
+		IsSpuriousDragon:   c.IsSpuriousDragon(num),
+		IsByzantium:        c.IsByzantium(num),
+		IsConstantinople:   c.IsConstantinople(num),
+		IsPetersburg:       c.IsPetersburg(num),
+		IsIstanbul:         c.IsIstanbul(num),
+		IsBerlin:           c.IsBerlin(num),
+		IsLondon:           c.IsLondon(num),
+		IsShanghai:         c.IsShanghai(time) || c.IsAgra(num),
+		IsCancun:           c.IsCancun(time),
+		IsPrague:           c.IsPrague(time),
+		IsBedrock:          c.IsBedrock(num),
+		IsOptimismRegolith: c.IsOptimismRegolith(time),
+		IsAura:             c.Aura != nil,
 	}
 }
 

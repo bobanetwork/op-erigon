@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
 	"strconv"
 	"testing"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/ledgerwatch/erigon/accounts/abi/bind"
 	"github.com/ledgerwatch/erigon/accounts/abi/bind/backends"
-	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
@@ -84,7 +84,7 @@ func TestCallMany(t *testing.T) {
 	db := contractBackend.DB()
 	engine := contractBackend.Engine()
 	api := NewEthAPI(NewBaseApi(nil, stateCache, contractBackend.BlockReader(), contractBackend.Agg(), false, rpccfg.DefaultEvmCallTimeout, engine,
-		datadir.New(t.TempDir())), db, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
+		datadir.New(t.TempDir()), nil, nil), db, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 
 	callArgAddr1 := ethapi.CallArgs{From: &address, To: &tokenAddr, Nonce: &nonce,
 		MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(1e9)),

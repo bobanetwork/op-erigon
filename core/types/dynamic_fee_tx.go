@@ -29,7 +29,6 @@ import (
 	rlp2 "github.com/ledgerwatch/erigon-lib/rlp"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
 
-	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/rlp"
 )
@@ -82,7 +81,7 @@ func (tx DynamicFeeTransaction) copy() *DynamicFeeTransaction {
 			},
 			Nonce: tx.Nonce,
 			To:    tx.To, // TODO: copy pointed-to address
-			Data:  common.CopyBytes(tx.Data),
+			Data:  libcommon.CopyBytes(tx.Data),
 			Gas:   tx.Gas,
 			// These are copied below.
 			Value: new(uint256.Int),
@@ -358,16 +357,17 @@ func (tx *DynamicFeeTransaction) DecodeRLP(s *rlp.Stream) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx DynamicFeeTransaction) AsMessage(s Signer, baseFee *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
-		nonce:      tx.Nonce,
-		gasLimit:   tx.Gas,
-		gasPrice:   *tx.FeeCap,
-		tip:        *tx.Tip,
-		feeCap:     *tx.FeeCap,
-		to:         tx.To,
-		amount:     *tx.Value,
-		data:       tx.Data,
-		accessList: tx.AccessList,
-		checkNonce: true,
+		nonce:         tx.Nonce,
+		gasLimit:      tx.Gas,
+		gasPrice:      *tx.FeeCap,
+		tip:           *tx.Tip,
+		feeCap:        *tx.FeeCap,
+		to:            tx.To,
+		amount:        *tx.Value,
+		data:          tx.Data,
+		accessList:    tx.AccessList,
+		checkNonce:    true,
+		rollupDataGas: RollupDataGas(tx, rules),
 	}
 	if !rules.IsLondon {
 		return msg, errors.New("eip-1559 transactions require London")

@@ -249,12 +249,16 @@ type Config struct {
 	SentinelPort                uint64
 
 	OverrideCancunTime *big.Int `toml:",omitempty"`
-
 	ForcePartialCommit bool
 
 	// Embedded Silkworm support
 	SilkwormEnabled bool
 	SilkwormPath    string
+
+	RollupSequencerHTTP        string
+	RollupHistoricalRPC        string
+	RollupHistoricalRPCTimeout time.Duration
+	RollupDisableTxPoolGossip  bool
 }
 
 type Sync struct {
