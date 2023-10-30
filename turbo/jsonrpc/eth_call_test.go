@@ -3,10 +3,11 @@ package jsonrpc
 import (
 	"context"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/assert"
@@ -57,7 +58,7 @@ func TestEstimateGas(t *testing.T) {
 
 func TestEstimateGasHistoricalRPC(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateOptimismTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 
 	table := []struct {
 		caseName  string
@@ -282,7 +283,7 @@ func TestGetProofHistoricalRPC(t *testing.T) {
 	if m.HistoryV3 {
 		t.Skip("not supported by Erigon3")
 	}
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 
 	table := []struct {
 		caseName  string
