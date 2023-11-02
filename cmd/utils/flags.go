@@ -845,10 +845,21 @@ var (
 	}
 	SilkwormPathFlag = cli.StringFlag{
 		Name:  "silkworm.path",
-		Usage: "Path to the silkworm_api library (enables embedded Silkworm execution)",
+		Usage: "Path to the Silkworm library",
 		Value: "",
 	}
-
+	SilkwormExecutionFlag = cli.BoolFlag{
+		Name:  "silkworm.exec",
+		Usage: "Enable Silkworm block execution",
+	}
+	SilkwormRpcDaemonFlag = cli.BoolFlag{
+		Name:  "silkworm.rpcd",
+		Usage: "Enable embedded Silkworm RPC daemon",
+	}
+	SilkwormSentryFlag = cli.BoolFlag{
+		Name:  "silkworm.sentry",
+		Usage: "Enable embedded Silkworm Sentry service",
+	}
 	// Rollup Flags
 	RollupSequencerHTTPFlag = cli.StringFlag{
 		Name:    "rollup.sequencerhttp",
@@ -1059,6 +1070,7 @@ func NewP2PConfig(
 		return nil, fmt.Errorf("invalid nat option %s: %w", natSetting, err)
 	}
 	cfg.NAT = natif
+	cfg.NATSpec = natSetting
 	return cfg, nil
 }
 
@@ -1107,11 +1119,13 @@ func setListenAddress(ctx *cli.Context, cfg *p2p.Config) {
 // setNAT creates a port mapper from command line flags.
 func setNAT(ctx *cli.Context, cfg *p2p.Config) {
 	if ctx.IsSet(NATFlag.Name) {
-		natif, err := nat.Parse(ctx.String(NATFlag.Name))
+		natSetting := ctx.String(NATFlag.Name)
+		natif, err := nat.Parse(natSetting)
 		if err != nil {
 			Fatalf("Option %s: %v", NATFlag.Name, err)
 		}
 		cfg.NAT = natif
+		cfg.NATSpec = natSetting
 	}
 }
 
@@ -1189,7 +1203,6 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config, nodeName, datadir string, l
 	}
 
 	ethPeers := cfg.MaxPeers
-	cfg.Name = nodeName
 	logger.Info("Maximum peer count", "ETH", ethPeers, "total", cfg.MaxPeers)
 
 	if netrestrict := ctx.String(NetrestrictFlag.Name); netrestrict != "" {
@@ -1488,10 +1501,12 @@ func setWhitelist(ctx *cli.Context, cfg *ethconfig.Config) {
 }
 
 func setSilkworm(ctx *cli.Context, cfg *ethconfig.Config) {
-	cfg.SilkwormEnabled = ctx.IsSet(SilkwormPathFlag.Name)
-	if cfg.SilkwormEnabled {
-		cfg.SilkwormPath = ctx.String(SilkwormPathFlag.Name)
+	cfg.SilkwormPath = ctx.String(SilkwormPathFlag.Name)
+	if ctx.IsSet(SilkwormExecutionFlag.Name) {
+		cfg.SilkwormExecution = ctx.Bool(SilkwormExecutionFlag.Name)
 	}
+	cfg.SilkwormRpcDaemon = ctx.Bool(SilkwormRpcDaemonFlag.Name)
+	cfg.SilkwormSentry = ctx.Bool(SilkwormSentryFlag.Name)
 }
 
 // CheckExclusive verifies that only a single instance of the provided flags was
@@ -1604,7 +1619,6 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 	setSilkworm(ctx, cfg)
 
 	cfg.Ethstats = ctx.String(EthStatsURLFlag.Name)
-	cfg.P2PEnabled = len(nodeConfig.P2P.SentryAddr) == 0
 	cfg.HistoryV3 = ctx.Bool(HistoryV3Flag.Name)
 	if ctx.IsSet(NetworkIdFlag.Name) {
 		cfg.NetworkID = ctx.Uint64(NetworkIdFlag.Name)
@@ -1653,7 +1667,7 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 		}
 	case networkname.DevChainName:
 		if !ctx.IsSet(NetworkIdFlag.Name) {
-			cfg.NetworkID = 1337
+			cfg.NetworkID = params.NetworkIDByChainName(chain)
 		}
 
 		// Create new developer account or reuse existing one
