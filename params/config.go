@@ -223,6 +223,8 @@ func ChainConfigByChainName(chain string) *chain.Config {
 	switch chain {
 	case networkname.MainnetChainName:
 		return MainnetChainConfig
+	case networkname.DevChainName:
+		return AllCliqueProtocolChanges
 	case networkname.HoleskyChainName:
 		return HoleskyChainConfig
 	case networkname.SepoliaChainName:
@@ -303,16 +305,11 @@ func ChainConfigByGenesisHash(genesisHash libcommon.Hash) *chain.Config {
 }
 
 func NetworkIDByChainName(chain string) uint64 {
-	switch chain {
-	case networkname.DevChainName:
-		return 1337
-	default:
-		config := ChainConfigByChainName(chain)
-		if config == nil {
-			return 0
-		}
-		return config.ChainID.Uint64()
+	config := ChainConfigByChainName(chain)
+	if config == nil {
+		return 0
 	}
+	return config.ChainID.Uint64()
 }
 
 func IsChainPoS(chainConfig *chain.Config, currentTDProvider func() *big.Int) bool {

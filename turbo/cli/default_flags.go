@@ -51,6 +51,7 @@ var DefaultFlags = []cli.Flag{
 	&BadBlockFlag,
 
 	&utils.HTTPEnabledFlag,
+	&utils.HTTPServerEnabledFlag,
 	&utils.GraphQLEnabledFlag,
 	&utils.HTTPListenAddrFlag,
 	&utils.HTTPPortFlag,
@@ -75,6 +76,7 @@ var DefaultFlags = []cli.Flag{
 	&utils.RpcBatchLimit,
 	&utils.RpcReturnDataLimit,
 	&utils.AllowUnprotectedTxs,
+	&utils.RpcMaxGetProofRewindBlockCount,
 	&utils.RPCGlobalTxFeeCapFlag,
 	&utils.TxpoolApiAddrFlag,
 	&utils.TraceMaxtracesFlag,
@@ -168,6 +170,9 @@ var DefaultFlags = []cli.Flag{
 	&utils.OtsSearchMaxCapFlag,
 
 	&utils.SilkwormPathFlag,
+	&utils.SilkwormExecutionFlag,
+	&utils.SilkwormRpcDaemonFlag,
+	&utils.SilkwormSentryFlag,
 
 	&utils.TrustedSetupFile,
 }
