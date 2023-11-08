@@ -388,23 +388,28 @@ func setEmbeddedRpcDaemon(ctx *cli.Context, cfg *nodecfg.Config, logger log.Logg
 		},
 		EvmCallTimeout: ctx.Duration(EvmCallTimeoutFlag.Name),
 
-		WebsocketEnabled:     ctx.IsSet(utils.WSEnabledFlag.Name),
-		RpcBatchConcurrency:  ctx.Uint(utils.RpcBatchConcurrencyFlag.Name),
-		RpcStreamingDisable:  ctx.Bool(utils.RpcStreamingDisableFlag.Name),
-		DBReadConcurrency:    ctx.Int(utils.DBReadConcurrencyFlag.Name),
-		RpcAllowListFilePath: ctx.String(utils.RpcAccessListFlag.Name),
-		Gascap:               ctx.Uint64(utils.RpcGasCapFlag.Name),
-		MaxTraces:            ctx.Uint64(utils.TraceMaxtracesFlag.Name),
-		TraceCompatibility:   ctx.Bool(utils.RpcTraceCompatFlag.Name),
-		BatchLimit:           ctx.Int(utils.RpcBatchLimit.Name),
-		ReturnDataLimit:      ctx.Int(utils.RpcReturnDataLimit.Name),
-		AllowUnprotectedTxs:  ctx.Bool(utils.AllowUnprotectedTxs.Name),
+		WebsocketEnabled:            ctx.IsSet(utils.WSEnabledFlag.Name),
+		RpcBatchConcurrency:         ctx.Uint(utils.RpcBatchConcurrencyFlag.Name),
+		RpcStreamingDisable:         ctx.Bool(utils.RpcStreamingDisableFlag.Name),
+		DBReadConcurrency:           ctx.Int(utils.DBReadConcurrencyFlag.Name),
+		RpcAllowListFilePath:        ctx.String(utils.RpcAccessListFlag.Name),
+		Gascap:                      ctx.Uint64(utils.RpcGasCapFlag.Name),
+		MaxTraces:                   ctx.Uint64(utils.TraceMaxtracesFlag.Name),
+		TraceCompatibility:          ctx.Bool(utils.RpcTraceCompatFlag.Name),
+		BatchLimit:                  ctx.Int(utils.RpcBatchLimit.Name),
+		ReturnDataLimit:             ctx.Int(utils.RpcReturnDataLimit.Name),
+		AllowUnprotectedTxs:         ctx.Bool(utils.AllowUnprotectedTxs.Name),
+		MaxGetProofRewindBlockCount: ctx.Int(utils.RpcMaxGetProofRewindBlockCount.Name),
 
 		OtsMaxPageSize: ctx.Uint64(utils.OtsSearchMaxCapFlag.Name),
 
 		TxPoolApiAddr: ctx.String(utils.TxpoolApiAddrFlag.Name),
 
 		StateCache: kvcache.DefaultCoherentConfig,
+
+		RollupSequencerHTTP:        ctx.String(utils.RollupSequencerHTTPFlag.Name),
+		RollupHistoricalRPC:        ctx.String(utils.RollupHistoricalRPCFlag.Name),
+		RollupHistoricalRPCTimeout: ctx.Duration(utils.RollupHistoricalRPCTimeoutFlag.Name),
 	}
 	if ctx.IsSet(utils.HttpCompressionFlag.Name) {
 		c.HttpCompression = ctx.Bool(utils.HttpCompressionFlag.Name)

@@ -105,8 +105,33 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	// But if we disable empty precommit already, ignore it. Since
 	// empty block is necessary to keep the liveness of the network.
 	if noempty {
+		log.Debug("Starting SpawnMiningExecStage", "txs", txs, "numDeposits", len(current.Deposits), "NoTxPool", current.NoTxPool)
+
+		if len(current.Deposits) > 0 {
+			var txs []types.Transaction
+			for i := range current.Deposits {
+				transaction, err := types.UnmarshalTransactionFromBinary(current.Deposits[i])
+				log.Debug("Decoded Deposit transaction", "i", i, "err", err, "tx", transaction)
+				if err == io.EOF {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				txs = append(txs, transaction)
+			}
+			depTS := types.NewTransactionsFixedOrder(txs)
+
+			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, depTS, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+			log.Debug("addTransactionsToMiningBlock (deposit) result", "err", err, "logs", logs)
+			if err != nil {
+				return err
+			}
+		}
+
 		if txs != nil && !txs.Empty() {
 			logs, _, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+			log.Debug("addTransactionsToMiningBlock (txs) result", "err", err, "logs", logs)
 			if err != nil {
 				return err
 			}
@@ -125,6 +150,11 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 			}
 
 			for {
+				if current.NoTxPool {
+					// Only allow the Deposit transactions from op-node
+					log.Debug("Not adding transactions because NoTxPool is set")
+					break
+				}
 				txs, y, err := getNextTransactions(cfg, chainID, current.Header, 50, executionAt, simulationTx, yielded, logger)
 				if err != nil {
 					return err
@@ -132,6 +162,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 
 				if !txs.Empty() {
 					logs, stop, err := addTransactionsToMiningBlock(logPrefix, current, cfg.chainConfig, cfg.vmConfig, getHeader, cfg.engine, txs, cfg.miningState.MiningConfig.Etherbase, ibs, quit, cfg.interrupt, cfg.payloadId, logger)
+					log.Debug("addTransactionsToMiningBlock (regular)", "err", err, "logs", logs, "stop", stop)
 					if err != nil {
 						return err
 					}
@@ -268,6 +299,13 @@ func filterBadTransactions(transactions []types.Transaction, config chain.Config
 		if !ok {
 			transactions = transactions[1:]
 			noAccountCnt++
+			continue
+		}
+		if int(transaction.Type()) == types.DepositTxType {
+			// FIXME - may need to include some of the later checks
+			log.Debug("Bypassing filterBadTransactions for Deposit tx", "transaction", transaction)
+			filtered = append(filtered, transaction)
+			transactions = transactions[1:]
 			continue
 		}
 		// Check transaction nonce

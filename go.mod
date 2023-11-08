@@ -9,8 +9,6 @@ require (
 	github.com/ledgerwatch/secp256k1 v1.0.0
 )
 
-replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
-
 require (
 	gfx.cafe/util/go/generic v0.0.0-20230721185457-c559e86c829c
 	github.com/99designs/gqlgen v0.17.33
@@ -23,7 +21,7 @@ require (
 	github.com/anacrolix/sync v0.4.0
 	github.com/anacrolix/torrent v1.52.6-0.20230926121951-11833b45cfbe
 	github.com/benesch/cgosymbolizer v0.0.0-20190515212042-bec6fe6e597b
-	github.com/btcsuite/btcd/btcec/v2 v2.1.3
+	github.com/btcsuite/btcd/btcec/v2 v2.2.0
 	github.com/c2h5oh/datasize v0.0.0-20220606134207-859f65c6625b
 	github.com/consensys/gnark-crypto v0.12.1
 	github.com/crate-crypto/go-ipa v0.0.0-20221111143132-9aa5d42120bc
@@ -144,7 +142,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.7.0 // indirect
 	github.com/bradfitz/iter v0.0.0-20191230175014-e8f45d346db8 // indirect
-	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cilium/ebpf v0.9.1 // indirect
 	github.com/consensys/bavard v0.1.13 // indirect
@@ -186,7 +183,8 @@ require (
 	github.com/koron/go-ssdp v0.0.4 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/ledgerwatch/erigon-snapshot v1.3.1-0.20231106204511-f1e556dd5c50 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/ledgerwatch/erigon-snapshot v1.3.1-0.20231102060711-19219b948f46 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
 	github.com/libp2p/go-flow-metrics v0.1.0 // indirect
@@ -285,6 +283,8 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 	zombiezen.com/go/sqlite v0.13.1 // indirect
 )
+
+replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
 
 replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.12
 

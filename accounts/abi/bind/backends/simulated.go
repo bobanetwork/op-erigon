@@ -85,6 +85,8 @@ type SimulatedBackend struct {
 	rmLogsFeed event.Feed
 	chainFeed  event.Feed
 	logsFeed   event.Feed
+
+	chainConfig *chain.Config
 }
 
 // NewSimulatedBackend creates a new binding backend using a simulated blockchain
@@ -107,6 +109,7 @@ func NewSimulatedBackendWithConfig(alloc types.GenesisAlloc, config *chain.Confi
 			}
 			return h
 		},
+		chainConfig: config,
 	}
 	backend.emptyPendingBlock()
 	return backend
@@ -273,7 +276,7 @@ func (b *SimulatedBackend) TransactionReceipt(ctx context.Context, txHash libcom
 		return nil, err
 	}
 	// Read all the receipts from the block and return the one with the matching hash
-	receipts := rawdb.ReadReceipts(tx, block, nil)
+	receipts := rawdb.ReadReceipts(b.chainConfig, tx, block, nil)
 	for _, receipt := range receipts {
 		if receipt.TxHash == txHash {
 			return receipt, nil
@@ -720,7 +723,8 @@ func (b *SimulatedBackend) callContract(_ context.Context, call ethereum.CallMsg
 
 	txContext := core.NewEVMTxContext(msg)
 	header := block.Header()
-	evmContext := core.NewEVMBlockContext(header, core.GetHashFn(header, b.getHeader), b.m.Engine, nil)
+	l1CostFunc := types.NewL1CostFunc(b.m.ChainConfig, statedb)
+	evmContext := core.NewEVMBlockContext(header, core.GetHashFn(header, b.getHeader), b.m.Engine, nil, l1CostFunc)
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	vmEnv := vm.NewEVM(evmContext, txContext, statedb, b.m.ChainConfig, vm.Config{})
@@ -835,6 +839,13 @@ func (m callMsg) Value() *uint256.Int           { return m.CallMsg.Value }
 func (m callMsg) Data() []byte                  { return m.CallMsg.Data }
 func (m callMsg) AccessList() types2.AccessList { return m.CallMsg.AccessList }
 func (m callMsg) IsFree() bool                  { return false }
+func (m callMsg) IsSystemTx() bool              { return false }
+func (m callMsg) Mint() *uint256.Int            { return new(uint256.Int) }
+func (m callMsg) IsDepositTx() bool             { return false }
+func (m callMsg) RollupDataGas() uint64 {
+	log.Warn("simulated.go callMsg.RollupDataGas() returning 0")
+	return 0 /* FIXME */
+}
 
 func (m callMsg) BlobGas() uint64                { return misc.GetBlobGasUsed(len(m.CallMsg.BlobHashes)) }
 func (m callMsg) MaxFeePerBlobGas() *uint256.Int { return m.CallMsg.MaxFeePerBlobGas }

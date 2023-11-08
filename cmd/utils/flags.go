@@ -487,6 +487,15 @@ var (
 		Name:  "rpc.allow-unprotected-txs",
 		Usage: "Allow for unprotected (non-EIP155 signed) transactions to be submitted via RPC",
 	}
+	// Careful! Because we must rewind the hash state
+	// and re-compute the state trie, the further back in time the request, the more
+	// computationally intensive the operation becomes.
+	// The current default has been chosen arbitrarily as 'useful' without likely being overly computationally intense.
+	RpcMaxGetProofRewindBlockCount = cli.IntFlag{
+		Name:  "rpc.maxgetproofrewindblockcount.limit",
+		Usage: "Max GetProof rewind block count",
+		Value: 100_000,
+	}
 	StateCacheFlag = cli.StringFlag{
 		Name:  "state.cache",
 		Value: "0MB",
@@ -814,7 +823,6 @@ var (
 		Usage: "Port for sentinel",
 		Value: 7777,
 	}
-
 	OtsSearchMaxCapFlag = cli.Uint64Flag{
 		Name:  "ots.search.max.pagesize",
 		Usage: "Max allowed page size for search methods",
@@ -835,7 +843,6 @@ var (
 		Name:  "diagnostics.ids",
 		Usage: "Comma separated list of support session ids to connect to",
 	}
-
 	SilkwormPathFlag = cli.StringFlag{
 		Name:  "silkworm.path",
 		Usage: "Path to the Silkworm library",
@@ -852,6 +859,26 @@ var (
 	SilkwormSentryFlag = cli.BoolFlag{
 		Name:  "silkworm.sentry",
 		Usage: "Enable embedded Silkworm Sentry service",
+	}
+	// Rollup Flags
+	RollupSequencerHTTPFlag = cli.StringFlag{
+		Name:    "rollup.sequencerhttp",
+		Usage:   "HTTP endpoint for the sequencer mempool",
+		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP_ENDPOINT"},
+	}
+	RollupHistoricalRPCFlag = cli.StringFlag{
+		Name:    "rollup.historicalrpc",
+		Usage:   "RPC endpoint for historical data.",
+		EnvVars: []string{"ROLLUP_HISTORICAL_RPC_ENDPOINT"},
+	}
+	RollupHistoricalRPCTimeoutFlag = cli.StringFlag{
+		Name:  "rollup.historicalrpctimeout",
+		Usage: "Timeout for historical RPC requests.",
+		Value: "5s",
+	}
+	RollupDisableTxPoolGossipFlag = cli.BoolFlag{
+		Name:  "rollup.disabletxpoolgossip",
+		Usage: "Disable transaction pool gossip.",
 	}
 )
 
@@ -1670,6 +1697,18 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 	if ctx.IsSet(TrustedSetupFile.Name) {
 		libkzg.SetTrustedSetupFilePath(ctx.String(TrustedSetupFile.Name))
 	}
+
+	// Rollup params
+	if ctx.IsSet(RollupSequencerHTTPFlag.Name) && !ctx.IsSet(MiningEnabledFlag.Name) {
+		cfg.RollupSequencerHTTP = ctx.String(RollupSequencerHTTPFlag.Name)
+	}
+	if ctx.IsSet(RollupHistoricalRPCFlag.Name) {
+		cfg.RollupHistoricalRPC = ctx.String(RollupHistoricalRPCFlag.Name)
+	}
+	if ctx.IsSet(RollupDisableTxPoolGossipFlag.Name) {
+		cfg.RollupDisableTxPoolGossip = ctx.Bool(RollupDisableTxPoolGossipFlag.Name)
+	}
+	cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
 }
 
 // SetDNSDiscoveryDefaults configures DNS discovery with the given URL if

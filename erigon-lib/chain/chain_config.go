@@ -68,6 +68,11 @@ type Config struct {
 	CancunTime   *big.Int `json:"cancunTime,omitempty"`
 	PragueTime   *big.Int `json:"pragueTime,omitempty"`
 
+	// Optimism Forks
+	BedrockBlock *big.Int `json:"bedrockBlock,omitempty"` // bedrockSwitch block (nil = no fork, 0 = already actived)
+	// RegolithTime is *uint64 in op-geth
+	RegolithTime *big.Int `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
+
 	// Optional EIP-4844 parameters
 	MinBlobGasPrice            *uint64 `json:"minBlobGasPrice,omitempty"`
 	MaxBlobGasPerBlock         *uint64 `json:"maxBlobGasPerBlock,omitempty"`
@@ -78,10 +83,11 @@ type Config struct {
 	BurntContract map[string]common.Address `json:"burntContract,omitempty"`
 
 	// Various consensus engines
-	Ethash *EthashConfig `json:"ethash,omitempty"`
-	Clique *CliqueConfig `json:"clique,omitempty"`
-	Aura   *AuRaConfig   `json:"aura,omitempty"`
-	Bor    *BorConfig    `json:"bor,omitempty"`
+	Ethash   *EthashConfig   `json:"ethash,omitempty"`
+	Clique   *CliqueConfig   `json:"clique,omitempty"`
+	Aura     *AuRaConfig     `json:"aura,omitempty"`
+	Bor      *BorConfig      `json:"bor,omitempty"`
+	Optimism *OptimismConfig `json:"optimism,omitempty"`
 }
 
 func (c *Config) String() string {
@@ -121,6 +127,8 @@ func (c *Config) getEngine() string {
 		return c.Bor.String()
 	case c.Aura != nil:
 		return c.Aura.String()
+	case c.Optimism != nil:
+		return c.Optimism.String()
 	default:
 		return "unknown"
 	}
@@ -219,12 +227,55 @@ func (c *Config) IsPrague(time uint64) bool {
 	return isForked(c.PragueTime, time)
 }
 
+func (c *Config) IsBedrock(num uint64) bool {
+	return isForked(c.BedrockBlock, num)
+}
+
+func (c *Config) IsRegolith(time uint64) bool {
+	return isForked(c.RegolithTime, time)
+}
+
+// IsOptimism returns whether the node is an optimism node or not.
+func (c *Config) IsOptimism() bool {
+	return c.Optimism != nil
+}
+
+func (c *Config) IsOptimismBedrock(num uint64) bool {
+	return c.IsOptimism() && c.IsBedrock(num)
+}
+
+func (c *Config) IsOptimismRegolith(time uint64) bool {
+	// Optimism op-geth has additional complexity which is not yet ported here.
+	return /* c.IsOptimism() && */ c.IsRegolith(time)
+}
+
+// IsOptimismPreBedrock returns true iff this is an optimism node & bedrock is not yet active
+func (c *Config) IsOptimismPreBedrock(num uint64) bool {
+	return c.IsOptimism() && !c.IsBedrock(num)
+}
+
 func (c *Config) GetBurntContract(num uint64) *common.Address {
 	if len(c.BurntContract) == 0 {
 		return nil
 	}
 	addr := borKeyValueConfigHelper(c.BurntContract, num)
 	return &addr
+}
+
+// BaseFeeChangeDenominator bounds the amount the base fee can change between blocks.
+func (c *Config) BaseFeeChangeDenominator(defaultParam int) uint64 {
+	if c.IsOptimism() {
+		return c.Optimism.EIP1559Denominator
+	}
+	return uint64(defaultParam)
+}
+
+// ElasticityMultiplier bounds the maximum gas limit an EIP-1559 block may have.
+func (c *Config) ElasticityMultiplier(defaultParam int) uint64 {
+	if c.IsOptimism() {
+		return c.Optimism.EIP1559Elasticity
+	}
+	return uint64(defaultParam)
 }
 
 func (c *Config) GetMinBlobGasPrice() uint64 {
@@ -452,6 +503,17 @@ func (c *CliqueConfig) String() string {
 	return "clique"
 }
 
+// OptimismConfig is the optimism config.
+type OptimismConfig struct {
+	EIP1559Elasticity  uint64 `json:"eip1559Elasticity"`
+	EIP1559Denominator uint64 `json:"eip1559Denominator"`
+}
+
+// String implements the stringer interface, returning the optimism fee config details.
+func (o *OptimismConfig) String() string {
+	return "optimism"
+}
+
 // BorConfig is the consensus engine configs for Matic bor based sealing.
 type BorConfig struct {
 	Period                map[string]uint64 `json:"period"`                // Number of seconds between blocks to enforce
@@ -630,6 +692,7 @@ type Rules struct {
 	IsByzantium, IsConstantinople, IsPetersburg, IsIstanbul bool
 	IsBerlin, IsLondon, IsShanghai, IsCancun, IsPrague      bool
 	IsAura                                                  bool
+	IsBedrock, IsOptimismRegolith                           bool
 }
 
 // Rules ensures c's ChainID is not nil and returns a new Rules instance
@@ -653,6 +716,8 @@ func (c *Config) Rules(num uint64, time uint64) *Rules {
 		IsShanghai:         c.IsShanghai(time) || c.IsAgra(num),
 		IsCancun:           c.IsCancun(time),
 		IsPrague:           c.IsPrague(time),
+		IsBedrock:          c.IsBedrock(num),
+		IsOptimismRegolith: c.IsOptimismRegolith(time),
 		IsAura:             c.Aura != nil,
 	}
 }

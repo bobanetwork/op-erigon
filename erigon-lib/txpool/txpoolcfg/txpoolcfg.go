@@ -47,6 +47,8 @@ type Config struct {
 	CommitEvery           time.Duration
 	LogEvery              time.Duration
 
+	NoTxGossip bool
+
 	//txpool db
 	MdbxPageSize    datasize.ByteSize
 	MdbxDBSizeLimit datasize.ByteSize
@@ -68,6 +70,8 @@ var DefaultConfig = Config{
 	BlobSlots:     48, // Default for a total of 8 txs for 6 blobs each - for hive tests
 	PriceBump:     10, // Price bump percentage to replace an already existing transaction
 	BlobPriceBump: 100,
+
+	NoTxGossip: false,
 }
 
 type DiscardReason uint8

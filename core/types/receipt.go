@@ -24,6 +24,8 @@ import (
 	"io"
 	"math/big"
 
+	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 
@@ -31,7 +33,7 @@ import (
 	"github.com/ledgerwatch/erigon/rlp"
 )
 
-// go:generate gencodec -type Receipt -field-override receiptMarshaling -out gen_receipt_json.go
+//go:generate gencodec -type Receipt -field-override receiptMarshaling -out gen_receipt_json.go
 //go:generate codecgen -o receipt_codecgen_gen.go -r "^Receipts$|^Receipt$|^Logs$|^Log$" -st "codec" -j=false -nx=true -ta=true -oe=false -d 2 receipt.go log.go
 
 var (
@@ -64,11 +66,21 @@ type Receipt struct {
 	ContractAddress libcommon.Address `json:"contractAddress" codec:"-"`
 	GasUsed         uint64            `json:"gasUsed" gencodec:"required" codec:"-"`
 
+	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions
+	// The state transition process ensures this is only set for Regolith deposit transactions.
+	DepositNonce *uint64 `json:"depositNonce,omitempty"`
+
 	// Inclusion information: These fields provide information about the inclusion of the
 	// transaction corresponding to this receipt.
 	BlockHash        libcommon.Hash `json:"blockHash,omitempty" codec:"-"`
 	BlockNumber      *big.Int       `json:"blockNumber,omitempty" codec:"-"`
 	TransactionIndex uint           `json:"transactionIndex" codec:"-"`
+
+	// OVM legacy: extend receipts with their L1 price (if a rollup tx)
+	L1GasPrice *big.Int   `json:"l1GasPrice,omitempty"`
+	L1GasUsed  *big.Int   `json:"l1GasUsed,omitempty"`
+	L1Fee      *big.Int   `json:"l1Fee,omitempty"` // FIXME, should these be uint256?
+	FeeScalar  *big.Float `json:"l1FeeScalar,omitempty"`
 }
 
 type receiptMarshaling struct {
@@ -79,6 +91,9 @@ type receiptMarshaling struct {
 	GasUsed           hexutil.Uint64
 	BlockNumber       *hexutil.Big
 	TransactionIndex  hexutil.Uint
+	L1Fee             *hexutil.Big
+	L1GasUsed         *hexutil.Big
+	L1GasPrice        *hexutil.Big
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -89,11 +104,24 @@ type receiptRLP struct {
 	Logs              []*Log
 }
 
+type depositReceiptRlp struct {
+	PostStateOrStatus []byte
+	CumulativeGasUsed uint64
+	Bloom             Bloom
+	Logs              []*Log
+	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions.
+	// Must be nil for any transactions prior to Regolith or that aren't deposit transactions.
+	DepositNonce *uint64 `rlp:"optional"`
+}
+
 // storedReceiptRLP is the storage encoding of a receipt.
 type storedReceiptRLP struct {
 	PostStateOrStatus []byte
 	CumulativeGasUsed uint64
 	Logs              []*LogForStorage
+	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions.
+	// Must be nil for any transactions prior to Regolith or that aren't deposit transactions.
+	DepositNonce *uint64 `rlp:"optional"`
 }
 
 // v4StoredReceiptRLP is the storage encoding of a receipt used in database version 4.
@@ -141,12 +169,30 @@ func (r Receipt) EncodeRLP(w io.Writer) error {
 	}
 	buf := new(bytes.Buffer)
 	buf.WriteByte(r.Type)
-	if err := rlp.Encode(buf, data); err != nil {
-		return err
+	if r.Type == DepositTxType {
+		withNonce := &depositReceiptRlp{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs, r.DepositNonce}
+		if err := rlp.Encode(buf, withNonce); err != nil {
+			return err
+		}
+	} else {
+		if err := rlp.Encode(buf, data); err != nil {
+			return err
+		}
 	}
 	return rlp.Encode(w, buf.Bytes())
 }
 
+// encodeTyped writes the canonical encoding of a typed receipt to w.
+func (r *Receipt) encodeTyped(data *receiptRLP, w *bytes.Buffer) error {
+	w.WriteByte(r.Type)
+	switch r.Type {
+	case DepositTxType:
+		withNonce := depositReceiptRlp{data.PostStateOrStatus, data.CumulativeGasUsed, data.Bloom, data.Logs, r.DepositNonce}
+		return rlp.Encode(w, withNonce)
+	default:
+		return rlp.Encode(w, data)
+	}
+}
 func (r *Receipt) decodePayload(s *rlp.Stream) error {
 	_, err := s.List()
 	if err != nil {
@@ -215,6 +261,17 @@ func (r *Receipt) decodePayload(s *rlp.Stream) error {
 	if err = s.ListEnd(); err != nil {
 		return fmt.Errorf("close Logs: %w", err)
 	}
+	if r.Type == DepositTxType {
+		depositNonce, err := s.Uint()
+		if err != nil {
+			if !errors.Is(err, rlp.EOL) {
+				return fmt.Errorf("read DepositNonce: %w", err)
+			}
+			return nil
+		} else {
+			r.DepositNonce = &depositNonce
+		}
+	}
 	if err := s.ListEnd(); err != nil {
 		return fmt.Errorf("close receipt payload: %w", err)
 	}
@@ -247,7 +304,7 @@ func (r *Receipt) DecodeRLP(s *rlp.Stream) error {
 		}
 		r.Type = b[0]
 		switch r.Type {
-		case AccessListTxType, DynamicFeeTxType, BlobTxType:
+		case AccessListTxType, DynamicFeeTxType, DepositTxType, BlobTxType:
 			if err := r.decodePayload(s); err != nil {
 				return err
 			}
@@ -317,6 +374,7 @@ func (r *Receipt) Copy() *Receipt {
 		BlockHash:         blockHash,
 		BlockNumber:       blockNumber,
 		TransactionIndex:  r.TransactionIndex,
+		DepositNonce:      r.DepositNonce,
 	}
 }
 
@@ -333,6 +391,7 @@ func (r *ReceiptForStorage) EncodeRLP(w io.Writer) error {
 		PostStateOrStatus: (*Receipt)(r).statusEncoding(),
 		CumulativeGasUsed: r.CumulativeGasUsed,
 		Logs:              make([]*LogForStorage, len(r.Logs)),
+		DepositNonce:      r.DepositNonce,
 	}
 	for i, log := range r.Logs {
 		enc.Logs[i] = (*LogForStorage)(log)
@@ -374,6 +433,9 @@ func decodeStoredReceiptRLP(r *ReceiptForStorage, blob []byte) error {
 		r.Logs[i] = (*Log)(log)
 	}
 	//r.Bloom = CreateBloom(Receipts{(*Receipt)(r)})
+	if stored.DepositNonce != nil {
+		r.DepositNonce = stored.DepositNonce
+	}
 
 	return nil
 }
@@ -448,6 +510,11 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}
+	case DepositTxType:
+		w.WriteByte(DepositTxType)
+		if err := rlp.Encode(w, data); err != nil {
+			panic(err)
+		}
 	default:
 		// For unsupported types, write nothing. Since this is for
 		// DeriveSha, the error will be caught matching the derived hash
@@ -457,7 +524,7 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 
 // DeriveFields fills the receipts with their computed fields based on consensus
 // data and contextual infos like containing block and transactions.
-func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transactions, senders []libcommon.Address) error {
+func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number uint64, time uint64, txs Transactions, senders []libcommon.Address) error {
 	logIndex := uint(0) // logIdx is unique within the block and starts from 0
 	if len(txs) != len(r) {
 		return fmt.Errorf("transaction and receipt count mismatch, tx count = %d, receipts count = %d", len(txs), len(r))
@@ -482,7 +549,11 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 			// If one wants to deploy a contract, one needs to send a transaction that does not have `To` field
 			// and then the address of the contract one is creating this way will depend on the `tx.From`
 			// and the nonce of the creating account (which is `tx.From`).
-			r[i].ContractAddress = crypto.CreateAddress(senders[i], txs[i].GetNonce())
+			nonce := txs[i].GetNonce()
+			if r[i].DepositNonce != nil {
+				nonce = *r[i].DepositNonce
+			}
+			r[i].ContractAddress = crypto.CreateAddress(senders[i], nonce)
 		}
 		// The used gas can be calculated based on previous r
 		if i == 0 {
@@ -498,6 +569,29 @@ func (r Receipts) DeriveFields(hash libcommon.Hash, number uint64, txs Transacti
 			r[i].Logs[j].TxIndex = uint(i)
 			r[i].Logs[j].Index = logIndex
 			logIndex++
+		}
+	}
+	rules := config.Rules(number, time)
+	if rules.IsBedrock && len(txs) >= 2 { // need at least an info tx and a non-info tx
+		if data := txs[0].GetData(); len(data) >= 4+32*8 { // function selector + 8 arguments to setL1BlockValues
+			l1Basefee := new(uint256.Int).SetBytes(data[4+32*2 : 4+32*3]) // arg index 2
+			overhead := new(uint256.Int).SetBytes(data[4+32*6 : 4+32*7])  // arg index 6
+			scalar := new(uint256.Int).SetBytes(data[4+32*7 : 4+32*8])    // arg index 7
+			fscalar := new(big.Float).SetInt(scalar.ToBig())              // legacy: format fee scalar as big Float
+			fdivisor := new(big.Float).SetUint64(1_000_000)               // 10**6, i.e. 6 decimals
+			feeScalar := new(big.Float).Quo(fscalar, fdivisor)
+			for i := 0; i < len(r); i++ {
+				if !txs[i].IsDepositTx() {
+					rollupDataGas := RollupDataGas(txs[i], rules) // Only fake txs for RPC view-calls are 0.
+					r[i].L1GasPrice = l1Basefee.ToBig()
+					// GasUsed reported in receipt should include the overhead
+					r[i].L1GasUsed = new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas), overhead.ToBig())
+					r[i].L1Fee = L1Cost(rollupDataGas, l1Basefee, overhead, scalar).ToBig()
+					r[i].FeeScalar = feeScalar
+				}
+			}
+		} else {
+			return fmt.Errorf("L1 info tx only has %d bytes, cannot read gas price parameters", len(data))
 		}
 	}
 	return nil

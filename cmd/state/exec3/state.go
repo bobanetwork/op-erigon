@@ -194,7 +194,8 @@ func (rw *Worker) RunTxTaskNoLock(txTask *exec22.TxTask) {
 		blockContext := txTask.EvmBlockContext
 		if !rw.background {
 			getHashFn := core.GetHashFn(header, rw.getHeader)
-			blockContext = core.NewEVMBlockContext(header, getHashFn, rw.engine, nil /* author */)
+			l1CostFunc := types.NewL1CostFunc(rw.chainConfig, rw.ibs)
+			blockContext = core.NewEVMBlockContext(header, getHashFn, rw.engine, nil /* author */, l1CostFunc)
 		}
 		rw.evm.ResetBetweenBlocks(blockContext, core.NewEVMTxContext(msg), ibs, vmConfig, rules)
 

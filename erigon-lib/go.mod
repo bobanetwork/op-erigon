@@ -152,4 +152,7 @@ require (
 	zombiezen.com/go/sqlite v0.13.1 // indirect
 )
 
+replace github.com/ledgerwatch/interfaces => github.com/bobanetwork/v3-erigon-interfaces v0.0.0-20231016141625-3f56f9c7c5ce
+
+// replace github.com/ledgerwatch/interfaces => ../erigon-interfaces
 replace github.com/VictoriaMetrics/metrics => github.com/ledgerwatch/victoria-metrics v0.0.4

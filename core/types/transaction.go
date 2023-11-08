@@ -37,6 +37,7 @@ import (
 
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
 )
 
@@ -53,6 +54,7 @@ const (
 	AccessListTxType
 	DynamicFeeTxType
 	BlobTxType
+	DepositTxType = 0x7e
 )
 
 // Transaction is an Ethereum transaction.
@@ -95,6 +97,7 @@ type Transaction interface {
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
 	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwise returns itself.
+	IsDepositTx() bool
 }
 
 // TransactionMisc is collection of miscelaneous fields for transaction that is supposed to be embedded into concrete
@@ -124,6 +127,38 @@ func (tm TransactionMisc) Time() time.Time {
 
 func (tm TransactionMisc) From() *atomic.Value {
 	return &tm.from
+}
+
+func RollupDataGas(tx binMarshalable, rules *chain.Rules) uint64 {
+	var buf bytes.Buffer
+	if err := tx.MarshalBinary(&buf); err != nil {
+		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
+		log.Error("failed to encode tx for L1 cost computation", "err", err)
+		return 0
+	}
+	var zeroes uint64
+	var ones uint64
+	for _, byt := range buf.Bytes() {
+		if byt == 0 {
+			zeroes++
+		} else {
+			ones++
+		}
+	}
+	zeroesGas := zeroes * params.TxDataZeroGas
+	var onesGas uint64
+	if rules.IsOptimismRegolith {
+		onesGas = ones * params.TxDataNonZeroGasEIP2028
+	} else {
+		onesGas = (ones + 68) * params.TxDataNonZeroGasEIP2028
+	}
+	total := zeroesGas + onesGas
+	log.Debug("Computed rollupDataGas", "total", total, "tx", tx)
+	return total
+}
+
+type binMarshalable interface {
+	MarshalBinary(io.Writer) error
 }
 
 func DecodeRLPTransaction(s *rlp.Stream) (Transaction, error) {
@@ -202,6 +237,13 @@ func UnmarshalTransactionFromBinary(data []byte) (Transaction, error) {
 	case BlobTxType:
 		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
 		t := &BlobTx{}
+		if err := t.DecodeRLP(s); err != nil {
+			return nil, err
+		}
+		return t, nil
+	case DepositTxType:
+		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
+		t := &DepositTransaction{}
 		if err := t.DecodeRLP(s); err != nil {
 			return nil, err
 		}
@@ -513,9 +555,12 @@ func (t *TransactionsFixedOrder) Pop() {
 
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
+	txType           byte
+	sourceHash       *libcommon.Hash // TODO(jky) Why is this here?
 	to               *libcommon.Address
 	from             libcommon.Address
 	nonce            uint64
+	mint             uint256.Int
 	amount           uint256.Int
 	gasLimit         uint64
 	gasPrice         uint256.Int
@@ -527,22 +572,25 @@ type Message struct {
 	checkNonce       bool
 	isFree           bool
 	blobHashes       []libcommon.Hash
+	isSystemTx       bool
+	rollupDataGas    uint64
 }
 
 func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64,
 	gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList types2.AccessList, checkNonce bool,
-	isFree bool, maxFeePerBlobGas *uint256.Int,
+	isFree bool, maxFeePerBlobGas *uint256.Int, rollupDataGas uint64,
 ) Message {
 	m := Message{
-		from:       from,
-		to:         to,
-		nonce:      nonce,
-		amount:     *amount,
-		gasLimit:   gasLimit,
-		data:       data,
-		accessList: accessList,
-		checkNonce: checkNonce,
-		isFree:     isFree,
+		from:          from,
+		to:            to,
+		nonce:         nonce,
+		amount:        *amount,
+		gasLimit:      gasLimit,
+		data:          data,
+		accessList:    accessList,
+		checkNonce:    checkNonce,
+		isFree:        isFree,
+		rollupDataGas: rollupDataGas,
 	}
 	if gasPrice != nil {
 		m.gasPrice.Set(gasPrice)
@@ -565,6 +613,9 @@ func (m Message) GasPrice() *uint256.Int        { return &m.gasPrice }
 func (m Message) FeeCap() *uint256.Int          { return &m.feeCap }
 func (m Message) Tip() *uint256.Int             { return &m.tip }
 func (m Message) Value() *uint256.Int           { return &m.amount }
+func (m Message) Mint() *uint256.Int            { return &m.mint }
+func (m Message) IsDepositTx() bool             { return m.txType == DepositTxType }
+func (m Message) RollupDataGas() uint64         { return m.rollupDataGas }
 func (m Message) Gas() uint64                   { return m.gasLimit }
 func (m Message) Nonce() uint64                 { return m.nonce }
 func (m Message) Data() []byte                  { return m.data }
@@ -599,6 +650,8 @@ func (m Message) BlobGas() uint64 { return fixedgas.BlobGasPerBlob * uint64(len(
 func (m Message) MaxFeePerBlobGas() *uint256.Int {
 	return &m.maxFeePerBlobGas
 }
+
+func (m Message) IsSystemTx() bool { return m.isSystemTx }
 
 func (m Message) BlobHashes() []libcommon.Hash { return m.blobHashes }
 

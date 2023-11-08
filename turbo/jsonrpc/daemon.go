@@ -19,10 +19,10 @@ import (
 func APIList(db kv.RoDB, eth rpchelper.ApiBackend, txPool txpool.TxpoolClient, mining txpool.MiningClient,
 	filters *rpchelper.Filters, stateCache kvcache.Cache,
 	blockReader services.FullBlockReader, agg *libstate.AggregatorV3, cfg httpcfg.HttpCfg, engine consensus.EngineReader,
-	logger log.Logger,
+	seqRPCService, historicalRPCService *rpc.Client, logger log.Logger,
 ) (list []rpc.API) {
-	base := NewBaseApi(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, cfg.Dirs)
-	ethImpl := NewEthAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit, cfg.AllowUnprotectedTxs, logger)
+	base := NewBaseApi(filters, stateCache, blockReader, agg, cfg.WithDatadir, cfg.EvmCallTimeout, engine, cfg.Dirs, seqRPCService, historicalRPCService)
+	ethImpl := NewEthAPI(base, db, eth, txPool, mining, cfg.Gascap, cfg.ReturnDataLimit, cfg.AllowUnprotectedTxs, cfg.MaxGetProofRewindBlockCount, logger)
 	erigonImpl := NewErigonAPI(base, db, eth)
 	txpoolImpl := NewTxPoolAPI(base, db, txPool)
 	netImpl := NewNetAPIImpl(eth)

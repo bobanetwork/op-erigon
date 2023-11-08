@@ -5,10 +5,10 @@ package types
 import (
 	"encoding/json"
 	"errors"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
 
-	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 )
 
@@ -17,18 +17,23 @@ var _ = (*receiptMarshaling)(nil)
 // MarshalJSON marshals as JSON.
 func (r Receipt) MarshalJSON() ([]byte, error) {
 	type Receipt struct {
-		Type              hexutil.Uint64    `json:"type,omitempty"`
-		PostState         hexutility.Bytes  `json:"root"`
-		Status            hexutil.Uint64    `json:"status"`
-		CumulativeGasUsed hexutil.Uint64    `json:"cumulativeGasUsed" gencodec:"required"`
-		Bloom             Bloom             `json:"logsBloom"         gencodec:"required"`
-		Logs              []*Log            `json:"logs"              gencodec:"required"`
-		TxHash            libcommon.Hash    `json:"transactionHash" gencodec:"required"`
-		ContractAddress   libcommon.Address `json:"contractAddress"`
-		GasUsed           hexutil.Uint64    `json:"gasUsed" gencodec:"required"`
-		BlockHash         libcommon.Hash    `json:"blockHash,omitempty"`
-		BlockNumber       *hexutil.Big      `json:"blockNumber,omitempty"`
-		TransactionIndex  hexutil.Uint      `json:"transactionIndex"`
+		Type              hexutil.Uint64   `json:"type,omitempty"`
+		PostState         hexutility.Bytes `json:"root" codec:"1"`
+		Status            hexutil.Uint64   `json:"status" codec:"2"`
+		CumulativeGasUsed hexutil.Uint64   `json:"cumulativeGasUsed" gencodec:"required" codec:"3"`
+		Bloom             Bloom            `json:"logsBloom"         gencodec:"required" codec:"-"`
+		Logs              Logs             `json:"logs"              gencodec:"required" codec:"-"`
+		TxHash            common.Hash      `json:"transactionHash" gencodec:"required" codec:"-"`
+		ContractAddress   common.Address   `json:"contractAddress" codec:"-"`
+		GasUsed           hexutil.Uint64   `json:"gasUsed" gencodec:"required" codec:"-"`
+		DepositNonce      *uint64          `json:"depositNonce,omitempty"`
+		BlockHash         common.Hash      `json:"blockHash,omitempty" codec:"-"`
+		BlockNumber       *hexutil.Big     `json:"blockNumber,omitempty" codec:"-"`
+		TransactionIndex  hexutil.Uint     `json:"transactionIndex" codec:"-"`
+		L1GasPrice        *hexutil.Big     `json:"l1GasPrice,omitempty"`
+		L1GasUsed         *hexutil.Big     `json:"l1GasUsed,omitempty"`
+		L1Fee             *hexutil.Big     `json:"l1Fee,omitempty"`
+		FeeScalar         *big.Float       `json:"l1FeeScalar,omitempty"`
 	}
 	var enc Receipt
 	enc.Type = hexutil.Uint64(r.Type)
@@ -40,27 +45,37 @@ func (r Receipt) MarshalJSON() ([]byte, error) {
 	enc.TxHash = r.TxHash
 	enc.ContractAddress = r.ContractAddress
 	enc.GasUsed = hexutil.Uint64(r.GasUsed)
+	enc.DepositNonce = r.DepositNonce
 	enc.BlockHash = r.BlockHash
 	enc.BlockNumber = (*hexutil.Big)(r.BlockNumber)
 	enc.TransactionIndex = hexutil.Uint(r.TransactionIndex)
+	enc.L1GasPrice = (*hexutil.Big)(r.L1GasPrice)
+	enc.L1GasUsed = (*hexutil.Big)(r.L1GasUsed)
+	enc.L1Fee = (*hexutil.Big)(r.L1Fee)
+	enc.FeeScalar = r.FeeScalar
 	return json.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
 func (r *Receipt) UnmarshalJSON(input []byte) error {
 	type Receipt struct {
-		Type              *hexutil.Uint64    `json:"type,omitempty"`
-		PostState         *hexutility.Bytes  `json:"root"`
-		Status            *hexutil.Uint64    `json:"status"`
-		CumulativeGasUsed *hexutil.Uint64    `json:"cumulativeGasUsed" gencodec:"required"`
-		Bloom             *Bloom             `json:"logsBloom"         gencodec:"required"`
-		Logs              []*Log             `json:"logs"              gencodec:"required"`
-		TxHash            *libcommon.Hash    `json:"transactionHash" gencodec:"required"`
-		ContractAddress   *libcommon.Address `json:"contractAddress"`
-		GasUsed           *hexutil.Uint64    `json:"gasUsed" gencodec:"required"`
-		BlockHash         *libcommon.Hash    `json:"blockHash,omitempty"`
-		BlockNumber       *hexutil.Big       `json:"blockNumber,omitempty"`
-		TransactionIndex  *hexutil.Uint      `json:"transactionIndex"`
+		Type              *hexutil.Uint64   `json:"type,omitempty"`
+		PostState         *hexutility.Bytes `json:"root" codec:"1"`
+		Status            *hexutil.Uint64   `json:"status" codec:"2"`
+		CumulativeGasUsed *hexutil.Uint64   `json:"cumulativeGasUsed" gencodec:"required" codec:"3"`
+		Bloom             *Bloom            `json:"logsBloom"         gencodec:"required" codec:"-"`
+		Logs              *Logs             `json:"logs"              gencodec:"required" codec:"-"`
+		TxHash            *common.Hash      `json:"transactionHash" gencodec:"required" codec:"-"`
+		ContractAddress   *common.Address   `json:"contractAddress" codec:"-"`
+		GasUsed           *hexutil.Uint64   `json:"gasUsed" gencodec:"required" codec:"-"`
+		DepositNonce      *uint64           `json:"depositNonce,omitempty"`
+		BlockHash         *common.Hash      `json:"blockHash,omitempty" codec:"-"`
+		BlockNumber       *hexutil.Big      `json:"blockNumber,omitempty" codec:"-"`
+		TransactionIndex  *hexutil.Uint     `json:"transactionIndex" codec:"-"`
+		L1GasPrice        *hexutil.Big      `json:"l1GasPrice,omitempty"`
+		L1GasUsed         *hexutil.Big      `json:"l1GasUsed,omitempty"`
+		L1Fee             *hexutil.Big      `json:"l1Fee,omitempty"`
+		FeeScalar         *big.Float        `json:"l1FeeScalar,omitempty"`
 	}
 	var dec Receipt
 	if err := json.Unmarshal(input, &dec); err != nil {
@@ -86,7 +101,7 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 	if dec.Logs == nil {
 		return errors.New("missing required field 'logs' for Receipt")
 	}
-	r.Logs = dec.Logs
+	r.Logs = *dec.Logs
 	if dec.TxHash == nil {
 		return errors.New("missing required field 'transactionHash' for Receipt")
 	}
@@ -98,6 +113,9 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 		return errors.New("missing required field 'gasUsed' for Receipt")
 	}
 	r.GasUsed = uint64(*dec.GasUsed)
+	if dec.DepositNonce != nil {
+		r.DepositNonce = dec.DepositNonce
+	}
 	if dec.BlockHash != nil {
 		r.BlockHash = *dec.BlockHash
 	}
@@ -106,6 +124,18 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 	}
 	if dec.TransactionIndex != nil {
 		r.TransactionIndex = uint(*dec.TransactionIndex)
+	}
+	if dec.L1GasPrice != nil {
+		r.L1GasPrice = (*big.Int)(dec.L1GasPrice)
+	}
+	if dec.L1GasUsed != nil {
+		r.L1GasUsed = (*big.Int)(dec.L1GasUsed)
+	}
+	if dec.L1Fee != nil {
+		r.L1Fee = (*big.Int)(dec.L1Fee)
+	}
+	if dec.FeeScalar != nil {
+		r.FeeScalar = dec.FeeScalar
 	}
 	return nil
 }

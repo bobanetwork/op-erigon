@@ -155,10 +155,12 @@ type Ethereum struct {
 
 	eth1ExecutionServer *eth1.EthereumExecutionModule
 
-	ethBackendRPC      *privateapi.EthBackendServer
-	engineBackendRPC   *engineapi.EngineServer
-	miningRPC          txpool_proto.MiningServer
-	stateChangesClient txpool.StateChangesClient
+	ethBackendRPC        *privateapi.EthBackendServer
+	seqRPCService        *rpc.Client
+	historicalRPCService *rpc.Client
+	engineBackendRPC     *engineapi.EngineServer
+	miningRPC            txpool_proto.MiningServer
+	stateChangesClient   txpool.StateChangesClient
 
 	miningSealingQuit chan struct{}
 	pendingBlocks     chan *types.Block
@@ -589,6 +591,27 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		return nil, err
 	}
 
+	// Setup sequencer and hsistorical RPC relay services
+	if config.RollupSequencerHTTP != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		client, err := rpc.DialContext(ctx, config.RollupSequencerHTTP, logger)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.seqRPCService = client
+	}
+	if config.RollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), config.RollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, config.RollupHistoricalRPC, logger)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		backend.historicalRPCService = client
+	}
+	config.TxPool.NoTxGossip = config.RollupDisableTxPoolGossip
+
 	var miningRPC txpool_proto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)
 	if config.DeprecatedTxPool.Disable {
@@ -658,9 +681,11 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			), stagedsync.MiningUnwindOrder, stagedsync.MiningPruneOrder,
 			logger)
 		// We start the mining step
+		log.Debug("Starting assembleBlockPOS mining step", "payloadId", param.PayloadId)
 		if err := stages2.MiningStep(ctx, backend.chainDB, proposingSync, tmpdir); err != nil {
 			return nil, err
 		}
+		log.Debug("Finished assembleBlockPOS mining step", "payloadId", param.PayloadId)
 		block := <-miningStatePos.MiningResultPOSCh
 		return block, nil
 	}
@@ -910,7 +935,7 @@ func (s *Ethereum) Init(stack *node.Node, config *ethconfig.Config) error {
 		return err
 	}
 
-	s.apiList = jsonrpc.APIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, httpRpcCfg, s.engine, s.logger)
+	s.apiList = jsonrpc.APIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, s.agg, httpRpcCfg, s.engine, s.seqRPCService, s.historicalRPCService, s.logger)
 
 	if config.SilkwormRpcDaemon && httpRpcCfg.Enabled {
 		silkwormRPCDaemonService := s.silkworm.NewRpcDaemonService(chainKv)
@@ -923,7 +948,7 @@ func (s *Ethereum) Init(stack *node.Node, config *ethconfig.Config) error {
 		}()
 	}
 
-	go s.engineBackendRPC.Start(httpRpcCfg, s.chainDB, s.blockReader, ff, stateCache, s.agg, s.engine, ethRpcClient, txPoolRpcClient, miningRpcClient)
+	go s.engineBackendRPC.Start(httpRpcCfg, s.chainDB, s.blockReader, ff, stateCache, s.agg, s.engine, ethRpcClient, txPoolRpcClient, miningRpcClient, s.seqRPCService, s.historicalRPCService)
 
 	// Register the backend on the node
 	stack.RegisterLifecycle(s)
@@ -1375,6 +1400,13 @@ func (s *Ethereum) Stop() error {
 	}
 	if s.silkworm != nil {
 		s.silkworm.Close()
+	}
+
+	if s.seqRPCService != nil {
+		s.seqRPCService.Close()
+	}
+	if s.historicalRPCService != nil {
+		s.historicalRPCService.Close()
 	}
 
 	return nil

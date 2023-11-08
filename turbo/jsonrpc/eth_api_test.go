@@ -2,16 +2,21 @@ package jsonrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
+	"math/big"
 	"testing"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
 	"github.com/ledgerwatch/erigon/core"
+	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/ledgerwatch/erigon/turbo/adapter/ethapi"
@@ -24,7 +29,7 @@ import (
 func newBaseApiForTest(m *mock.MockSentry) *BaseAPI {
 	agg := m.HistoryV3Components()
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
-	return NewBaseApi(nil, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs)
+	return NewBaseApi(nil, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil)
 }
 
 func TestGetBalanceChangesInBlock(t *testing.T) {
@@ -54,7 +59,7 @@ func TestGetTransactionReceipt(t *testing.T) {
 	db := m.DB
 	agg := m.HistoryV3Components()
 	stateCache := kvcache.New(kvcache.DefaultCoherentConfig)
-	api := NewEthAPI(NewBaseApi(nil, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs), db, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(NewBaseApi(nil, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), db, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	// Call GetTransactionReceipt for transaction which is not in the database
 	if _, err := api.GetTransactionReceipt(context.Background(), common.Hash{}); err != nil {
 		t.Errorf("calling GetTransactionReceipt with empty hash: %v", err)
@@ -63,7 +68,7 @@ func TestGetTransactionReceipt(t *testing.T) {
 
 func TestGetTransactionReceiptUnprotected(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	// Call GetTransactionReceipt for un-protected transaction
 	if _, err := api.GetTransactionReceipt(context.Background(), common.HexToHash("0x3f3cb8a0e13ed2481f97f53f7095b9cbc78b6ffb779f2d3e565146371a8830ea")); err != nil {
 		t.Errorf("calling GetTransactionReceipt for unprotected tx: %v", err)
@@ -75,7 +80,7 @@ func TestGetTransactionReceiptUnprotected(t *testing.T) {
 func TestGetStorageAt_ByBlockNumber_WithRequireCanonicalDefault(t *testing.T) {
 	assert := assert.New(t)
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	addr := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 
 	result, err := api.GetStorageAt(context.Background(), addr, "0x0", rpc.BlockNumberOrHashWithNumber(0))
@@ -89,7 +94,7 @@ func TestGetStorageAt_ByBlockNumber_WithRequireCanonicalDefault(t *testing.T) {
 func TestGetStorageAt_ByBlockHash_WithRequireCanonicalDefault(t *testing.T) {
 	assert := assert.New(t)
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	addr := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 
 	result, err := api.GetStorageAt(context.Background(), addr, "0x0", rpc.BlockNumberOrHashWithHash(m.Genesis.Hash(), false))
@@ -103,7 +108,7 @@ func TestGetStorageAt_ByBlockHash_WithRequireCanonicalDefault(t *testing.T) {
 func TestGetStorageAt_ByBlockHash_WithRequireCanonicalTrue(t *testing.T) {
 	assert := assert.New(t)
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	addr := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 
 	result, err := api.GetStorageAt(context.Background(), addr, "0x0", rpc.BlockNumberOrHashWithHash(m.Genesis.Hash(), true))
@@ -116,7 +121,7 @@ func TestGetStorageAt_ByBlockHash_WithRequireCanonicalTrue(t *testing.T) {
 
 func TestGetStorageAt_ByBlockHash_WithRequireCanonicalDefault_BlockNotFoundError(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	addr := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 
 	offChain, err := core.GenerateChain(m.ChainConfig, m.Genesis, m.Engine, m.DB, 1, func(i int, block *core.BlockGen) {
@@ -137,7 +142,7 @@ func TestGetStorageAt_ByBlockHash_WithRequireCanonicalDefault_BlockNotFoundError
 
 func TestGetStorageAt_ByBlockHash_WithRequireCanonicalTrue_BlockNotFoundError(t *testing.T) {
 	m, _, _ := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	addr := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 
 	offChain, err := core.GenerateChain(m.ChainConfig, m.Genesis, m.Engine, m.DB, 1, func(i int, block *core.BlockGen) {
@@ -159,7 +164,7 @@ func TestGetStorageAt_ByBlockHash_WithRequireCanonicalTrue_BlockNotFoundError(t 
 func TestGetStorageAt_ByBlockHash_WithRequireCanonicalDefault_NonCanonicalBlock(t *testing.T) {
 	assert := assert.New(t)
 	m, _, orphanedChain := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	addr := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 
 	orphanedBlock := orphanedChain[0].Blocks[0]
@@ -178,7 +183,7 @@ func TestGetStorageAt_ByBlockHash_WithRequireCanonicalDefault_NonCanonicalBlock(
 
 func TestGetStorageAt_ByBlockHash_WithRequireCanonicalTrue_NonCanonicalBlock(t *testing.T) {
 	m, _, orphanedChain := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	addr := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 
 	orphanedBlock := orphanedChain[0].Blocks[0]
@@ -194,7 +199,7 @@ func TestGetStorageAt_ByBlockHash_WithRequireCanonicalTrue_NonCanonicalBlock(t *
 
 func TestCall_ByBlockHash_WithRequireCanonicalDefault_NonCanonicalBlock(t *testing.T) {
 	m, _, orphanedChain := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	from := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 	to := common.HexToAddress("0x0d3ab14bbad3d99f4203bd7a11acb94882050e7e")
 
@@ -217,7 +222,7 @@ func TestCall_ByBlockHash_WithRequireCanonicalDefault_NonCanonicalBlock(t *testi
 
 func TestCall_ByBlockHash_WithRequireCanonicalTrue_NonCanonicalBlock(t *testing.T) {
 	m, _, orphanedChain := rpcdaemontest.CreateTestSentry(t)
-	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, log.New())
+	api := NewEthAPI(newBaseApiForTest(m), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
 	from := common.HexToAddress("0x71562b71999873db5b286df957af199ec94617f7")
 	to := common.HexToAddress("0x0d3ab14bbad3d99f4203bd7a11acb94882050e7e")
 
@@ -232,5 +237,123 @@ func TestCall_ByBlockHash_WithRequireCanonicalTrue_NonCanonicalBlock(t *testing.
 		}
 	} else {
 		t.Error("error expected")
+	}
+}
+
+func TestNewRPCTransactionDepositTx(t *testing.T) {
+	tx := &types.DepositTransaction{
+		SourceHash: &common.Hash{1},
+		From:       &common.Address{1},
+		IsSystemTx: true,
+		Mint:       uint256.NewInt(34),
+		Value:      uint256.NewInt(1337),
+	}
+	nonce := uint64(12)
+	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), &nonce)
+	// Should provide zero values for unused fields that are required in other transactions
+	require.Equal(t, got.GasPrice, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().GasPrice = %v, want 0x0", got.GasPrice)
+	require.Equal(t, got.V, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().V = %v, want 0x0", got.V)
+	require.Equal(t, got.R, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().R = %v, want 0x0", got.R)
+	require.Equal(t, got.S, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().S = %v, want 0x0", got.S)
+
+	// Should include deposit tx specific fields
+	require.Equal(t, got.SourceHash, tx.SourceHash, "newRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
+	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "newRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
+	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "newRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
+	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "newRPCTransaction().Mint = %v, want %v", got.Nonce, nonce)
+}
+
+func TestNewRPCTransactionOmitIsSystemTxFalse(t *testing.T) {
+	tx := &types.DepositTransaction{
+		IsSystemTx: false,
+		From:       &common.Address{1},
+		Value:      uint256.NewInt(1337),
+	}
+	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
+
+	require.False(t, got.IsSystemTx, "should omit IsSystemTx when false")
+}
+
+func TestUnmarshalRpcDepositTx(t *testing.T) {
+	tests := []struct {
+		name     string
+		modifier func(tx *RPCTransaction)
+		valid    bool
+	}{
+		{
+			name:     "Unmodified",
+			modifier: func(tx *RPCTransaction) {},
+			valid:    true,
+		},
+		{
+			name: "Zero Values",
+			modifier: func(tx *RPCTransaction) {
+				tx.V = (*hexutil.Big)(common.Big0)
+				tx.R = (*hexutil.Big)(common.Big0)
+				tx.S = (*hexutil.Big)(common.Big0)
+				tx.GasPrice = (*hexutil.Big)(common.Big0)
+			},
+			valid: true,
+		},
+		{
+			name: "Nil Values",
+			modifier: func(tx *RPCTransaction) {
+				tx.V = nil
+				tx.R = nil
+				tx.S = nil
+				tx.GasPrice = nil
+			},
+			valid: true,
+		},
+		{
+			name: "Non-Zero GasPrice",
+			modifier: func(tx *RPCTransaction) {
+				tx.GasPrice = (*hexutil.Big)(big.NewInt(43))
+			},
+			valid: false,
+		},
+		{
+			name: "Non-Zero V",
+			modifier: func(tx *RPCTransaction) {
+				tx.V = (*hexutil.Big)(big.NewInt(43))
+			},
+			valid: false,
+		},
+		{
+			name: "Non-Zero R",
+			modifier: func(tx *RPCTransaction) {
+				tx.R = (*hexutil.Big)(big.NewInt(43))
+			},
+			valid: false,
+		},
+		{
+			name: "Non-Zero S",
+			modifier: func(tx *RPCTransaction) {
+				tx.S = (*hexutil.Big)(big.NewInt(43))
+			},
+			valid: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tx := &types.DepositTransaction{
+				SourceHash: &common.Hash{1},
+				From:       &common.Address{1},
+				IsSystemTx: true,
+				Mint:       uint256.NewInt(34),
+				Value:      uint256.NewInt(1337),
+			}
+			rpcTx := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
+			test.modifier(rpcTx)
+			json, err := json.Marshal(rpcTx)
+			require.NoError(t, err, "marshalling failed: %w", err)
+			parsed := &types.DepositTransaction{}
+			err = parsed.UnmarshalJSON(json)
+			if test.valid {
+				require.NoError(t, err, "unmarshal failed: %w", err)
+			} else {
+				require.Error(t, err, "unmarshal should have failed but did not")
+			}
+		})
 	}
 }

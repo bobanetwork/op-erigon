@@ -76,6 +76,7 @@ var DefaultFlags = []cli.Flag{
 	&utils.RpcBatchLimit,
 	&utils.RpcReturnDataLimit,
 	&utils.AllowUnprotectedTxs,
+	&utils.RpcMaxGetProofRewindBlockCount,
 	&utils.RPCGlobalTxFeeCapFlag,
 	&utils.TxpoolApiAddrFlag,
 	&utils.TraceMaxtracesFlag,
@@ -153,6 +154,10 @@ var DefaultFlags = []cli.Flag{
 	&utils.WithHeimdallMilestones,
 	&utils.EthStatsURLFlag,
 	&utils.OverrideCancunFlag,
+	&utils.RollupSequencerHTTPFlag,
+	&utils.RollupHistoricalRPCFlag,
+	&utils.RollupHistoricalRPCTimeoutFlag,
+	&utils.RollupDisableTxPoolGossipFlag,
 
 	&utils.ConfigFlag,
 
