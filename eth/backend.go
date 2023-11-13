@@ -305,7 +305,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			genesisSpec = nil
 		}
 		var genesisErr error
-		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, config.OverrideCancunTime, tmpdir, logger)
+		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, config.OverrideCancunTime, config.OverrideOptimismCanyonTime, tmpdir, logger)
 		if _, ok := genesisErr.(*chain.ConfigCompatError); genesisErr != nil && !ok {
 			return genesisErr
 		}
@@ -319,6 +319,15 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 	backend.genesisHash = genesis.Hash()
 
 	logger.Info("Initialised chain configuration", "config", chainConfig, "genesis", genesis.Hash())
+
+	if chainConfig.IsOptimism() {
+		if chainConfig.RegolithTime == nil {
+			log.Warn("Optimism RegolithTime has not been set")
+		}
+		if chainConfig.CanyonTime == nil {
+			log.Warn("Optimism CanyonTime has not been set")
+		}
+	}
 
 	// Check if we have an already initialized chain and fall back to
 	// that if so. Otherwise we need to generate a new genesis spec.
@@ -733,7 +742,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		time.Sleep(10 * time.Millisecond)
 		baseFee := uint64(0)
 		if currentBlock.BaseFee() != nil {
-			baseFee = misc.CalcBaseFee(chainConfig, currentBlock.Header()).Uint64()
+			baseFee = misc.CalcBaseFee(chainConfig, currentBlock.Header(), currentBlock.Time()+1).Uint64()
 		}
 		blobFee := chainConfig.GetMinBlobGasPrice()
 		if currentBlock.Header().ExcessBlobGas != nil {

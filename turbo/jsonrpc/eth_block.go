@@ -3,10 +3,11 @@ package jsonrpc
 import (
 	"context"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
-	"github.com/ledgerwatch/erigon/cl/clparams"
 	"math/big"
 	"time"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
+	"github.com/ledgerwatch/erigon/cl/clparams"
 
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
@@ -243,8 +244,7 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
 
-	depositNonces := rawdb.ReadDepositNonces(tx, b.NumberU64())
-	response, err := ethapi.RPCMarshalBlockEx(b, true, fullTx, borTx, borTxHash, additionalFields, receipts, depositNonces)
+	response, err := ethapi.RPCMarshalBlockEx(b, true, fullTx, borTx, borTxHash, additionalFields, receipts)
 	if err == nil && number == rpc.PendingBlockNumber && chainConfig.Optimism == nil { // don't remove info if optimism
 		// Pending blocks need to nil out a few fields
 		for _, field := range []string{"hash", "nonce", "miner"} {
@@ -310,8 +310,7 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
 
-	depositNonces := rawdb.ReadDepositNonces(tx, number)
-	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, borTx, borTxHash, additionalFields, receipts, depositNonces)
+	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, borTx, borTxHash, additionalFields, receipts)
 
 	if chainConfig.Bor != nil {
 		response["miner"], _ = ecrecover(block.Header(), chainConfig.Bor)

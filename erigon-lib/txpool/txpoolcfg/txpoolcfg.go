@@ -29,17 +29,18 @@ import (
 )
 
 type Config struct {
-	DBDir               string
-	TracedSenders       []string // List of senders for which tx pool should print out debugging info
-	PendingSubPoolLimit int
-	BaseFeeSubPoolLimit int
-	QueuedSubPoolLimit  int
-	MinFeeCap           uint64
-	AccountSlots        uint64 // Number of executable transaction slots guaranteed per account
-	BlobSlots           uint64 // Total number of blobs (not txs) allowed per account
-	PriceBump           uint64 // Price bump percentage to replace an already existing transaction
-	BlobPriceBump       uint64 //Price bump percentage to replace an existing 4844 blob tx (type-3)
-	OverrideCancunTime  *big.Int
+	DBDir                      string
+	TracedSenders              []string // List of senders for which tx pool should print out debugging info
+	PendingSubPoolLimit        int
+	BaseFeeSubPoolLimit        int
+	QueuedSubPoolLimit         int
+	MinFeeCap                  uint64
+	AccountSlots               uint64 // Number of executable transaction slots guaranteed per account
+	BlobSlots                  uint64 // Total number of blobs (not txs) allowed per account
+	PriceBump                  uint64 // Price bump percentage to replace an already existing transaction
+	BlobPriceBump              uint64 //Price bump percentage to replace an existing 4844 blob tx (type-3)
+	OverrideCancunTime         *big.Int
+	OverrideOptimismCanyonTime *big.Int
 
 	// regular batch tasks processing
 	SyncToNewPeersEvery   time.Duration

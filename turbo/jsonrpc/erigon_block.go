@@ -5,8 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"sort"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/common"
@@ -190,8 +191,8 @@ func buildBlockResponse(br services.FullBlockReader, db kv.Tx, blockNum uint64, 
 		additionalFields["totalDifficulty"] = (*hexutil.Big)(td)
 	}
 
-	depositNonces := rawdb.ReadDepositNonces(db, blockNum)
-	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, nil, common.Hash{}, additionalFields, nil, depositNonces)
+	receipts := rawdb.ReadRawReceipts(db, blockNum)
+	response, err := ethapi.RPCMarshalBlockEx(block, true, fullTx, nil, common.Hash{}, additionalFields, receipts)
 
 	if err == nil && rpc.BlockNumber(block.NumberU64()) == rpc.PendingBlockNumber {
 		// Pending blocks need to nil out a few fields

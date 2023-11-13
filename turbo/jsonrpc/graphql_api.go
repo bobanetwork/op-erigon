@@ -3,8 +3,9 @@ package jsonrpc
 import (
 	"context"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -116,8 +117,8 @@ func (api *GraphQLAPIImpl) delegateGetBlockByNumber(tx kv.Tx, b *types.Block, nu
 		return nil, err
 	}
 	additionalFields := make(map[string]interface{})
-	depositNonces := rawdb.ReadDepositNonces(tx, uint64(number.Int64()))
-	response, err := ethapi.RPCMarshalBlock(b, inclTx, inclTx, additionalFields, depositNonces)
+	receipts := rawdb.ReadRawReceipts(tx, uint64(number.Int64()))
+	response, err := ethapi.RPCMarshalBlock(b, inclTx, inclTx, additionalFields, receipts)
 	if !inclTx {
 		delete(response, "transactions") // workaround for https://github.com/ledgerwatch/erigon/issues/4989#issuecomment-1218415666
 	}

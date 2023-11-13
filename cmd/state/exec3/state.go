@@ -14,6 +14,7 @@ import (
 
 	"github.com/ledgerwatch/erigon/cmd/state/exec22"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -136,9 +137,17 @@ func (rw *Worker) RunTxTaskNoLock(txTask *exec22.TxTask) {
 	var err error
 	header := txTask.Header
 
+	// Optimism Canyon
+	create2DeployerTx := misc.IsCanyonActivationBlock(rw.chainConfig, header.Time) && txTask.TxIndex == -1
+
 	var logger = log.New("worker-tx")
 
 	switch {
+	case create2DeployerTx:
+		if create2DeployerTx && header != nil {
+			// Optimism Canyon
+			misc.EnsureCreate2Deployer(rw.chainConfig, header.Time, ibs)
+		}
 	case txTask.TxIndex == -1:
 		if txTask.BlockNum == 0 {
 			// Genesis block

@@ -70,8 +70,8 @@ type Config struct {
 
 	// Optimism Forks
 	BedrockBlock *big.Int `json:"bedrockBlock,omitempty"` // bedrockSwitch block (nil = no fork, 0 = already actived)
-	// RegolithTime is *uint64 in op-geth
 	RegolithTime *big.Int `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
+	CanyonTime   *big.Int `json:"canyonTime,omitempty"`   // Canyon switch time (nil = no fork, 0 = already on optimism canyon)
 
 	// Optional EIP-4844 parameters
 	MinBlobGasPrice            *uint64 `json:"minBlobGasPrice,omitempty"`
@@ -235,6 +235,10 @@ func (c *Config) IsRegolith(time uint64) bool {
 	return isForked(c.RegolithTime, time)
 }
 
+func (c *Config) IsCanyon(time uint64) bool {
+	return isForked(c.CanyonTime, time)
+}
+
 // IsOptimism returns whether the node is an optimism node or not.
 func (c *Config) IsOptimism() bool {
 	return c.Optimism != nil
@@ -247,6 +251,10 @@ func (c *Config) IsOptimismBedrock(num uint64) bool {
 func (c *Config) IsOptimismRegolith(time uint64) bool {
 	// Optimism op-geth has additional complexity which is not yet ported here.
 	return /* c.IsOptimism() && */ c.IsRegolith(time)
+}
+
+func (c *Config) IsOptimismCanyon(time uint64) bool {
+	return c.IsOptimism() && c.IsCanyon(time)
 }
 
 // IsOptimismPreBedrock returns true iff this is an optimism node & bedrock is not yet active
@@ -263,8 +271,11 @@ func (c *Config) GetBurntContract(num uint64) *common.Address {
 }
 
 // BaseFeeChangeDenominator bounds the amount the base fee can change between blocks.
-func (c *Config) BaseFeeChangeDenominator(defaultParam int) uint64 {
+func (c *Config) BaseFeeChangeDenominator(defaultParam, time uint64) uint64 {
 	if c.IsOptimism() {
+		if c.IsCanyon(time) {
+			return c.Optimism.EIP1559DenominatorCanyon
+		}
 		return c.Optimism.EIP1559Denominator
 	}
 	return uint64(defaultParam)
@@ -505,8 +516,9 @@ func (c *CliqueConfig) String() string {
 
 // OptimismConfig is the optimism config.
 type OptimismConfig struct {
-	EIP1559Elasticity  uint64 `json:"eip1559Elasticity"`
-	EIP1559Denominator uint64 `json:"eip1559Denominator"`
+	EIP1559Elasticity        uint64 `json:"eip1559Elasticity"`
+	EIP1559Denominator       uint64 `json:"eip1559Denominator"`
+	EIP1559DenominatorCanyon uint64 `json:"eip1559DenominatorCanyon"`
 }
 
 // String implements the stringer interface, returning the optimism fee config details.

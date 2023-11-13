@@ -153,3 +153,30 @@ func TestGetBurntContract(t *testing.T) {
 	require.NotNil(t, addr)
 	assert.Equal(t, common.HexToAddress("0x617b94CCCC2511808A3C9478ebb96f455CF167aA"), *addr)
 }
+
+// TODO: remove when superchain-registry is integrated
+// TestCanyonTimestampOnBlockBoundary asserts that Canyon will activate on a block's timestamp.
+// This is critical because the create2Deployer only activates on a block's timestamp.
+func TestCanyonTimestampOnBlockBoundary(t *testing.T) {
+	superchainConfigs := []*chain.Config{OptimismMainnetChainConfig, OptimismGoerliChainConfig}
+	l2BlockTime := 2
+	for _, config := range superchainConfigs {
+		if config.CanyonTime == nil {
+			continue
+		}
+		regolithTime := 0
+		if config.RegolithTime != nil {
+			regolithTime = int(config.RegolithTime.Int64())
+		}
+		canyonTime := int(config.CanyonTime.Int64())
+		if regolithTime > canyonTime {
+			t.Fatalf("Canyon time on superchain %v is less then Regolith time. canyon time: %v, regolith time: %v",
+				config.ChainName, canyonTime, regolithTime)
+		}
+		canyonOffset := canyonTime - regolithTime
+		if canyonOffset%l2BlockTime != 0 {
+			t.Fatalf("Canyon time on superchain %v is not on the block time. canyon time: %v, regolith time: %v, block time: %v",
+				config.ChainName, canyonTime, regolithTime, l2BlockTime)
+		}
+	}
+}
