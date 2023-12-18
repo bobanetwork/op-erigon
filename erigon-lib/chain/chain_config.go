@@ -278,7 +278,7 @@ func (c *Config) BaseFeeChangeDenominator(defaultParam, time uint64) uint64 {
 		}
 		return c.Optimism.EIP1559Denominator
 	}
-	return uint64(defaultParam)
+	return defaultParam
 }
 
 // ElasticityMultiplier bounds the maximum gas limit an EIP-1559 block may have.
