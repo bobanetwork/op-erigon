@@ -195,16 +195,18 @@ func (s *Merge) CalcDifficulty(chain consensus.ChainHeaderReader, time, parentTi
 // stock Ethereum consensus engine with EIP-3675 modifications.
 func (s *Merge) verifyHeader(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
 
-	if uint64(len(header.Extra)) > params.MaximumExtraDataSize {
-		return fmt.Errorf("extra-data longer than %d bytes (%d)", params.MaximumExtraDataSize, len(header.Extra))
-	}
+	if !chain.Config().IsOptimismPreBedrock(header.Number.Uint64()) {
+		if uint64(len(header.Extra)) > params.MaximumExtraDataSize {
+			return fmt.Errorf("extra-data longer than %d bytes (%d)", params.MaximumExtraDataSize, len(header.Extra))
+		}
 
-	if header.Time <= parent.Time {
-		return errOlderBlockTime
-	}
+		if header.Time <= parent.Time {
+			return errOlderBlockTime
+		}
 
-	if header.Difficulty.Cmp(ProofOfStakeDifficulty) != 0 {
-		return errInvalidDifficulty
+		if header.Difficulty.Cmp(ProofOfStakeDifficulty) != 0 {
+			return errInvalidDifficulty
+		}
 	}
 
 	if !bytes.Equal(header.Nonce[:], ProofOfStakeNonce[:]) {
@@ -229,8 +231,10 @@ func (s *Merge) verifyHeader(chain consensus.ChainHeaderReader, header, parent *
 		return errInvalidUncleHash
 	}
 
-	if err := misc.VerifyEip1559Header(chain.Config(), parent, header, false); err != nil {
-		return err
+	if !chain.Config().IsOptimismPreBedrock(header.Number.Uint64()) {
+		if err := misc.VerifyEip1559Header(chain.Config(), parent, header, false); err != nil {
+			return err
+		}
 	}
 
 	// Verify existence / non-existence of withdrawalsHash

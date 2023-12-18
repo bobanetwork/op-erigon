@@ -26,6 +26,31 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/fixedgas"
 )
 
+// Boba chain config
+var (
+	// Goerli
+	BobaGoerliChainId = big.NewInt(2888)
+	// Boba Goerli genesis gas limit
+	BobaGoerliGenesisGasLimit = 11000000
+	// Boba Goerli genesis block coinbase
+	BobaGoerliGenesisCoinbase = "0x0000000000000000000000000000000000000000"
+	// Boba Goerli genesis block extra data
+	BobaGoerliGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+	// Boba Goerli genesis root
+	BobaGoerliGenesisRoot = "0x36c808dc3bb586c14bebde3ca630a4d49a1fdad0b01d7e58f96f2fcd1aa0003d"
+
+	// Mainnet
+	BobaMainnetChainId = big.NewInt(288)
+	// Boba Mainnet genesis gas limit
+	BobaMainnetGenesisGasLimit = 11000000
+	// Boba Mainnet genesis block coinbase
+	BobaMainnetGenesisCoinbase = "0x0000000000000000000000000000000000000000"
+	// Boba Mainnet genesis block extra data
+	BobaMainnetGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+	// Boba Mainnet genesis root
+	BobaMainnetGenesisRoot = "0x7ec54492a4504ff1ef3491825cd55e01e5c75409e4287129170e98d4693848ce"
+)
+
 // Config is the core config which determines the blockchain settings.
 //
 // Config is stored in the database on a per block basis. This means
@@ -308,6 +333,66 @@ func (c *Config) GetBlobGasPriceUpdateFraction() uint64 {
 
 func (c *Config) GetMaxBlobsPerBlock() uint64 {
 	return c.GetMaxBlobGasPerBlock() / fixedgas.BlobGasPerBlob
+}
+
+func (c *Config) IsBobaLegacyBlock(num uint64) bool {
+	// Boba Goerli
+	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
+		return c.BedrockBlock.Uint64() > num
+	}
+	// Boba Mainnet
+	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
+		return c.BedrockBlock.Uint64() > num
+	}
+	return false
+}
+
+func (c *Config) GetBobaGenesisGasLimit() int {
+	// Boba Goerli
+	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
+		return BobaGoerliGenesisGasLimit
+	}
+	// Boba Mainnet
+	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BobaMainnetGenesisGasLimit
+	}
+	return 11000000
+}
+
+func (c *Config) GetBobaGenesisCoinbase() string {
+	// Boba Goerli
+	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
+		return BobaGoerliGenesisCoinbase
+	}
+	// Boba Mainnet
+	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BobaMainnetGenesisCoinbase
+	}
+	return "0x0000000000000000000000000000000000000000"
+}
+
+func (c *Config) GetBobaGenesisExtraData() string {
+	// Boba Goerli
+	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
+		return BobaGoerliGenesisExtraData
+	}
+	// Boba Mainnet
+	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BobaMainnetGenesisExtraData
+	}
+	return ""
+}
+
+func (c *Config) GetBobaGenesisRoot() string {
+	// Boba Goerli
+	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
+		return BobaGoerliGenesisRoot
+	}
+	// Boba Mainnet
+	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
+		return BobaMainnetGenesisRoot
+	}
+	return ""
 }
 
 // CheckCompatible checks whether scheduled fork transitions have been imported

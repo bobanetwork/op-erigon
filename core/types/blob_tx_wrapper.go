@@ -383,3 +383,5 @@ func (txw *BlobTxWrapper) MarshalBinary(w io.Writer) error {
 func (txw BlobTxWrapper) EncodeRLP(w io.Writer) error {
 	return txw.Tx.EncodeRLP(w)
 }
+
+func (txw BlobTxWrapper) IsLegacyDepositTx() bool { return false }

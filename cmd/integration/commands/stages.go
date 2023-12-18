@@ -919,7 +919,7 @@ func stageExec(db kv.RwDB, ctx context.Context, logger log.Logger) error {
 	br, _ := blocksIO(db, logger)
 	cfg := stagedsync.StageExecuteBlocksCfg(db, pm, batchSize, nil, chainConfig, engine, vmConfig, nil,
 		/*stateStream=*/ false,
-		/*badBlockHalt=*/ false, historyV3, dirs, br, nil, genesis, syncCfg, agg, nil)
+		/*badBlockHalt=*/ false, historyV3, dirs, br, nil, genesis, syncCfg, agg, nil, "", time.Second*10)
 
 	var tx kv.RwTx //nil - means lower-level code (each stage) will manage transactions
 	if noCommit {
@@ -967,6 +967,7 @@ func stageTrie(db kv.RwDB, ctx context.Context, logger log.Logger) error {
 	defer agg.Close()
 	_, _, sync, _, _ := newSync(ctx, db, nil /* miningConfig */, logger)
 	must(sync.SetCurrentStage(stages.IntermediateHashes))
+	chainConfig := fromdb.ChainConfig(db)
 
 	if warmup {
 		return reset2.Warmup(ctx, db, log.LvlInfo, stages.IntermediateHashes)
@@ -1009,7 +1010,7 @@ func stageTrie(db kv.RwDB, ctx context.Context, logger log.Logger) error {
 			return err
 		}
 	} else {
-		if _, err := stagedsync.SpawnIntermediateHashesStage(s, sync /* Unwinder */, tx, cfg, ctx, logger); err != nil {
+		if _, err := stagedsync.SpawnIntermediateHashesStage(s, sync /* Unwinder */, tx, cfg, ctx, chainConfig, logger); err != nil {
 			return err
 		}
 	}
@@ -1581,10 +1582,10 @@ func newSync(ctx context.Context, db kv.RwDB, miningConfig *params.MiningConfig,
 		stagedsync.MiningStages(ctx,
 			stagedsync.StageMiningCreateBlockCfg(db, miner, *chainConfig, engine, nil, nil, dirs.Tmp, blockReader),
 			stagedsync.StageBorHeimdallCfg(db, snapDb, miner, *chainConfig, heimdallClient, blockReader, nil, nil, recents, signatures),
-			stagedsync.StageMiningExecCfg(db, miner, events, *chainConfig, engine, &vm.Config{}, dirs.Tmp, nil, 0, nil, nil, blockReader),
+			stagedsync.StageMiningExecCfg(db, miner, events, *chainConfig, engine, &vm.Config{}, dirs.Tmp, nil, 0, nil, nil, blockReader, nil, nil),
 			stagedsync.StageHashStateCfg(db, dirs, historyV3),
 			stagedsync.StageTrieCfg(db, false, true, false, dirs.Tmp, blockReader, nil, historyV3, agg),
-			stagedsync.StageMiningFinishCfg(db, *chainConfig, engine, miner, miningCancel, blockReader, builder.NewLatestBlockBuiltStore()),
+			stagedsync.StageMiningFinishCfg(db, *chainConfig, engine, miner, miningCancel, blockReader, builder.NewLatestBlockBuiltStore(), nil, nil),
 		),
 		stagedsync.MiningUnwindOrder,
 		stagedsync.MiningPruneOrder,

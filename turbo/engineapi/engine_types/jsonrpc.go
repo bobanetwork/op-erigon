@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
@@ -155,9 +156,13 @@ func ConvertRpcBlockToExecutionPayload(payload *execution.Block) *ExecutionPaylo
 	return res
 }
 
-func ConvertPayloadFromRpc(payload *types2.ExecutionPayload) *ExecutionPayload {
+func ConvertPayloadFromRpc(payload *types2.ExecutionPayload, isBobaLegacyBlock bool) *ExecutionPayload {
 	var bloom types.Bloom = gointerfaces.ConvertH2048ToBloom(payload.LogsBloom)
-	baseFee := gointerfaces.ConvertH256ToUint256Int(payload.BaseFeePerGas).ToBig()
+
+	var baseFee *big.Int
+	if !isBobaLegacyBlock {
+		baseFee = gointerfaces.ConvertH256ToUint256Int(payload.BaseFeePerGas).ToBig()
+	}
 
 	// Convert slice of hexutility.Bytes to a slice of slice of bytes
 	transactions := make([]hexutility.Bytes, len(payload.Transactions))

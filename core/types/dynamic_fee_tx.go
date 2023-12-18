@@ -463,3 +463,5 @@ func NewEIP1559Transaction(chainID uint256.Int, nonce uint64, to libcommon.Addre
 		FeeCap:  gasFeeCap,
 	}
 }
+
+func (tx *DynamicFeeTransaction) IsLegacyDepositTx() bool { return false }

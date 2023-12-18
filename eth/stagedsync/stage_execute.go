@@ -44,6 +44,7 @@ import (
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 	trace_logger "github.com/ledgerwatch/erigon/eth/tracers/logger"
 	"github.com/ledgerwatch/erigon/ethdb/prune"
+	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/turbo/shards"
 	"github.com/ledgerwatch/erigon/turbo/silkworm"
@@ -88,6 +89,9 @@ type ExecuteBlockCfg struct {
 	agg       *libstate.AggregatorV3
 
 	silkworm *silkworm.Silkworm
+
+	rollupHistoricalRPC        string
+	rollupHistoricalRPCTimeout time.Duration
 }
 
 func StageExecuteBlocksCfg(
@@ -110,29 +114,34 @@ func StageExecuteBlocksCfg(
 	syncCfg ethconfig.Sync,
 	agg *libstate.AggregatorV3,
 	silkworm *silkworm.Silkworm,
+
+	rollupHistoricalRPC string,
+	rollupHistoricalRPCTimeout time.Duration,
 ) ExecuteBlockCfg {
 	if genesis == nil {
 		panic("assert: nil genesis")
 	}
 	return ExecuteBlockCfg{
-		db:            db,
-		prune:         pm,
-		batchSize:     batchSize,
-		changeSetHook: changeSetHook,
-		chainConfig:   chainConfig,
-		engine:        engine,
-		vmConfig:      vmConfig,
-		dirs:          dirs,
-		accumulator:   accumulator,
-		stateStream:   stateStream,
-		badBlockHalt:  badBlockHalt,
-		blockReader:   blockReader,
-		hd:            hd,
-		genesis:       genesis,
-		historyV3:     historyV3,
-		syncCfg:       syncCfg,
-		agg:           agg,
-		silkworm:      silkworm,
+		db:                         db,
+		prune:                      pm,
+		batchSize:                  batchSize,
+		changeSetHook:              changeSetHook,
+		chainConfig:                chainConfig,
+		engine:                     engine,
+		vmConfig:                   vmConfig,
+		dirs:                       dirs,
+		accumulator:                accumulator,
+		stateStream:                stateStream,
+		badBlockHalt:               badBlockHalt,
+		blockReader:                blockReader,
+		hd:                         hd,
+		genesis:                    genesis,
+		historyV3:                  historyV3,
+		syncCfg:                    syncCfg,
+		agg:                        agg,
+		silkworm:                   silkworm,
+		rollupHistoricalRPC:        rollupHistoricalRPC,
+		rollupHistoricalRPCTimeout: rollupHistoricalRPCTimeout,
 	}
 }
 
@@ -174,7 +183,19 @@ func executeBlock(
 	var execRs *core.EphemeralExecResult
 	getHashFn := core.GetHashFn(block.Header(), getHeader)
 
-	execRs, err = core.ExecuteBlockEphemerally(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, NewChainReaderImpl(cfg.chainConfig, tx, cfg.blockReader, logger), getTracer, logger)
+	// Rollup History Client
+	var historicalRPCService *rpc.Client
+	if cfg.rollupHistoricalRPC != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.rollupHistoricalRPCTimeout)
+		client, err := rpc.DialContext(ctx, cfg.rollupHistoricalRPC, logger)
+		cancel()
+		if err != nil {
+			return err
+		}
+		historicalRPCService = client
+	}
+
+	execRs, err = core.ExecuteBlockEphemerally(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, NewChainReaderImpl(cfg.chainConfig, tx, cfg.blockReader, logger), getTracer, historicalRPCService, &cfg.rollupHistoricalRPCTimeout, logger)
 	if err != nil {
 		return fmt.Errorf("%w: %v", consensus.ErrInvalidBlock, err)
 	}

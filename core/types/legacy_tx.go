@@ -369,6 +369,10 @@ func (tx LegacyTx) AsMessage(s Signer, _ *big.Int, rules *chain.Rules) (Message,
 		rollupDataGas: RollupDataGas(tx, rules),
 	}
 
+	if tx.IsLegacyDepositTx() {
+		return msg, nil
+	}
+
 	var err error
 	msg.from, err = tx.Sender(s)
 	return msg, err
@@ -455,4 +459,20 @@ func (tx *LegacyTx) Sender(signer Signer) (libcommon.Address, error) {
 	}
 	tx.from.Store(addr)
 	return addr, nil
+}
+
+func (tx *LegacyTx) IsLegacyDepositTx() bool {
+	V, R, S := tx.RawSignatureValues()
+	// contract creation
+	if tx.To == nil {
+		return false
+	}
+	MessengerAddress := libcommon.HexToAddress("0x4200000000000000000000000000000000000007")
+	if *tx.To == MessengerAddress &&
+		*V == (uint256.Int{}) &&
+		*R == (uint256.Int{}) &&
+		*S == (uint256.Int{}) {
+		return true
+	}
+	return false
 }

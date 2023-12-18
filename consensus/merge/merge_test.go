@@ -14,7 +14,9 @@ import (
 type readerMock struct{}
 
 func (r readerMock) Config() *chain.Config {
-	return nil
+	return &chain.Config{
+		BedrockBlock: libcommon.Big0,
+	}
 }
 
 func (r readerMock) CurrentHeader() *types.Header {
@@ -49,6 +51,7 @@ func (r readerMock) BorSpan(spanId uint64) []byte {
 // and nonce so we are gonna test those
 func TestVerifyHeaderDifficulty(t *testing.T) {
 	header := &types.Header{
+		Number:     big.NewInt(1),
 		Difficulty: big.NewInt(1),
 		Time:       1,
 	}
@@ -70,6 +73,7 @@ func TestVerifyHeaderDifficulty(t *testing.T) {
 
 func TestVerifyHeaderNonce(t *testing.T) {
 	header := &types.Header{
+		Number:     big.NewInt(1),
 		Nonce:      types.BlockNonce{1, 0, 0, 0, 0, 0, 0, 0},
 		Difficulty: big.NewInt(0),
 		Time:       1,

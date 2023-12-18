@@ -9,6 +9,7 @@ import (
 	"math/bits"
 	"sync/atomic"
 
+	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/common/length"
@@ -58,7 +59,7 @@ func StageTrieCfg(db kv.RwDB, checkRoot, saveNewHashesToDB, badBlockHalt bool, t
 	}
 }
 
-func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg TrieCfg, ctx context.Context, logger log.Logger) (libcommon.Hash, error) {
+func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg TrieCfg, ctx context.Context, chain *chain.Config, logger log.Logger) (libcommon.Hash, error) {
 	quit := ctx.Done()
 	useExternalTx := tx != nil
 	if !useExternalTx {
@@ -123,22 +124,24 @@ func SpawnIntermediateHashesStage(s *StageState, u Unwinder, tx kv.RwTx, cfg Tri
 		}
 	}
 
-	if cfg.checkRoot && root != expectedRootHash {
-		logger.Error(fmt.Sprintf("[%s] Wrong trie root of block %d: %x, expected (from header): %x. Block hash: %x", logPrefix, to, root, expectedRootHash, headerHash))
-		if cfg.badBlockHalt {
-			return trie.EmptyRoot, fmt.Errorf("%w: wrong trie root", consensus.ErrInvalidBlock)
-		}
-		if cfg.hd != nil {
-			cfg.hd.ReportBadHeaderPoS(headerHash, syncHeadHeader.ParentHash)
-		}
+	if !chain.IsOptimismPreBedrock(s.BlockNumber) {
+		if cfg.checkRoot && root != expectedRootHash {
+			logger.Error(fmt.Sprintf("[%s] Wrong trie root of block %d: %x, expected (from header): %x. Block hash: %x", logPrefix, to, root, expectedRootHash, headerHash))
+			if cfg.badBlockHalt {
+				return trie.EmptyRoot, fmt.Errorf("%w: wrong trie root", consensus.ErrInvalidBlock)
+			}
+			if cfg.hd != nil {
+				cfg.hd.ReportBadHeaderPoS(headerHash, syncHeadHeader.ParentHash)
+			}
 
-		if to > s.BlockNumber {
-			unwindTo := (to + s.BlockNumber) / 2 // Binary search for the correct block, biased to the lower numbers
-			logger.Warn("Unwinding due to incorrect root hash", "to", unwindTo)
-			u.UnwindTo(unwindTo, BadBlock(headerHash, fmt.Errorf("Incorrect root hash")))
+			if to > s.BlockNumber {
+				unwindTo := (to + s.BlockNumber) / 2 // Binary search for the correct block, biased to the lower numbers
+				logger.Warn("Unwinding due to incorrect root hash", "to", unwindTo)
+				u.UnwindTo(unwindTo, BadBlock(headerHash, fmt.Errorf("Incorrect root hash")))
+			}
+		} else if err = s.Update(tx, to); err != nil {
+			return trie.EmptyRoot, err
 		}
-	} else if err = s.Update(tx, to); err != nil {
-		return trie.EmptyRoot, err
 	}
 
 	if !useExternalTx {

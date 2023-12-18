@@ -5,8 +5,9 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/holiman/uint256"
@@ -43,6 +44,7 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	if cached := rawdb.ReadReceipts(chainConfig, tx, block, senders); cached != nil {
 		return cached, nil
 	}
+
 	engine := api.engine()
 
 	_, _, _, ibs, _, err := transactions.ComputeTxEnv(ctx, engine, block, chainConfig, api._blockReader, tx, 0, api.historyV3(tx))
@@ -68,7 +70,7 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 	header := block.Header()
 	for i, txn := range block.Transactions() {
 		ibs.SetTxContext(txn.Hash(), block.Hash(), i)
-		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, usedBlobGas, vm.Config{})
+		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, usedBlobGas, vm.Config{}, nil, nil)
 		log.Debug("Computed receipt for tx", "txhash", txn.Hash(), "l1Fee", receipt.L1Fee)
 		if err != nil {
 			return nil, err
@@ -782,7 +784,7 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	}
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(txn.GetPrice().Uint64())
-	} else {
+	} else if header.BaseFee != nil {
 		baseFee, _ := uint256.FromBig(header.BaseFee)
 		gasPrice := new(big.Int).Add(header.BaseFee, txn.GetEffectiveGasTip(baseFee).ToBig())
 		fields["effectiveGasPrice"] = hexutil.Uint64(gasPrice.Uint64())

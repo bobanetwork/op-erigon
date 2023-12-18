@@ -272,7 +272,12 @@ func write(tx kv.RwTx, g *types.Genesis, tmpDir string) (*types.Block, *state.In
 	if err := rawdb.WriteBlock(tx, block); err != nil {
 		return nil, nil, err
 	}
-	if err := rawdb.WriteTd(tx, block.Hash(), block.NumberU64(), g.Difficulty); err != nil {
+
+	difficulty := g.Difficulty
+	if g.Config.IsBobaLegacyBlock(block.NumberU64()) {
+		difficulty = libcommon.Big1
+	}
+	if err := rawdb.WriteTd(tx, block.Hash(), block.NumberU64(), difficulty); err != nil {
 		return nil, nil, err
 	}
 	if err := rawdbv3.TxNums.WriteForGenesis(tx, 1); err != nil {
@@ -507,6 +512,13 @@ func DeveloperGenesisBlock(period uint64, faucet libcommon.Address) *types.Genes
 func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.IntraBlockState, error) {
 	_ = g.Alloc //nil-check
 
+	baseFee := g.BaseFee
+	isBobaLegacyBlock := false
+	if g.Config.IsBobaLegacyBlock(g.Number) {
+		isBobaLegacyBlock = true
+		baseFee = nil
+	}
+
 	head := &types.Header{
 		Number:        new(big.Int).SetUint64(g.Number),
 		Nonce:         types.EncodeNonce(g.Nonce),
@@ -518,7 +530,7 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		Difficulty:    g.Difficulty,
 		MixDigest:     g.Mixhash,
 		Coinbase:      g.Coinbase,
-		BaseFee:       g.BaseFee,
+		BaseFee:       baseFee,
 		BlobGasUsed:   g.BlobGasUsed,
 		ExcessBlobGas: g.ExcessBlobGas,
 		AuRaStep:      g.AuRaStep,
@@ -530,7 +542,7 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 	if g.Difficulty == nil {
 		head.Difficulty = params.GenesisDifficulty
 	}
-	if g.Config != nil && g.Config.IsLondon(0) {
+	if g.Config != nil && g.Config.IsLondon(0) && !isBobaLegacyBlock {
 		if g.BaseFee != nil {
 			head.BaseFee = g.BaseFee
 		} else {
@@ -559,6 +571,13 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		} else {
 			head.ParentBeaconBlockRoot = &libcommon.Hash{}
 		}
+	}
+
+	if isBobaLegacyBlock && g.Number == 0 {
+		head.Time = 0
+		head.Difficulty = big.NewInt(1)
+		head.Extra = libcommon.Hex2Bytes(g.Config.GetBobaGenesisExtraData())
+		head.Coinbase = libcommon.HexToAddress(g.Config.GetBobaGenesisCoinbase())
 	}
 
 	var root libcommon.Hash
@@ -624,8 +643,10 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		if err = statedb.FinalizeTx(&chain.Rules{}, w); err != nil {
 			return
 		}
-		if root, err = trie.CalcRoot("genesis", tx); err != nil {
-			return
+		if !isBobaLegacyBlock {
+			if root, err = trie.CalcRoot("genesis", tx); err != nil {
+				return
+			}
 		}
 	}()
 	wg.Wait()
@@ -633,7 +654,11 @@ func GenesisToBlock(g *types.Genesis, tmpDir string) (*types.Block, *state.Intra
 		return nil, nil, err
 	}
 
-	head.Root = root
+	if isBobaLegacyBlock && g.Number == 0 {
+		head.Root = libcommon.HexToHash(g.Config.GetBobaGenesisRoot())
+	} else {
+		head.Root = root
+	}
 
 	return types.NewBlock(head, nil, nil, nil, withdrawals), statedb, nil
 }

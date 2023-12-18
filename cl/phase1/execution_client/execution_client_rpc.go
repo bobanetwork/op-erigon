@@ -57,12 +57,6 @@ func (cc *ExecutionClientRpc) NewPayload(payload *cltypes.Eth1Block, beaconParen
 	if payload == nil {
 		return
 	}
-
-	reversedBaseFeePerGas := libcommon.Copy(payload.BaseFeePerGas[:])
-	for i, j := 0, len(reversedBaseFeePerGas)-1; i < j; i, j = i+1, j-1 {
-		reversedBaseFeePerGas[i], reversedBaseFeePerGas[j] = reversedBaseFeePerGas[j], reversedBaseFeePerGas[i]
-	}
-	baseFee := new(big.Int).SetBytes(reversedBaseFeePerGas)
 	var engineMethod string
 	// determine the engine method
 	switch payload.Version() {
@@ -92,8 +86,17 @@ func (cc *ExecutionClientRpc) NewPayload(payload *cltypes.Eth1Block, beaconParen
 		BlockHash:    payload.BlockHash,
 	}
 
-	request.BaseFeePerGas = new(hexutil.Big)
-	*request.BaseFeePerGas = hexutil.Big(*baseFee)
+	request.BaseFeePerGas = nil
+	if payload.BaseFeePerGas == (libcommon.Hash{}) {
+		reversedBaseFeePerGas := libcommon.Copy(payload.BaseFeePerGas[:])
+		for i, j := 0, len(reversedBaseFeePerGas)-1; i < j; i, j = i+1, j-1 {
+			reversedBaseFeePerGas[i], reversedBaseFeePerGas[j] = reversedBaseFeePerGas[j], reversedBaseFeePerGas[i]
+		}
+		baseFee := new(big.Int).SetBytes(reversedBaseFeePerGas)
+		request.BaseFeePerGas = new(hexutil.Big)
+		*request.BaseFeePerGas = hexutil.Big(*baseFee)
+	}
+
 	payloadBody := payload.Body()
 	// Setup transactionbody
 	request.Withdrawals = payloadBody.Withdrawals
