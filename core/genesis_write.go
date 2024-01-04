@@ -294,6 +294,13 @@ func write(tx kv.RwTx, g *types.Genesis, tmpDir string) (*types.Block, *state.In
 		return nil, nil, err
 	}
 
+	if g.Config.TerminalTotalDifficultyPassed {
+		// The genesis block is implicitly the first fork choice in PoS Networks
+		rawdb.WriteForkchoiceHead(tx, block.Hash())
+		rawdb.WriteForkchoiceFinalized(tx, block.Hash())
+		rawdb.WriteForkchoiceSafe(tx, block.Hash())
+	}
+
 	// We support ethash/merge for issuance (for now)
 	if g.Config.Consensus != chain.EtHashConsensus {
 		return block, statedb, nil
