@@ -110,6 +110,10 @@ var (
 		Name:  "override.cancun",
 		Usage: "Manually specify the Cancun fork time, overriding the bundled setting",
 	}
+	OverrideOptimismCanyonFlag = flags.BigFlag{
+		Name:  "override.canyon",
+		Usage: "Manually specify the Optimism Canyon fork time, overriding the bundled setting",
+	}
 	TrustedSetupFile = cli.StringFlag{
 		Name:  "trusted-setup-file",
 		Usage: "Absolute path to trusted_setup.json file",
@@ -1688,6 +1692,11 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 	if ctx.IsSet(OverrideCancunFlag.Name) {
 		cfg.OverrideCancunTime = flags.GlobalBig(ctx, OverrideCancunFlag.Name)
 		cfg.TxPool.OverrideCancunTime = cfg.OverrideCancunTime
+	}
+
+	if ctx.IsSet(OverrideOptimismCanyonFlag.Name) {
+		cfg.OverrideOptimismCanyonTime = flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
+		cfg.TxPool.OverrideOptimismCanyonTime = cfg.OverrideOptimismCanyonTime
 	}
 
 	if ctx.IsSet(InternalConsensusFlag.Name) && clparams.EmbeddedSupported(cfg.NetworkID) {

@@ -22,10 +22,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/kv/dbutils"
 	"math"
 	"math/big"
 	"time"
+
+	"github.com/ledgerwatch/erigon-lib/kv/dbutils"
 
 	"github.com/gballet/go-verkle"
 	"github.com/ledgerwatch/erigon-lib/chain"
@@ -853,18 +854,6 @@ func ReadReceipts(config *chain.Config, db kv.Tx, block *types.Block, senders []
 		return nil
 	}
 	return receipts
-}
-
-func ReadDepositNonces(db kv.Tx, blockNumber uint64) []*uint64 {
-	receipts := ReadRawReceipts(db, blockNumber)
-	if receipts == nil {
-		return nil
-	}
-	depositNonces := make([]*uint64, len(receipts))
-	for i, r := range receipts {
-		depositNonces[i] = r.DepositNonce
-	}
-	return depositNonces
 }
 
 // WriteReceipts stores all the transaction receipts belonging to a block.

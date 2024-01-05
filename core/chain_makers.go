@@ -370,6 +370,10 @@ func GenerateChain(config *chain.Config, parent *types.Block, engine consensus.E
 		if b.engine != nil {
 			InitializeBlockExecution(b.engine, nil, b.header, config, ibs, logger)
 		}
+
+		// Optimism Canyon
+		misc.EnsureCreate2Deployer(config, b.header.Time, ibs)
+
 		// Execute any user modifications to the block
 		if gen != nil {
 			gen(i, b)
@@ -589,7 +593,7 @@ func MakeEmptyHeader(parent *types.Header, chainConfig *chain.Config, timestamp 
 	parentGasLimit := parent.GasLimit
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
 	if chainConfig.IsLondon(header.Number.Uint64()) {
-		header.BaseFee = misc.CalcBaseFee(chainConfig, parent)
+		header.BaseFee = misc.CalcBaseFee(chainConfig, parent, timestamp)
 		if !chainConfig.IsLondon(parent.Number.Uint64()) {
 			parentGasLimit = parent.GasLimit * chainConfig.ElasticityMultiplier(params.ElasticityMultiplier)
 		}

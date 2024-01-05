@@ -19,8 +19,9 @@ package core
 
 import (
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/metrics"
 	"time"
+
+	"github.com/ledgerwatch/erigon-lib/metrics"
 
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/exp/slices"
@@ -34,6 +35,7 @@ import (
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
@@ -104,6 +106,9 @@ func ExecuteBlockEphemerally(
 	if err := InitializeBlockExecution(engine, chainReader, block.Header(), chainConfig, ibs, logger); err != nil {
 		return nil, err
 	}
+
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(chainConfig, header.Time, ibs)
 
 	noop := state.NewNoopWriter()
 	//fmt.Printf("====txs processing start: %d====\n", block.NumberU64())
@@ -210,6 +215,9 @@ func rlpHash(x interface{}) (h libcommon.Hash) {
 }
 
 func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain.Config, ibs *state.IntraBlockState, header *types.Header, engine consensus.EngineReader, constCall bool) (result []byte, err error) {
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(chainConfig, header.Time, ibs)
+
 	msg := types.NewMessage(
 		state.SystemAddress,
 		&contract,
@@ -254,6 +262,9 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 
 // SysCreate is a special (system) contract creation methods for genesis constructors.
 func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config, ibs *state.IntraBlockState, header *types.Header) (result []byte, err error) {
+	// Optimism Canyon
+	misc.EnsureCreate2Deployer(&chainConfig, header.Time, ibs)
+
 	msg := types.NewMessage(
 		contract,
 		nil, // to
