@@ -4,9 +4,7 @@
 package auraabi
 
 import (
-	"fmt"
 	"math/big"
-	"reflect"
 	"strings"
 
 	ethereum "github.com/ledgerwatch/erigon"
