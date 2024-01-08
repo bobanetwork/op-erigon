@@ -28,7 +28,7 @@ func (cc *ExecutionClientDirect) NewPayload(payload *cltypes.Eth1Block, beaconPa
 		return
 	}
 
-	header, err := payload.RlpHeader()
+	header, err := payload.RlpHeader(beaconParentRoot)
 	if err != nil {
 		return true, err
 	}
@@ -88,13 +88,12 @@ func (cc *ExecutionClientDirect) Ready() (bool, error) {
 
 // GetBodiesByRange gets block bodies in given block range
 func (cc *ExecutionClientDirect) GetBodiesByRange(start, count uint64) ([]*types.RawBody, error) {
-	return cc.chainRW.GetBodiesByRange(start, count), nil
-
+	return cc.chainRW.GetBodiesByRange(start, count)
 }
 
 // GetBodiesByHashes gets block bodies with given hashes
 func (cc *ExecutionClientDirect) GetBodiesByHashes(hashes []libcommon.Hash) ([]*types.RawBody, error) {
-	return cc.chainRW.GetBodiesByHases(hashes), nil
+	return cc.chainRW.GetBodiesByHashes(hashes)
 }
 
 func (cc *ExecutionClientDirect) FrozenBlocks() uint64 {

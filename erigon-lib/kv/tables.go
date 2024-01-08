@@ -442,6 +442,9 @@ const (
 	BlockRootToBlockNumber = "BlockRootToBlockNumber"
 	BlockRootToBlockHash   = "BlockRootToBlockHash"
 
+	LastBeaconSnapshot    = "LastBeaconSnapshot"
+	LastBeaconSnapshotKey = "LastBeaconSnapshotKey"
+
 	// [Block Root] => [Parent Root]
 	BlockRootToParentRoot = "BlockRootToParentRoot"
 
@@ -456,6 +459,41 @@ const (
 	LightClient = "LightClient"
 	// Period (one every 27 hours) => LightClientUpdate
 	LightClientUpdates = "LightClientUpdates"
+	// Beacon historical data
+	// ValidatorIndex => [Field]
+	ValidatorPublicKeys         = "ValidatorPublickeys"
+	InvertedValidatorPublicKeys = "InvertedValidatorPublickeys"
+	// ValidatorIndex + Slot => [Field]
+	ValidatorEffectiveBalance = "ValidatorEffectiveBalance"
+	ValidatorSlashings        = "ValidatorSlashings"
+	ValidatorBalance          = "ValidatorBalance"
+	StaticValidators          = "StaticValidators"
+	StateEvents               = "StateEvents"
+	ActiveValidatorIndicies   = "ActiveValidatorIndicies"
+
+	// External data
+	StateRoot = "StateRoot"
+	BlockRoot = "BlockRoot"
+	// Differentiate data stored per-slot vs per-epoch
+	SlotData  = "SlotData"
+	EpochData = "EpochData"
+	// State fields
+	InactivityScores           = "InactivityScores"
+	PreviousEpochParticipation = "PreviousEpochParticipation"
+	CurrentEpochParticipation  = "CurrentEpochParticipation"
+	NextSyncCommittee          = "NextSyncCommittee"
+	CurrentSyncCommittee       = "CurrentSyncCommittee"
+	HistoricalRoots            = "HistoricalRoots"
+	HistoricalSummaries        = "HistoricalSummaries"
+	CurrentEpochAttestations   = "EpochAttestations"
+	PreviousEpochAttestations  = "PreviousAttestations"
+	Eth1DataVotes              = "Eth1DataVotes"
+
+	IntraRandaoMixes = "IntraRandaoMixes" // [validator_index+slot] => [randao_mix]
+	RandaoMixes      = "RandaoMixes"      // [validator_index+slot] => [randao_mix]
+	Proposers        = "BlockProposers"   // epoch => proposers indicies
+
+	StatesProcessingProgress = "StatesProcessingProgress"
 )
 
 // Keys
@@ -488,6 +526,8 @@ var (
 	LightClientStore            = []byte("LightClientStore")
 	LightClientFinalityUpdate   = []byte("LightClientFinalityUpdate")
 	LightClientOptimisticUpdate = []byte("LightClientOptimisticUpdate")
+
+	StatesProcessingKey = []byte("StatesProcessing")
 )
 
 // ChaindataTables - list of all buckets. App will panic if some bucket is not in this list.
@@ -614,6 +654,35 @@ var ChaindataTables = []string{
 	LightClientUpdates,
 	BlockRootToBlockHash,
 	BlockRootToBlockNumber,
+	LastBeaconSnapshot,
+	// State Reconstitution
+	ValidatorPublicKeys,
+	InvertedValidatorPublicKeys,
+	ValidatorEffectiveBalance,
+	ValidatorBalance,
+	ValidatorSlashings,
+	StaticValidators,
+	StateEvents,
+	// Other stuff (related to state reconstitution)
+	BlockRoot,
+	StateRoot,
+	SlotData,
+	EpochData,
+	RandaoMixes,
+	Proposers,
+	StatesProcessingProgress,
+	PreviousEpochParticipation,
+	CurrentEpochParticipation,
+	InactivityScores,
+	NextSyncCommittee,
+	CurrentSyncCommittee,
+	HistoricalRoots,
+	HistoricalSummaries,
+	CurrentEpochAttestations,
+	PreviousEpochAttestations,
+	Eth1DataVotes,
+	IntraRandaoMixes,
+	ActiveValidatorIndicies,
 }
 
 const (

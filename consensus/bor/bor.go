@@ -26,9 +26,9 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/length"
 	"github.com/ledgerwatch/erigon-lib/kv"
-
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/bor/borcfg"
 	"github.com/ledgerwatch/erigon/consensus/bor/finality"
 	"github.com/ledgerwatch/erigon/consensus/bor/finality/flags"
 	"github.com/ledgerwatch/erigon/consensus/bor/finality/whitelist"
@@ -55,8 +55,6 @@ const (
 )
 
 const (
-	spanLength              = 6400 // Number of blocks in a span
-	zerothSpanEnd           = 255  // End block of 0th span
 	snapshotPersistInterval = 1024 // Number of blocks after which to persist the vote snapshot to the database
 	inmemorySnapshots       = 128  // Number of recent vote snapshots to keep in memory
 	inmemorySignatures      = 4096 // Number of recent block signatures to keep in memory
@@ -67,9 +65,6 @@ var (
 	defaultSprintLength = map[string]uint64{
 		"0": 64,
 	} // Default number of blocks after which to checkpoint and reset the pending votes
-
-	extraVanity = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
-	extraSeal   = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
 
 	uncleHash = types.CalcUncleHash(nil) // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW.
 
@@ -117,7 +112,7 @@ var (
 
 	// errInvalidSpanValidators is returned if a block contains an
 	// invalid list of validators (i.e. non divisible by 40 bytes).
-	ErrInvalidSpanValidators = errors.New("invalid validator list on sprint end block")
+	errInvalidSpanValidators = errors.New("invalid validator list on sprint end block")
 
 	// errInvalidMixDigest is returned if a block's mix digest is non-zero.
 	errInvalidMixDigest = errors.New("non-zero mix digest")
@@ -147,18 +142,18 @@ var (
 type SignerFn func(signer libcommon.Address, mimeType string, message []byte) ([]byte, error)
 
 // ecrecover extracts the Ethereum account address from a signed header.
-func Ecrecover(header *types.Header, sigcache *lru.ARCCache[libcommon.Hash, libcommon.Address], c *chain.BorConfig) (libcommon.Address, error) {
+func Ecrecover(header *types.Header, sigcache *lru.ARCCache[libcommon.Hash, libcommon.Address], c *borcfg.BorConfig) (libcommon.Address, error) {
 	// If the signature's already cached, return that
 	hash := header.Hash()
 	if address, known := sigcache.Get(hash); known {
 		return address, nil
 	}
 	// Retrieve the signature from the header extra-data
-	if len(header.Extra) < extraSeal {
+	if len(header.Extra) < types.ExtraSealLength {
 		return libcommon.Address{}, errMissingSignature
 	}
 
-	signature := header.Extra[len(header.Extra)-extraSeal:]
+	signature := header.Extra[len(header.Extra)-types.ExtraSealLength:]
 
 	// Recover the public key and the Ethereum address
 	pubkey, err := crypto.Ecrecover(SealHash(header, c).Bytes(), signature)
@@ -174,7 +169,7 @@ func Ecrecover(header *types.Header, sigcache *lru.ARCCache[libcommon.Hash, libc
 }
 
 // SealHash returns the hash of a block prior to it being sealed.
-func SealHash(header *types.Header, c *chain.BorConfig) (hash libcommon.Hash) {
+func SealHash(header *types.Header, c *borcfg.BorConfig) (hash libcommon.Hash) {
 	hasher := cryptopool.NewLegacyKeccak256()
 	defer cryptopool.ReturnToPoolKeccak256(hasher)
 
@@ -184,7 +179,7 @@ func SealHash(header *types.Header, c *chain.BorConfig) (hash libcommon.Hash) {
 	return hash
 }
 
-func encodeSigHeader(w io.Writer, header *types.Header, c *chain.BorConfig) {
+func encodeSigHeader(w io.Writer, header *types.Header, c *borcfg.BorConfig) {
 	enc := []interface{}{
 		header.ParentHash,
 		header.UncleHash,
@@ -215,11 +210,11 @@ func encodeSigHeader(w io.Writer, header *types.Header, c *chain.BorConfig) {
 }
 
 // CalcProducerDelay is the block delay algorithm based on block time, period, producerDelay and turn-ness of a signer
-func CalcProducerDelay(number uint64, succession int, c *chain.BorConfig) uint64 {
+func CalcProducerDelay(number uint64, succession int, c *borcfg.BorConfig) uint64 {
 	// When the block is the first block of the sprint, it is expected to be delayed by `producerDelay`.
 	// That is to allow time for block propagation in the last sprint
 	delay := c.CalculatePeriod(number)
-	if number%c.CalculateSprint(number) == 0 {
+	if number%c.CalculateSprintLength(number) == 0 {
 		delay = c.CalculateProducerDelay(number)
 	}
 
@@ -237,7 +232,7 @@ func CalcProducerDelay(number uint64, succession int, c *chain.BorConfig) uint64
 // Note, the method requires the extra data to be at least 65 bytes, otherwise it
 // panics. This is done to avoid accidentally using both forms (signature present
 // or not), which could be abused to produce different hashes for the same header.
-func BorRLP(header *types.Header, c *chain.BorConfig) []byte {
+func BorRLP(header *types.Header, c *borcfg.BorConfig) []byte {
 	b := new(bytes.Buffer)
 	encodeSigHeader(b, header, c)
 
@@ -246,9 +241,9 @@ func BorRLP(header *types.Header, c *chain.BorConfig) []byte {
 
 // Bor is the matic-bor consensus engine
 type Bor struct {
-	chainConfig *chain.Config    // Chain config
-	config      *chain.BorConfig // Consensus engine configuration parameters for bor consensus
-	DB          kv.RwDB          // Database to store and retrieve snapshot checkpoints
+	chainConfig *chain.Config     // Chain config
+	config      *borcfg.BorConfig // Consensus engine configuration parameters for bor consensus
+	DB          kv.RwDB           // Database to store and retrieve snapshot checkpoints
 	blockReader services.FullBlockReader
 
 	Recents    *lru.ARCCache[libcommon.Hash, *Snapshot]         // Snapshots for recent block to speed up reorgs
@@ -279,95 +274,6 @@ type signer struct {
 	signFn SignerFn          // Signer function to authorize hashes with
 }
 
-type sprint struct {
-	from, size uint64
-}
-
-type sprints []sprint
-
-func (s sprints) Len() int {
-	return len(s)
-}
-
-func (s sprints) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s sprints) Less(i, j int) bool {
-	return s[i].from < s[j].from
-}
-
-func asSprints(configSprints map[string]uint64) sprints {
-	sprints := make(sprints, len(configSprints))
-
-	i := 0
-	for key, value := range configSprints {
-		sprints[i].from, _ = strconv.ParseUint(key, 10, 64)
-		sprints[i].size = value
-		i++
-	}
-
-	sort.Sort(sprints)
-
-	return sprints
-}
-
-func CalculateSprintCount(config *chain.BorConfig, from, to uint64) int {
-
-	switch {
-	case from > to:
-		return 0
-	case from < to:
-		to--
-	}
-
-	sprints := asSprints(config.Sprint)
-
-	count := uint64(0)
-	startCalc := from
-
-	zeroth := func(boundary uint64, size uint64) uint64 {
-		if boundary%size == 0 {
-			return 1
-		}
-
-		return 0
-	}
-
-	for i := 0; i < len(sprints)-1; i++ {
-		if startCalc >= sprints[i].from && startCalc < sprints[i+1].from {
-			if to >= sprints[i].from && to < sprints[i+1].from {
-				if startCalc == to {
-					return int(count + zeroth(startCalc, sprints[i].size))
-				}
-				return int(count + zeroth(startCalc, sprints[i].size) + (to-startCalc)/sprints[i].size)
-			} else {
-				endCalc := sprints[i+1].from - 1
-				count += zeroth(startCalc, sprints[i].size) + (endCalc-startCalc)/sprints[i].size
-				startCalc = endCalc + 1
-			}
-		}
-	}
-
-	if startCalc == to {
-		return int(count + zeroth(startCalc, sprints[len(sprints)-1].size))
-	}
-
-	return int(count + zeroth(startCalc, sprints[len(sprints)-1].size) + (to-startCalc)/sprints[len(sprints)-1].size)
-}
-
-func CalculateSprint(config *chain.BorConfig, number uint64) uint64 {
-	sprints := asSprints(config.Sprint)
-
-	for i := 0; i < len(sprints)-1; i++ {
-		if number >= sprints[i].from && number < sprints[i+1].from {
-			return sprints[i].size
-		}
-	}
-
-	return sprints[len(sprints)-1].size
-}
-
 // New creates a Matic Bor consensus engine.
 func New(
 	chainConfig *chain.Config,
@@ -379,10 +285,10 @@ func New(
 	logger log.Logger,
 ) *Bor {
 	// get bor config
-	borConfig := chainConfig.Bor
+	borConfig := chainConfig.Bor.(*borcfg.BorConfig)
 
 	// Set any missing consensus parameters to their defaults
-	if borConfig != nil && borConfig.CalculateSprint(0) == 0 {
+	if borConfig != nil && borConfig.CalculateSprintLength(0) == 0 {
 		borConfig.Sprint = defaultSprintLength
 	}
 
@@ -443,14 +349,14 @@ func (w rwWrapper) BeginRwNosync(ctx context.Context) (kv.RwTx, error) {
 	return nil, fmt.Errorf("BeginRwNosync not implemented")
 }
 
-// This is used by the rpcdaemon which needs read only access to the provided data services
+// This is used by the rpcdaemon and tests which need read only access to the provided data services
 func NewRo(chainConfig *chain.Config, db kv.RoDB, blockReader services.FullBlockReader, spanner Spanner,
 	genesisContracts GenesisContract, logger log.Logger) *Bor {
 	// get bor config
-	borConfig := chainConfig.Bor
+	borConfig := chainConfig.Bor.(*borcfg.BorConfig)
 
 	// Set any missing consensus parameters to their defaults
-	if borConfig != nil && borConfig.CalculateSprint(0) == 0 {
+	if borConfig != nil && borConfig.CalculateSprintLength(0) == 0 {
 		borConfig.Sprint = defaultSprintLength
 	}
 
@@ -473,6 +379,10 @@ func NewRo(chainConfig *chain.Config, db kv.RoDB, blockReader services.FullBlock
 // Type returns underlying consensus engine
 func (c *Bor) Type() chain.ConsensusName {
 	return chain.BorConsensus
+}
+
+func (c *Bor) Config() *borcfg.BorConfig {
+	return c.config
 }
 
 type HeaderProgress interface {
@@ -539,16 +449,16 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 	}
 
 	// check extr adata
-	isSprintEnd := isSprintStart(number+1, c.config.CalculateSprint(number))
+	isSprintEnd := isSprintStart(number+1, c.config.CalculateSprintLength(number))
 
 	// Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
-	signersBytes := len(header.Extra) - extraVanity - extraSeal
+	signersBytes := len(GetValidatorBytes(header, c.config))
 	if !isSprintEnd && signersBytes != 0 {
 		return errExtraValidators
 	}
 
 	if isSprintEnd && signersBytes%validatorHeaderBytesLength != 0 {
-		return ErrInvalidSpanValidators
+		return errInvalidSpanValidators
 	}
 
 	// Ensure that the mix digest is zero as we don't have fork protection currently
@@ -584,11 +494,11 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 // ValidateHeaderExtraField validates that the extra-data contains both the vanity and signature.
 // header.Extra = header.Vanity + header.ProducerBytes (optional) + header.Seal
 func ValidateHeaderExtraField(extraBytes []byte) error {
-	if len(extraBytes) < extraVanity {
+	if len(extraBytes) < types.ExtraVanityLength {
 		return errMissingVanity
 	}
 
-	if len(extraBytes) < extraVanity+extraSeal {
+	if len(extraBytes) < types.ExtraVanityLength+types.ExtraSealLength {
 		return errMissingSignature
 	}
 
@@ -895,7 +805,7 @@ func (c *Bor) verifySeal(chain consensus.ChainHeaderReader, header *types.Header
 	return nil
 }
 
-func IsBlockOnTime(parent *types.Header, header *types.Header, number uint64, succession int, cfg *chain.BorConfig) bool {
+func IsBlockOnTime(parent *types.Header, header *types.Header, number uint64, succession int, cfg *borcfg.BorConfig) bool {
 	return parent != nil && header.Time < parent.Time+CalcProducerDelay(number, succession, cfg)
 }
 
@@ -917,22 +827,19 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 	header.Difficulty = new(big.Int).SetUint64(snap.Difficulty(c.authorizedSigner.Load().signer))
 
 	// Ensure the extra data has all it's components
-	if len(header.Extra) < extraVanity {
-		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-len(header.Extra))...)
+	if len(header.Extra) < types.ExtraVanityLength {
+		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, types.ExtraVanityLength-len(header.Extra))...)
 	}
 
-	header.Extra = header.Extra[:extraVanity]
+	header.Extra = header.Extra[:types.ExtraVanityLength]
 
 	// get validator set if number
 	// Note: headers.Extra has producer set and not validator set. The bor
 	// client calls `GetCurrentValidators` because it makes a contract call
 	// where it fetches producers internally. As we fetch data from span
 	// in Erigon, use directly the `GetCurrentProducers` function.
-	if isSprintStart(number+1, c.config.CalculateSprint(number)) {
-		var spanID uint64
-		if number+1 > zerothSpanEnd {
-			spanID = 1 + (number+1-zerothSpanEnd-1)/spanLength
-		}
+	if isSprintStart(number+1, c.config.CalculateSprintLength(number)) {
+		spanID := span.IDAt(number + 1)
 		newValidators, err := c.spanner.GetCurrentProducers(spanID, c.authorizedSigner.Load().signer, chain)
 		if err != nil {
 			return errUnknownValidators
@@ -941,13 +848,47 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header, s
 		// sort validator by address
 		sort.Sort(valset.ValidatorsByAddress(newValidators))
 
-		for _, validator := range newValidators {
-			header.Extra = append(header.Extra, validator.HeaderBytes()...)
+		if c.config.IsParallelUniverse(header.Number.Uint64()) {
+			var tempValidatorBytes []byte
+
+			for _, validator := range newValidators {
+				tempValidatorBytes = append(tempValidatorBytes, validator.HeaderBytes()...)
+			}
+
+			blockExtraData := &BlockExtraData{
+				ValidatorBytes: tempValidatorBytes,
+				TxDependency:   nil,
+			}
+
+			blockExtraDataBytes, err := rlp.EncodeToBytes(blockExtraData)
+			if err != nil {
+				log.Error("error while encoding block extra data: %v", err)
+				return fmt.Errorf("error while encoding block extra data: %v", err)
+			}
+
+			header.Extra = append(header.Extra, blockExtraDataBytes...)
+		} else {
+			for _, validator := range newValidators {
+				header.Extra = append(header.Extra, validator.HeaderBytes()...)
+			}
 		}
+	} else if c.config.IsParallelUniverse(header.Number.Uint64()) {
+		blockExtraData := &BlockExtraData{
+			ValidatorBytes: nil,
+			TxDependency:   nil,
+		}
+
+		blockExtraDataBytes, err := rlp.EncodeToBytes(blockExtraData)
+		if err != nil {
+			log.Error("error while encoding block extra data: %v", err)
+			return fmt.Errorf("error while encoding block extra data: %v", err)
+		}
+
+		header.Extra = append(header.Extra, blockExtraDataBytes...)
 	}
 
 	// add extra seal space
-	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
+	header.Extra = append(header.Extra, make([]byte, types.ExtraSealLength)...)
 
 	// Mix digest is reserved for now, set to empty
 	header.MixDigest = libcommon.Hash{}
@@ -992,25 +933,27 @@ func (c *Bor) Finalize(config *chain.Config, header *types.Header, state *state.
 		return nil, nil, consensus.ErrUnexpectedWithdrawals
 	}
 
-	if isSprintStart(headerNumber, c.config.CalculateSprint(headerNumber)) {
+	if isSprintStart(headerNumber, c.config.CalculateSprintLength(headerNumber)) {
 		cx := statefull.ChainContext{Chain: chain, Bor: c}
 
 		if c.blockReader != nil {
 			// check and commit span
 			if err := c.checkAndCommitSpan(state, header, cx, syscall); err != nil {
-				c.logger.Error("Error while committing span", "err", err)
+				err := fmt.Errorf("Finalize.checkAndCommitSpan: %w", err)
+				c.logger.Error("[bor] committing span", "err", err)
 				return nil, types.Receipts{}, err
 			}
 			// commit states
 			if err := c.CommitStates(state, header, cx, syscall); err != nil {
-				c.logger.Error("Error while committing states", "err", err)
+				err := fmt.Errorf("Finalize.CommitStates: %w", err)
+				c.logger.Error("[bor] Error while committing states", "err", err)
 				return nil, types.Receipts{}, err
 			}
 		}
 	}
 
 	if err := c.changeContractCodeIfNeeded(headerNumber, state); err != nil {
-		c.logger.Error("Error changing contract code", "err", err)
+		c.logger.Error("[bor] Error changing contract code", "err", err)
 		return nil, types.Receipts{}, err
 	}
 
@@ -1033,7 +976,7 @@ func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state *state.Intra
 			}
 
 			for addr, account := range allocs {
-				c.logger.Trace("change contract code", "address", addr)
+				c.logger.Trace("[bor] change contract code", "address", addr)
 				state.SetCode(addr, account.Code)
 			}
 		}
@@ -1056,25 +999,27 @@ func (c *Bor) FinalizeAndAssemble(chainConfig *chain.Config, header *types.Heade
 		return nil, nil, nil, consensus.ErrUnexpectedWithdrawals
 	}
 
-	if isSprintStart(headerNumber, c.config.CalculateSprint(headerNumber)) {
+	if isSprintStart(headerNumber, c.config.CalculateSprintLength(headerNumber)) {
 		cx := statefull.ChainContext{Chain: chain, Bor: c}
 
 		if c.blockReader != nil {
 			// check and commit span
 			if err := c.checkAndCommitSpan(state, header, cx, syscall); err != nil {
-				c.logger.Error("Error while committing span", "err", err)
+				err := fmt.Errorf("FinalizeAndAssemble.checkAndCommitSpan: %w", err)
+				c.logger.Error("[bor] committing span", "err", err)
 				return nil, nil, types.Receipts{}, err
 			}
 			// commit states
 			if err := c.CommitStates(state, header, cx, syscall); err != nil {
-				c.logger.Error("Error while committing states", "err", err)
+				err := fmt.Errorf("FinalizeAndAssemble.CommitStates: %w", err)
+				c.logger.Error("[bor] committing states", "err", err)
 				return nil, nil, types.Receipts{}, err
 			}
 		}
 	}
 
 	if err := c.changeContractCodeIfNeeded(headerNumber, state); err != nil {
-		c.logger.Error("Error changing contract code", "err", err)
+		c.logger.Error("[bor] Error changing contract code", "err", err)
 		return nil, nil, types.Receipts{}, err
 	}
 
@@ -1123,7 +1068,7 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 
 	// For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
 	if c.config.CalculatePeriod(number) == 0 && len(block.Transactions()) == 0 {
-		c.logger.Trace("Sealing paused, waiting for transactions")
+		c.logger.Trace("[bor] Sealing paused, waiting for transactions")
 		return nil
 	}
 
@@ -1157,15 +1102,15 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 	if err != nil {
 		return err
 	}
-	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
+	copy(header.Extra[len(header.Extra)-types.ExtraSealLength:], sighash)
 
 	go func() {
 		// Wait until sealing is terminated or delay timeout.
-		c.logger.Info("Waiting for slot to sign and propagate", "number", number, "hash", header.Hash, "delay", common.PrettyDuration(delay), "TxCount", block.Transactions().Len(), "Signer", signer)
+		c.logger.Info("[bor] Waiting for slot to sign and propagate", "number", number, "hash", header.Hash, "delay", common.PrettyDuration(delay), "TxCount", block.Transactions().Len(), "Signer", signer)
 
 		select {
 		case <-stop:
-			c.logger.Info("Stopped sealing operation for block", "number", number)
+			c.logger.Info("[bor] Stopped sealing operation for block", "number", number)
 			return
 		case <-time.After(delay):
 
@@ -1176,7 +1121,7 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 
 			if wiggle > 0 {
 				c.logger.Info(
-					"Sealed out-of-turn",
+					"[bor] Sealed out-of-turn",
 					"number", number,
 					"wiggle", common.PrettyDuration(wiggle),
 					"delay", delay,
@@ -1185,7 +1130,7 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 				)
 			} else {
 				c.logger.Info(
-					"Sealed in-turn",
+					"[bor] Sealed in-turn",
 					"number", number,
 					"delay", delay,
 					"headerDifficulty", header.Difficulty,
@@ -1349,7 +1294,7 @@ func (c *Bor) needToCommitSpan(currentSpan *span.Span, headerNumber uint64) bool
 	if currentSpan.EndBlock == 0 {
 		return true
 	}
-	sprintLength := c.config.CalculateSprint(headerNumber)
+	sprintLength := c.config.CalculateSprintLength(headerNumber)
 
 	// if current block is first block of last sprint in current span
 	if currentSpan.EndBlock > sprintLength && currentSpan.EndBlock-sprintLength+1 == headerNumber {
@@ -1451,22 +1396,13 @@ func (c *Bor) GetRootHash(ctx context.Context, tx kv.Tx, start, end uint64) (str
 }
 
 func (c *Bor) getHeaderByNumber(ctx context.Context, tx kv.Tx, number uint64) (*types.Header, error) {
-	_, err := c.blockReader.BlockByNumber(ctx, tx, number)
-
-	if err != nil {
-		return nil, err
-	}
-
 	header, err := c.blockReader.HeaderByNumber(ctx, tx, number)
-
 	if err != nil {
 		return nil, err
 	}
-
 	if header == nil {
-		return nil, fmt.Errorf("block header not found: %d", number)
+		return nil, fmt.Errorf("[bor] header not found: %d", number)
 	}
-
 	return header, nil
 }
 
@@ -1522,7 +1458,7 @@ func (c *Bor) getNextHeimdallSpanForTest(
 		spanBor.StartBlock = spanBor.EndBlock + 1
 	}
 
-	spanBor.EndBlock = spanBor.StartBlock + (100 * c.config.CalculateSprint(headerNumber)) - 1
+	spanBor.EndBlock = spanBor.StartBlock + (100 * c.config.CalculateSprintLength(headerNumber)) - 1
 
 	selectedProducers := make([]valset.Validator, len(snap.ValidatorSet.Validators))
 	for i, v := range snap.ValidatorSet.Validators {
@@ -1572,7 +1508,7 @@ func getUpdatedValidatorSet(oldValidatorSet *valset.ValidatorSet, newVals []*val
 	}
 
 	if err := v.UpdateWithChangeSet(changes, logger); err != nil {
-		logger.Error("Error while updating change set", "error", err)
+		logger.Error("[bor] Error while updating change set", "error", err)
 	}
 
 	return v
@@ -1580,4 +1516,55 @@ func getUpdatedValidatorSet(oldValidatorSet *valset.ValidatorSet, newVals []*val
 
 func isSprintStart(number, sprint uint64) bool {
 	return number%sprint == 0
+}
+
+// In bor, RLP encoding of BlockExtraData will be stored in the Extra field in the header
+type BlockExtraData struct {
+	// Validator bytes of bor
+	ValidatorBytes []byte
+
+	// length of TxDependency          ->   n (n = number of transactions in the block)
+	// length of TxDependency[i]       ->   k (k = a whole number)
+	// k elements in TxDependency[i]   ->   transaction indexes on which transaction i is dependent on
+	TxDependency [][]uint64
+}
+
+// Returns the Block-STM Transaction Dependency from the block header
+func GetTxDependency(b *types.Block) [][]uint64 {
+	tempExtra := b.Extra()
+
+	if len(tempExtra) < types.ExtraVanityLength+types.ExtraSealLength {
+		log.Error("length of extra less is than vanity and seal")
+		return nil
+	}
+
+	var blockExtraData BlockExtraData
+
+	if err := rlp.DecodeBytes(tempExtra[types.ExtraVanityLength:len(tempExtra)-types.ExtraSealLength], &blockExtraData); err != nil {
+		log.Error("error while decoding block extra data", "err", err)
+		return nil
+	}
+
+	return blockExtraData.TxDependency
+}
+
+func GetValidatorBytes(h *types.Header, config *borcfg.BorConfig) []byte {
+	tempExtra := h.Extra
+
+	if !config.IsParallelUniverse(h.Number.Uint64()) {
+		return tempExtra[types.ExtraVanityLength : len(tempExtra)-types.ExtraSealLength]
+	}
+
+	if len(tempExtra) < types.ExtraVanityLength+types.ExtraSealLength {
+		log.Error("length of extra less is than vanity and seal")
+		return nil
+	}
+
+	var blockExtraData BlockExtraData
+	if err := rlp.DecodeBytes(tempExtra[types.ExtraVanityLength:len(tempExtra)-types.ExtraSealLength], &blockExtraData); err != nil {
+		log.Error("error while decoding block extra data", "err", err)
+		return nil
+	}
+
+	return blockExtraData.ValidatorBytes
 }

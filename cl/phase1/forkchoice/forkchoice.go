@@ -7,10 +7,12 @@ import (
 	"github.com/ledgerwatch/erigon/cl/clparams"
 	"github.com/ledgerwatch/erigon/cl/cltypes/solid"
 	"github.com/ledgerwatch/erigon/cl/freezer"
+	"github.com/ledgerwatch/erigon/cl/phase1/core/state"
 	state2 "github.com/ledgerwatch/erigon/cl/phase1/core/state"
 	"github.com/ledgerwatch/erigon/cl/phase1/execution_client"
 	"github.com/ledgerwatch/erigon/cl/phase1/forkchoice/fork_graph"
 	"github.com/ledgerwatch/erigon/cl/pool"
+	"github.com/ledgerwatch/erigon/cl/transition/impl/eth2"
 	"golang.org/x/exp/slices"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -24,6 +26,23 @@ const (
 	checkpointsPerCache = 1024
 	allowedCachedStates = 8
 )
+
+type randaoDelta struct {
+	epoch uint64
+	delta libcommon.Hash
+}
+
+type finalityCheckpoints struct {
+	finalizedCheckpoint         solid.Checkpoint
+	currentJustifiedCheckpoint  solid.Checkpoint
+	previousJustifiedCheckpoint solid.Checkpoint
+}
+
+type preverifiedAppendListsSizes struct {
+	validatorLength           uint64
+	historicalRootsLength     uint64
+	historicalSummariesLength uint64
+}
 
 type ForkChoiceStore struct {
 	ctx                           context.Context
@@ -48,7 +67,17 @@ type ForkChoiceStore struct {
 	anchorPublicKeys []byte
 	// We keep track of them so that we can forkchoice with EL.
 	eth2Roots *lru.Cache[libcommon.Hash, libcommon.Hash] // ETH2 root -> ETH1 hash
-	mu        sync.Mutex
+	// preverifid sizes and other data collection
+	preverifiedSizes    *lru.Cache[libcommon.Hash, preverifiedAppendListsSizes]
+	finalityCheckpoints *lru.Cache[libcommon.Hash, finalityCheckpoints]
+	totalActiveBalances *lru.Cache[libcommon.Hash, uint64]
+	// Randao mixes
+	randaoMixesLists *lru.Cache[libcommon.Hash, solid.HashListSSZ] // limited randao mixes full list (only 16 elements)
+	randaoDeltas     *lru.Cache[libcommon.Hash, randaoDelta]       // small entry can be lots of elements.
+	// participation tracking
+	participation *lru.Cache[uint64, *solid.BitList] // epoch -> [partecipation]
+
+	mu sync.Mutex
 	// EL
 	engine execution_client.ExecutionEngine
 	// freezer
@@ -83,6 +112,22 @@ func NewForkChoiceStore(ctx context.Context, anchorState *state2.CachingBeaconSt
 	if err != nil {
 		return nil, err
 	}
+
+	randaoMixesLists, err := lru.New[libcommon.Hash, solid.HashListSSZ](allowedCachedStates)
+	if err != nil {
+		return nil, err
+	}
+
+	randaoDeltas, err := lru.New[libcommon.Hash, randaoDelta](checkpointsPerCache)
+	if err != nil {
+		return nil, err
+	}
+
+	finalityCheckpoints, err := lru.New[libcommon.Hash, finalityCheckpoints](checkpointsPerCache)
+	if err != nil {
+		return nil, err
+	}
+
 	anchorPublicKeys := make([]byte, anchorState.ValidatorLength()*length.Bytes48)
 	for idx := 0; idx < anchorState.ValidatorLength(); idx++ {
 		pk, err := anchorState.ValidatorPublicKey(idx)
@@ -92,6 +137,32 @@ func NewForkChoiceStore(ctx context.Context, anchorState *state2.CachingBeaconSt
 		copy(anchorPublicKeys[idx*length.Bytes48:], pk[:])
 	}
 
+	preverifiedSizes, err := lru.New[libcommon.Hash, preverifiedAppendListsSizes](checkpointsPerCache * 10)
+	if err != nil {
+		return nil, err
+	}
+	preverifiedSizes.Add(anchorRoot, preverifiedAppendListsSizes{
+		validatorLength:           uint64(anchorState.ValidatorLength()),
+		historicalRootsLength:     anchorState.HistoricalRootsLength(),
+		historicalSummariesLength: anchorState.HistoricalSummariesLength(),
+	})
+
+	totalActiveBalances, err := lru.New[libcommon.Hash, uint64](checkpointsPerCache * 10)
+	if err != nil {
+		return nil, err
+	}
+
+	participation, err := lru.New[uint64, *solid.BitList](16)
+	if err != nil {
+		return nil, err
+	}
+
+	participation.Add(state.Epoch(anchorState.BeaconState), anchorState.CurrentEpochParticipation().Copy())
+
+	totalActiveBalances.Add(anchorRoot, anchorState.GetTotalActiveBalance())
+	r := solid.NewHashVector(int(anchorState.BeaconConfig().EpochsPerHistoricalVector))
+	anchorState.RandaoMixes().CopyTo(r)
+	randaoMixesLists.Add(anchorRoot, r)
 	return &ForkChoiceStore{
 		ctx:                           ctx,
 		highestSeen:                   anchorState.Slot(),
@@ -112,6 +183,12 @@ func NewForkChoiceStore(ctx context.Context, anchorState *state2.CachingBeaconSt
 		genesisTime:                   anchorState.GenesisTime(),
 		beaconCfg:                     anchorState.BeaconConfig(),
 		childrens:                     make(map[libcommon.Hash]childrens),
+		preverifiedSizes:              preverifiedSizes,
+		finalityCheckpoints:           finalityCheckpoints,
+		totalActiveBalances:           totalActiveBalances,
+		randaoMixesLists:              randaoMixesLists,
+		randaoDeltas:                  randaoDeltas,
+		participation:                 participation,
 	}, nil
 }
 
@@ -174,6 +251,13 @@ func (f *ForkChoiceStore) JustifiedCheckpoint() solid.Checkpoint {
 }
 
 // FinalizedCheckpoint returns justified checkpoint
+func (f *ForkChoiceStore) JustifiedSlot() uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.computeStartSlotAtEpoch(f.justifiedCheckpoint.Epoch())
+}
+
+// FinalizedCheckpoint returns justified checkpoint
 func (f *ForkChoiceStore) FinalizedCheckpoint() solid.Checkpoint {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -184,7 +268,7 @@ func (f *ForkChoiceStore) FinalizedCheckpoint() solid.Checkpoint {
 func (f *ForkChoiceStore) FinalizedSlot() uint64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.computeStartSlotAtEpoch(f.finalizedCheckpoint.Epoch())
+	return f.computeStartSlotAtEpoch(f.finalizedCheckpoint.Epoch()) + (f.beaconCfg.SlotsPerEpoch - 1)
 }
 
 // FinalizedCheckpoint returns justified checkpoint
@@ -207,4 +291,111 @@ func (f *ForkChoiceStore) AnchorSlot() uint64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.forkGraph.AnchorSlot()
+}
+
+func (f *ForkChoiceStore) GetStateAtBlockRoot(blockRoot libcommon.Hash, alwaysCopy bool) (*state2.CachingBeaconState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.forkGraph.GetState(blockRoot, alwaysCopy)
+}
+func (f *ForkChoiceStore) GetStateAtStateRoot(stateRoot libcommon.Hash, alwaysCopy bool) (*state2.CachingBeaconState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.forkGraph.GetState(stateRoot, alwaysCopy)
+}
+func (f *ForkChoiceStore) GetStateAtSlot(slot uint64, alwaysCopy bool) (*state.CachingBeaconState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.forkGraph.GetStateAtSlot(slot, alwaysCopy)
+}
+
+func (f *ForkChoiceStore) PreverifiedValidator(blockRoot libcommon.Hash) uint64 {
+	if ret, ok := f.preverifiedSizes.Get(blockRoot); ok {
+		return ret.validatorLength
+	}
+	return 0
+}
+
+func (f *ForkChoiceStore) PreverifiedHistoricalRoots(blockRoot libcommon.Hash) uint64 {
+	if ret, ok := f.preverifiedSizes.Get(blockRoot); ok {
+		return ret.historicalRootsLength
+	}
+	return 0
+}
+
+func (f *ForkChoiceStore) PreverifiedHistoricalSummaries(blockRoot libcommon.Hash) uint64 {
+	if ret, ok := f.preverifiedSizes.Get(blockRoot); ok {
+		return ret.historicalSummariesLength
+	}
+	return 0
+}
+
+func (f *ForkChoiceStore) GetFinalityCheckpoints(blockRoot libcommon.Hash) (bool, solid.Checkpoint, solid.Checkpoint, solid.Checkpoint) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if ret, ok := f.finalityCheckpoints.Get(blockRoot); ok {
+		return true, ret.finalizedCheckpoint, ret.currentJustifiedCheckpoint, ret.previousJustifiedCheckpoint
+	}
+	return false, solid.Checkpoint{}, solid.Checkpoint{}, solid.Checkpoint{}
+}
+
+func (f *ForkChoiceStore) GetSyncCommittees(blockRoot libcommon.Hash) (*solid.SyncCommittee, *solid.SyncCommittee, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.forkGraph.GetSyncCommittees(blockRoot)
+}
+
+func (f *ForkChoiceStore) BlockRewards(root libcommon.Hash) (*eth2.BlockRewardsCollector, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.forkGraph.GetBlockRewards(root)
+}
+
+func (f *ForkChoiceStore) TotalActiveBalance(root libcommon.Hash) (uint64, bool) {
+	return f.totalActiveBalances.Get(root)
+}
+
+func (f *ForkChoiceStore) LowestAvaiableSlot() uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.forkGraph.LowestAvaiableSlot()
+}
+
+func (f *ForkChoiceStore) RandaoMixes(blockRoot libcommon.Hash, out solid.HashListSSZ) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	relevantDeltas := map[uint64]randaoDelta{}
+	currentBlockRoot := blockRoot
+	var currentSlot uint64
+	for {
+		h, ok := f.forkGraph.GetHeader(currentBlockRoot)
+		if !ok {
+			return false
+		}
+		currentSlot = h.Slot
+		if f.randaoMixesLists.Contains(currentBlockRoot) {
+			break
+		}
+		randaoDelta, ok := f.randaoDeltas.Get(currentBlockRoot)
+		if !ok {
+			return false
+		}
+		currentBlockRoot = h.ParentRoot
+		if _, ok := relevantDeltas[currentSlot/f.beaconCfg.SlotsPerEpoch]; !ok {
+			relevantDeltas[currentSlot/f.beaconCfg.SlotsPerEpoch] = randaoDelta
+		}
+	}
+	randaoMixes, ok := f.randaoMixesLists.Get(currentBlockRoot)
+	if !ok {
+		return false
+	}
+	randaoMixes.CopyTo(out)
+	for epoch, delta := range relevantDeltas {
+		out.Set(int(epoch%f.beaconCfg.EpochsPerHistoricalVector), delta.delta)
+	}
+	return true
+}
+
+func (f *ForkChoiceStore) Partecipation(epoch uint64) (*solid.BitList, bool) {
+	return f.participation.Get(epoch)
 }

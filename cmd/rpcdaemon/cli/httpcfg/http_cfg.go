@@ -43,6 +43,7 @@ type HttpCfg struct {
 	API                  []string
 	Gascap               uint64
 	MaxTraces            uint64
+	WebsocketPort        int
 	WebsocketEnabled     bool
 	WebsocketCompression bool
 	RpcAllowListFilePath string
@@ -78,7 +79,8 @@ type HttpCfg struct {
 	AllowUnprotectedTxs         bool // Whether to allow non EIP-155 protected transactions  txs over RPC
 	MaxGetProofRewindBlockCount int  //Max GetProof rewind block count
 	// Ots API
-	OtsMaxPageSize uint64
+	OtsMaxPageSize      uint64
+	RPCSlowLogThreshold time.Duration
 
 	RollupSequencerHTTP        string
 	RollupHistoricalRPC        string

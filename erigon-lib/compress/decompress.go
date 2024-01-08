@@ -161,6 +161,7 @@ func NewDecompressor(compressedFilePath string) (d *Decompressor, err error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var stat os.FileInfo
 	if stat, err = d.f.Stat(); err != nil {
 		return nil, err
@@ -344,6 +345,10 @@ func (d *Decompressor) Size() int64 {
 
 func (d *Decompressor) ModTime() time.Time {
 	return d.modTime
+}
+
+func (d *Decompressor) IsOpen() bool {
+	return d != nil && d.f != nil
 }
 
 func (d *Decompressor) Close() {

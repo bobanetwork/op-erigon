@@ -22,6 +22,7 @@ import (
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon/consensus/bor/borcfg"
 
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/core/types"
@@ -106,7 +107,8 @@ func CalcBaseFee(config *chain.Config, parent *types.Header, time uint64) *big.I
 
 func getBaseFeeChangeDenominator(config *chain.Config, number, time uint64) uint64 {
 	// If we're running bor based chain post delhi hardfork, return the new value
-	if config.Bor != nil && config.Bor.IsDelhi(number) {
+	borConfig := config.Bor
+	if borConfig, ok := borConfig.(*borcfg.BorConfig); ok && borConfig.IsDelhi(number) {
 		return params.BaseFeeChangeDenominatorPostDelhi
 	}
 
