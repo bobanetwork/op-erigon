@@ -20,9 +20,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"io"
 	"math/big"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
@@ -47,6 +48,9 @@ const (
 
 	// ReceiptStatusSuccessful is the status code of a transaction if execution succeeded.
 	ReceiptStatusSuccessful = uint64(1)
+
+	// The version number for post-canyon deposit receipts.
+	CanyonDepositReceiptVersion = uint64(1)
 )
 
 // Receipt represents the results of a transaction.
@@ -81,19 +85,26 @@ type Receipt struct {
 	L1GasUsed  *big.Int   `json:"l1GasUsed,omitempty"`
 	L1Fee      *big.Int   `json:"l1Fee,omitempty"` // FIXME, should these be uint256?
 	FeeScalar  *big.Float `json:"l1FeeScalar,omitempty"`
+
+	// DepositReceiptVersion was introduced in Canyon to indicate an update to how receipt hashes
+	// should be computed when set. The state transition process ensures this is only set for
+	// post-Canyon deposit transactions.
+	DepositReceiptVersion *uint64 `json:"depositReceiptVersion,omitempty"`
 }
 
 type receiptMarshaling struct {
-	Type              hexutil.Uint64
-	PostState         hexutility.Bytes
-	Status            hexutil.Uint64
-	CumulativeGasUsed hexutil.Uint64
-	GasUsed           hexutil.Uint64
-	BlockNumber       *hexutil.Big
-	TransactionIndex  hexutil.Uint
-	L1Fee             *hexutil.Big
-	L1GasUsed         *hexutil.Big
-	L1GasPrice        *hexutil.Big
+	Type                  hexutil.Uint64
+	PostState             hexutility.Bytes
+	Status                hexutil.Uint64
+	CumulativeGasUsed     hexutil.Uint64
+	GasUsed               hexutil.Uint64
+	BlockNumber           *hexutil.Big
+	TransactionIndex      hexutil.Uint
+	L1Fee                 *hexutil.Big
+	L1GasUsed             *hexutil.Big
+	L1GasPrice            *hexutil.Big
+	DepositNonce          *hexutil.Uint64
+	DepositReceiptVersion *hexutil.Uint64
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -112,6 +123,10 @@ type depositReceiptRlp struct {
 	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions.
 	// Must be nil for any transactions prior to Regolith or that aren't deposit transactions.
 	DepositNonce *uint64 `rlp:"optional"`
+	// Receipt hash post-Regolith but pre-Canyon inadvertently did not include the above
+	// DepositNonce. Post Canyon, receipts will have a non-empty DepositReceiptVersion indicating
+	// which post-Canyon receipt hash function to invoke.
+	DepositReceiptVersion *uint64 `rlp:"optional"`
 }
 
 // storedReceiptRLP is the storage encoding of a receipt.
@@ -122,6 +137,10 @@ type storedReceiptRLP struct {
 	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions.
 	// Must be nil for any transactions prior to Regolith or that aren't deposit transactions.
 	DepositNonce *uint64 `rlp:"optional"`
+	// Receipt hash post-Regolith but pre-Canyon inadvertently did not include the above
+	// DepositNonce. Post Canyon, receipts will have a non-empty DepositReceiptVersion indicating
+	// which post-Canyon receipt hash function to invoke.
+	DepositReceiptVersion *uint64 `rlp:"optional"`
 }
 
 // v4StoredReceiptRLP is the storage encoding of a receipt used in database version 4.
@@ -170,8 +189,8 @@ func (r Receipt) EncodeRLP(w io.Writer) error {
 	buf := new(bytes.Buffer)
 	buf.WriteByte(r.Type)
 	if r.Type == DepositTxType {
-		withNonce := &depositReceiptRlp{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs, r.DepositNonce}
-		if err := rlp.Encode(buf, withNonce); err != nil {
+		withNonceAndReceiptVersion := &depositReceiptRlp{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs, r.DepositNonce, r.DepositReceiptVersion}
+		if err := rlp.Encode(buf, withNonceAndReceiptVersion); err != nil {
 			return err
 		}
 	} else {
@@ -187,8 +206,8 @@ func (r *Receipt) encodeTyped(data *receiptRLP, w *bytes.Buffer) error {
 	w.WriteByte(r.Type)
 	switch r.Type {
 	case DepositTxType:
-		withNonce := depositReceiptRlp{data.PostStateOrStatus, data.CumulativeGasUsed, data.Bloom, data.Logs, r.DepositNonce}
-		return rlp.Encode(w, withNonce)
+		withNonceAndReceiptVersion := depositReceiptRlp{data.PostStateOrStatus, data.CumulativeGasUsed, data.Bloom, data.Logs, r.DepositNonce, r.DepositReceiptVersion}
+		return rlp.Encode(w, withNonceAndReceiptVersion)
 	default:
 		return rlp.Encode(w, data)
 	}
@@ -270,6 +289,15 @@ func (r *Receipt) decodePayload(s *rlp.Stream) error {
 			return nil
 		} else {
 			r.DepositNonce = &depositNonce
+		}
+		depositReceiptVersion, err := s.Uint()
+		if err != nil {
+			if !errors.Is(err, rlp.EOL) {
+				return fmt.Errorf("read DepositReceiptVersion: %w", err)
+			}
+			return nil
+		} else {
+			r.DepositReceiptVersion = &depositReceiptVersion
 		}
 	}
 	if err := s.ListEnd(); err != nil {
@@ -359,22 +387,26 @@ func (r *Receipt) Copy() *Receipt {
 	txHash := libcommon.BytesToHash(r.TxHash.Bytes())
 	contractAddress := libcommon.BytesToAddress(r.ContractAddress.Bytes())
 	blockHash := libcommon.BytesToHash(r.BlockHash.Bytes())
-	blockNumber := big.NewInt(0).Set(r.BlockNumber)
+	var blockNumber *big.Int
+	if r.BlockNumber != nil {
+		blockNumber = big.NewInt(0).Set(r.BlockNumber)
+	}
 
 	return &Receipt{
-		Type:              r.Type,
-		PostState:         postState,
-		Status:            r.Status,
-		CumulativeGasUsed: r.CumulativeGasUsed,
-		Bloom:             bloom,
-		Logs:              logs,
-		TxHash:            txHash,
-		ContractAddress:   contractAddress,
-		GasUsed:           r.GasUsed,
-		BlockHash:         blockHash,
-		BlockNumber:       blockNumber,
-		TransactionIndex:  r.TransactionIndex,
-		DepositNonce:      r.DepositNonce,
+		Type:                  r.Type,
+		PostState:             postState,
+		Status:                r.Status,
+		CumulativeGasUsed:     r.CumulativeGasUsed,
+		Bloom:                 bloom,
+		Logs:                  logs,
+		TxHash:                txHash,
+		ContractAddress:       contractAddress,
+		GasUsed:               r.GasUsed,
+		BlockHash:             blockHash,
+		BlockNumber:           blockNumber,
+		TransactionIndex:      r.TransactionIndex,
+		DepositNonce:          r.DepositNonce,
+		DepositReceiptVersion: r.DepositReceiptVersion,
 	}
 }
 
@@ -388,10 +420,11 @@ type ReceiptForStorage Receipt
 // into an RLP stream.
 func (r *ReceiptForStorage) EncodeRLP(w io.Writer) error {
 	enc := &storedReceiptRLP{
-		PostStateOrStatus: (*Receipt)(r).statusEncoding(),
-		CumulativeGasUsed: r.CumulativeGasUsed,
-		Logs:              make([]*LogForStorage, len(r.Logs)),
-		DepositNonce:      r.DepositNonce,
+		PostStateOrStatus:     (*Receipt)(r).statusEncoding(),
+		CumulativeGasUsed:     r.CumulativeGasUsed,
+		Logs:                  make([]*LogForStorage, len(r.Logs)),
+		DepositNonce:          r.DepositNonce,
+		DepositReceiptVersion: r.DepositReceiptVersion,
 	}
 	for i, log := range r.Logs {
 		enc.Logs[i] = (*LogForStorage)(log)
@@ -437,6 +470,9 @@ func decodeStoredReceiptRLP(r *ReceiptForStorage, blob []byte) error {
 		r.DepositNonce = stored.DepositNonce
 	}
 
+	if stored.DepositReceiptVersion != nil {
+		r.DepositReceiptVersion = stored.DepositReceiptVersion
+	}
 	return nil
 }
 
@@ -486,6 +522,9 @@ type Receipts []*Receipt
 func (rs Receipts) Len() int { return len(rs) }
 
 // EncodeIndex encodes the i'th receipt to w.
+// During post-regolith and pre-Canyon, DepositNonce was not included when encoding for hashing.
+// Canyon adds DepositReceiptVersion to preserve backwards compatibility for pre-Canyon, and
+// for correct receipt-root hash computation.
 func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 	r := rs[i]
 	data := &receiptRLP{r.statusEncoding(), r.CumulativeGasUsed, r.Bloom, r.Logs}
@@ -512,8 +551,16 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		}
 	case DepositTxType:
 		w.WriteByte(DepositTxType)
-		if err := rlp.Encode(w, data); err != nil {
-			panic(err)
+		if r.DepositReceiptVersion != nil {
+			// post-canyon receipt hash computation update
+			depositData := &depositReceiptRlp{data.PostStateOrStatus, data.CumulativeGasUsed, r.Bloom, r.Logs, r.DepositNonce, r.DepositReceiptVersion}
+			if err := rlp.Encode(w, depositData); err != nil {
+				panic(err)
+			}
+		} else {
+			if err := rlp.Encode(w, data); err != nil {
+				panic(err)
+			}
 		}
 	default:
 		// For unsupported types, write nothing. Since this is for
