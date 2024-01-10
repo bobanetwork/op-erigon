@@ -48,8 +48,6 @@ type Config struct {
 	CommitEvery           time.Duration
 	LogEvery              time.Duration
 
-	NoTxGossip bool
-
 	//txpool db
 	MdbxPageSize    datasize.ByteSize
 	MdbxDBSizeLimit datasize.ByteSize

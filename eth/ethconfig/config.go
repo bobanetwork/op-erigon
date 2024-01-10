@@ -257,10 +257,11 @@ type Config struct {
 	SilkwormRpcDaemon bool
 	SilkwormSentry    bool
 
+	DisableTxPoolGossip bool
+
 	RollupSequencerHTTP        string
 	RollupHistoricalRPC        string
 	RollupHistoricalRPCTimeout time.Duration
-	DisableTxPoolGossip        bool
 }
 
 type Sync struct {
