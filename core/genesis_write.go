@@ -499,6 +499,17 @@ func OptimismGoerliGenesisBlock() *types.Genesis {
 	}
 }
 
+func BobaSepoliaGenesisBlock() *types.Genesis {
+	return &types.Genesis{
+		Config:     params.BobaSepoliaChainConfig,
+		Difficulty: big.NewInt(1),
+		Mixhash:    libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		ExtraData:  hexutil.MustDecode("0x000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+		GasLimit:   11000000,
+		Alloc:      readPrealloc("allocs/boba_sepolia.json"),
+	}
+}
+
 // Pre-calculated version of:
 //
 //	DevnetSignPrivateKey = crypto.HexToECDSA(sha256.Sum256([]byte("erigon devnet key")))
@@ -718,6 +729,8 @@ func GenesisBlockByChainName(chain string) *types.Genesis {
 		return OptimismMainnetGenesisBlock()
 	case networkname.OptimismGoerliChainName:
 		return OptimismGoerliGenesisBlock()
+	case networkname.BobaSepoliaChainName:
+		return BobaSepoliaGenesisBlock()
 	default:
 		return nil
 	}
