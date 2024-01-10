@@ -28,17 +28,6 @@ import (
 
 // Boba chain config
 var (
-	// Goerli
-	BobaGoerliChainId = big.NewInt(2888)
-	// Boba Goerli genesis gas limit
-	BobaGoerliGenesisGasLimit = 11000000
-	// Boba Goerli genesis block coinbase
-	BobaGoerliGenesisCoinbase = "0x0000000000000000000000000000000000000000"
-	// Boba Goerli genesis block extra data
-	BobaGoerliGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-	// Boba Goerli genesis root
-	BobaGoerliGenesisRoot = "0x36c808dc3bb586c14bebde3ca630a4d49a1fdad0b01d7e58f96f2fcd1aa0003d"
-
 	// Mainnet
 	BobaMainnetChainId = big.NewInt(288)
 	// Boba Mainnet genesis gas limit
@@ -49,6 +38,17 @@ var (
 	BobaMainnetGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 	// Boba Mainnet genesis root
 	BobaMainnetGenesisRoot = "0x7ec54492a4504ff1ef3491825cd55e01e5c75409e4287129170e98d4693848ce"
+
+	// Boba Sepolia
+	BobaSepoliaChainId = big.NewInt(28882)
+	// Boba Sepolia genesis gas limit
+	BobaSepoliaGenesisGasLimit = 11000000
+	// Boba Sepolia genesis block coinbase
+	BobaSepoliaGenesisCoinbase = "0x0000000000000000000000000000000000000000"
+	// Boba Sepolia genesis block extra data
+	BobaSepoliaGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+	// Boba Sepolia genesis root
+	BobaSepoliaGenesisRoot = "0x65c5f098877579209b07264284de2fd5b40d326a843a5c79692c12e42b4867bc"
 )
 
 // Config is the core config which determines the blockchain settings.
@@ -336,61 +336,61 @@ func (c *Config) GetMaxBlobsPerBlock() uint64 {
 }
 
 func (c *Config) IsBobaLegacyBlock(num uint64) bool {
-	// Boba Goerli
-	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
-		return c.BedrockBlock.Uint64() > num
-	}
 	// Boba Mainnet
 	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
+		return c.BedrockBlock.Uint64() > num
+	}
+	// Boba Sepolia
+	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
 		return c.BedrockBlock.Uint64() > num
 	}
 	return false
 }
 
 func (c *Config) GetBobaGenesisGasLimit() int {
-	// Boba Goerli
-	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
-		return BobaGoerliGenesisGasLimit
-	}
 	// Boba Mainnet
 	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
 		return BobaMainnetGenesisGasLimit
+	}
+	// Boba Sepolia
+	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
+		return BobaSepoliaGenesisGasLimit
 	}
 	return 11000000
 }
 
 func (c *Config) GetBobaGenesisCoinbase() string {
-	// Boba Goerli
-	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
-		return BobaGoerliGenesisCoinbase
-	}
 	// Boba Mainnet
 	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
 		return BobaMainnetGenesisCoinbase
+	}
+	// Boba Sepolia
+	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
+		return BobaSepoliaGenesisCoinbase
 	}
 	return "0x0000000000000000000000000000000000000000"
 }
 
 func (c *Config) GetBobaGenesisExtraData() string {
-	// Boba Goerli
-	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
-		return BobaGoerliGenesisExtraData
-	}
 	// Boba Mainnet
 	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
 		return BobaMainnetGenesisExtraData
+	}
+	// Boba Sepolia
+	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
+		return BobaSepoliaGenesisExtraData
 	}
 	return ""
 }
 
 func (c *Config) GetBobaGenesisRoot() string {
-	// Boba Goerli
-	if BobaGoerliChainId.Cmp(c.ChainID) == 0 {
-		return BobaGoerliGenesisRoot
-	}
 	// Boba Mainnet
 	if BobaMainnetChainId.Cmp(c.ChainID) == 0 {
 		return BobaMainnetGenesisRoot
+	}
+	// Boba Sepolia
+	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
+		return BobaSepoliaGenesisRoot
 	}
 	return ""
 }
