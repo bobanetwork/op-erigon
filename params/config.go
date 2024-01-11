@@ -61,6 +61,7 @@ var (
 	ChiadoGenesisHash          = libcommon.HexToHash("0xada44fd8d2ecab8b08f256af07ad3e777f17fb434f8f8e678b312f576212ba9a")
 	OptimismMainnetGenesisHash = libcommon.HexToHash("0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b")
 	OptimismGoerliGenesisHash  = libcommon.HexToHash("0xc1fc15cd51159b1f1e5cbc4b82e85c1447ddfa33c52cf1d98d14fba0d6354be1")
+	BobaSepoliaGenesisHash     = libcommon.HexToHash("0x8c571a8c282dcba86a5f47b823defbf108999e8375982d339122b9e7264993b1")
 )
 
 var (
@@ -140,6 +141,8 @@ var (
 	OptimismMainnetChainConfig = readChainSpec("chainspecs/optimism-mainnet.json")
 
 	OptimismGoerliChainConfig = readChainSpec("chainspecs/optimism-goerli.json")
+
+	BobaSepoliaChainConfig = readChainSpec("chainspecs/boba-sepolia.json")
 
 	TestChainConfig = &chain.Config{
 		ChainID:               big.NewInt(1337),
@@ -245,6 +248,8 @@ func ChainConfigByChainName(chain string) *chain.Config {
 		return OptimismMainnetChainConfig
 	case networkname.OptimismGoerliChainName:
 		return OptimismGoerliChainConfig
+	case networkname.BobaSepoliaChainName:
+		return BobaSepoliaChainConfig
 	default:
 		return nil
 	}
@@ -274,6 +279,8 @@ func GenesisHashByChainName(chain string) *libcommon.Hash {
 		return &OptimismMainnetGenesisHash
 	case networkname.OptimismGoerliChainName:
 		return &OptimismGoerliGenesisHash
+	case networkname.BobaSepoliaChainName:
+		return &BobaSepoliaGenesisHash
 	default:
 		return nil
 	}
