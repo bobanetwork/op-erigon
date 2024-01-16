@@ -43,6 +43,7 @@ type HttpCfg struct {
 	API                  []string
 	Gascap               uint64
 	MaxTraces            uint64
+	WebsocketPort        int
 	WebsocketEnabled     bool
 	WebsocketCompression bool
 	RpcAllowListFilePath string
@@ -80,8 +81,9 @@ type HttpCfg struct {
 	// Ots API
 	OtsMaxPageSize uint64
 
+	RPCSlowLogThreshold time.Duration
+
 	RollupSequencerHTTP        string
 	RollupHistoricalRPC        string
 	RollupHistoricalRPCTimeout time.Duration
-	RollupDisableTxPoolGossip  bool
 }

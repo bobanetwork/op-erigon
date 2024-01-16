@@ -19,7 +19,6 @@ package downloader
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -98,20 +97,7 @@ func seedableSnapshotsBySubDir(dir, subDir string) ([]string, error) {
 	res := make([]string, 0, len(files))
 	for _, fPath := range files {
 		_, name := filepath.Split(fPath)
-		subs := historyFileRegex.FindStringSubmatch(name)
-		if len(subs) != 5 {
-			continue
-		}
-		// Check that it's seedable
-		from, err := strconv.ParseUint(subs[2], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("ParseFileName: %w", err)
-		}
-		to, err := strconv.ParseUint(subs[3], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("ParseFileName: %w", err)
-		}
-		if (to-from)%snaptype.Erigon3SeedableSteps != 0 {
+		if !e3seedable(name) {
 			continue
 		}
 		res = append(res, filepath.Join(subDir, name))
@@ -119,6 +105,25 @@ func seedableSnapshotsBySubDir(dir, subDir string) ([]string, error) {
 	return res, nil
 }
 
+func e3seedable(name string) bool {
+	subs := historyFileRegex.FindStringSubmatch(name)
+	if len(subs) != 5 {
+		return false
+	}
+	// Check that it's seedable
+	from, err := strconv.ParseUint(subs[2], 10, 64)
+	if err != nil {
+		return false
+	}
+	to, err := strconv.ParseUint(subs[3], 10, 64)
+	if err != nil {
+		return false
+	}
+	if (to-from)%snaptype.Erigon3SeedableSteps != 0 {
+		return false
+	}
+	return true
+}
 func ensureCantLeaveDir(fName, root string) (string, error) {
 	if filepath.IsAbs(fName) {
 		newFName, err := filepath.Rel(root, fName)
@@ -136,36 +141,36 @@ func ensureCantLeaveDir(fName, root string) (string, error) {
 	return fName, nil
 }
 
-func BuildTorrentIfNeed(ctx context.Context, fName, root string) (torrentFilePath string, err error) {
+func BuildTorrentIfNeed(ctx context.Context, fName, root string, torrentFiles *TorrentFiles) (err error) {
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return ctx.Err()
 	default:
 	}
 	fName, err = ensureCantLeaveDir(fName, root)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	fPath := filepath.Join(root, fName)
-	if dir2.FileExist(fPath + ".torrent") {
-		return
+	if torrentFiles.Exists(fName) {
+		return nil
 	}
+	fPath := filepath.Join(root, fName)
 	if !dir2.FileExist(fPath) {
-		return
+		return nil
 	}
 
 	info := &metainfo.Info{PieceLength: downloadercfg.DefaultPieceSize, Name: fName}
 	if err := info.BuildFromFilePath(fPath); err != nil {
-		return "", fmt.Errorf("createTorrentFileFromSegment: %w", err)
+		return fmt.Errorf("createTorrentFileFromSegment: %w", err)
 	}
 	info.Name = fName
 
-	return fPath + ".torrent", CreateTorrentFileFromInfo(root, info, nil)
+	return CreateTorrentFileFromInfo(root, info, nil, torrentFiles)
 }
 
 // BuildTorrentFilesIfNeed - create .torrent files from .seg files (big IO) - if .seg files were added manually
-func BuildTorrentFilesIfNeed(ctx context.Context, dirs datadir.Dirs) error {
+func BuildTorrentFilesIfNeed(ctx context.Context, dirs datadir.Dirs, torrentFiles *TorrentFiles) error {
 	logEvery := time.NewTicker(20 * time.Second)
 	defer logEvery.Stop()
 
@@ -182,7 +187,7 @@ func BuildTorrentFilesIfNeed(ctx context.Context, dirs datadir.Dirs) error {
 		file := file
 		g.Go(func() error {
 			defer i.Add(1)
-			if _, err := BuildTorrentIfNeed(ctx, file, dirs.Snap); err != nil {
+			if err := BuildTorrentIfNeed(ctx, file, dirs.Snap, torrentFiles); err != nil {
 				return err
 			}
 			return nil
@@ -207,12 +212,11 @@ Loop:
 	return nil
 }
 
-func CreateTorrentFileIfNotExists(root string, info *metainfo.Info, mi *metainfo.MetaInfo) error {
-	fPath := filepath.Join(root, info.Name)
-	if dir2.FileExist(fPath + ".torrent") {
+func CreateTorrentFileIfNotExists(root string, info *metainfo.Info, mi *metainfo.MetaInfo, torrentFiles *TorrentFiles) error {
+	if torrentFiles.Exists(info.Name) {
 		return nil
 	}
-	if err := CreateTorrentFileFromInfo(root, info, mi); err != nil {
+	if err := CreateTorrentFileFromInfo(root, info, mi, torrentFiles); err != nil {
 		return err
 	}
 	return nil
@@ -235,25 +239,13 @@ func CreateMetaInfo(info *metainfo.Info, mi *metainfo.MetaInfo) (*metainfo.MetaI
 	}
 	return mi, nil
 }
-func CreateTorrentFromMetaInfo(root string, info *metainfo.Info, mi *metainfo.MetaInfo) error {
-	torrentFileName := filepath.Join(root, info.Name+".torrent")
-	file, err := os.Create(torrentFileName)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if err := mi.Write(file); err != nil {
-		return err
-	}
-	file.Sync()
-	return nil
-}
-func CreateTorrentFileFromInfo(root string, info *metainfo.Info, mi *metainfo.MetaInfo) (err error) {
+func CreateTorrentFileFromInfo(root string, info *metainfo.Info, mi *metainfo.MetaInfo, torrentFiles *TorrentFiles) (err error) {
 	mi, err = CreateMetaInfo(info, mi)
 	if err != nil {
 		return err
 	}
-	return CreateTorrentFromMetaInfo(root, info, mi)
+	fPath := filepath.Join(root, info.Name+".torrent")
+	return torrentFiles.CreateTorrentFromMetaInfo(fPath, mi)
 }
 
 func AllTorrentPaths(dirs datadir.Dirs) ([]string, error) {
@@ -269,57 +261,78 @@ func AllTorrentPaths(dirs datadir.Dirs) ([]string, error) {
 	return files, nil
 }
 
-func AllTorrentSpecs(dirs datadir.Dirs) (res []*torrent.TorrentSpec, err error) {
+func AllTorrentSpecs(dirs datadir.Dirs, torrentFiles *TorrentFiles) (res []*torrent.TorrentSpec, err error) {
 	files, err := AllTorrentPaths(dirs)
 	if err != nil {
 		return nil, err
 	}
 	for _, fPath := range files {
-		a, err := loadTorrent(fPath)
+		if len(fPath) == 0 {
+			continue
+		}
+		a, err := torrentFiles.LoadByPath(fPath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("AllTorrentSpecs: %w", err)
 		}
 		res = append(res, a)
 	}
 	return res, nil
 }
 
-func loadTorrent(torrentFilePath string) (*torrent.TorrentSpec, error) {
-	mi, err := metainfo.LoadFromFile(torrentFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("LoadFromFile: %w, file=%s", err, torrentFilePath)
-	}
-	mi.AnnounceList = Trackers
-	return torrent.TorrentSpecFromMetaInfoErr(mi)
-}
-
 // addTorrentFile - adding .torrent file to torrentClient (and checking their hashes), if .torrent file
 // added first time - pieces verification process will start (disk IO heavy) - Progress
 // kept in `piece completion storage` (surviving reboot). Once it done - no disk IO needed again.
 // Don't need call torrent.VerifyData manually
-func addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient *torrent.Client, webseeds *WebSeeds) error {
+func addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient *torrent.Client, webseeds *WebSeeds) (t *torrent.Torrent, ok bool, err error) {
+	ts.ChunkSize = downloadercfg.DefaultNetworkChunkSize
+	ts.DisallowDataDownload = true
+	ts.DisableInitialPieceCheck = true
+	//re-try on panic, with 0 ChunkSize (lib doesn't allow change this field for existing torrents)
+	defer func() {
+		rec := recover()
+		if rec != nil {
+			ts.ChunkSize = 0
+			t, ok, err = _addTorrentFile(ctx, ts, torrentClient, webseeds)
+		}
+	}()
+
+	t, ok, err = _addTorrentFile(ctx, ts, torrentClient, webseeds)
+	if err != nil {
+		ts.ChunkSize = 0
+		return _addTorrentFile(ctx, ts, torrentClient, webseeds)
+	}
+	return t, ok, err
+}
+
+func _addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient *torrent.Client, webseeds *WebSeeds) (t *torrent.Torrent, ok bool, err error) {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, false, ctx.Err()
 	default:
 	}
-	wsUrls, ok := webseeds.ByFileName(ts.DisplayName)
-	if ok {
-		ts.Webseeds = append(ts.Webseeds, wsUrls...)
+
+	ts.Webseeds, _ = webseeds.ByFileName(ts.DisplayName)
+	var have bool
+	t, have = torrentClient.Torrent(ts.InfoHash)
+	if !have {
+		t, _, err := torrentClient.AddTorrentSpec(ts)
+		if err != nil {
+			return nil, false, fmt.Errorf("addTorrentFile %s: %w", ts.DisplayName, err)
+		}
+		return t, true, nil
 	}
 
-	_, ok = torrentClient.Torrent(ts.InfoHash)
-	if !ok { // can set ChunkSize only for new torrents
-		ts.ChunkSize = downloadercfg.DefaultNetworkChunkSize
-	} else {
-		ts.ChunkSize = 0
+	select {
+	case <-t.GotInfo():
+		t.AddWebSeeds(ts.Webseeds)
+	default:
+		t, _, err = torrentClient.AddTorrentSpec(ts)
+		if err != nil {
+			return nil, false, fmt.Errorf("addTorrentFile %s: %w", ts.DisplayName, err)
+		}
 	}
-	ts.DisallowDataDownload = true
-	_, _, err := torrentClient.AddTorrentSpec(ts)
-	if err != nil {
-		return fmt.Errorf("addTorrentFile %s: %w", ts.DisplayName, err)
-	}
-	return nil
+
+	return t, true, nil
 }
 
 func savePeerID(db kv.RwDB, peerID torrent.PeerID) error {

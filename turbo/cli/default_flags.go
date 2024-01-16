@@ -63,6 +63,7 @@ var DefaultFlags = []cli.Flag{
 	&utils.HTTPVirtualHostsFlag,
 	&utils.AuthRpcVirtualHostsFlag,
 	&utils.HTTPApiFlag,
+	&utils.WSPortFlag,
 	&utils.WSEnabledFlag,
 	&utils.WsCompressionFlag,
 	&utils.HTTPTraceFlag,
@@ -158,9 +159,6 @@ var DefaultFlags = []cli.Flag{
 	&utils.RollupSequencerHTTPFlag,
 	&utils.RollupHistoricalRPCFlag,
 	&utils.RollupHistoricalRPCTimeoutFlag,
-	&utils.RollupDisableTxPoolGossipFlag,
-
-	&utils.ConfigFlag,
 
 	&utils.LightClientDiscoveryAddrFlag,
 	&utils.LightClientDiscoveryPortFlag,
@@ -170,10 +168,23 @@ var DefaultFlags = []cli.Flag{
 
 	&utils.OtsSearchMaxCapFlag,
 
-	&utils.SilkwormPathFlag,
 	&utils.SilkwormExecutionFlag,
 	&utils.SilkwormRpcDaemonFlag,
 	&utils.SilkwormSentryFlag,
 
+	&utils.BeaconAPIFlag,
+	&utils.BeaconApiAddrFlag,
+	&utils.BeaconApiPortFlag,
+	&utils.BeaconApiReadTimeoutFlag,
+	&utils.BeaconApiWriteTimeoutFlag,
+	&utils.BeaconApiProtocolFlag,
+	&utils.BeaconApiIdleTimeoutFlag,
+
+	&utils.CaplinBackfillingFlag,
+	&utils.CaplinArchiveFlag,
+
 	&utils.TrustedSetupFile,
+	&utils.RPCSlowFlag,
+
+	&utils.TxPoolGossipDisableFlag,
 }

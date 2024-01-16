@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/kv/membatchwithdb"
@@ -552,7 +553,14 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 			}
 			if reply.Found {
 				nonce = reply.Nonce + 1
+			} else {
+				a, err := stateReader.ReadAccountData(*args.From)
+				if err != nil {
+					return nil, err
+				}
+				nonce = a.Nonce + 1
 			}
+
 			args.Nonce = (*hexutil.Uint64)(&nonce)
 		}
 		to = crypto.CreateAddress(*args.From, uint64(*args.Nonce))

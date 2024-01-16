@@ -54,6 +54,8 @@ type Config struct {
 	MdbxPageSize    datasize.ByteSize
 	MdbxDBSizeLimit datasize.ByteSize
 	MdbxGrowthStep  datasize.ByteSize
+
+	NoGossip bool // this mode doesn't broadcast any txs, and if receive remote-txn - skip it
 }
 
 var DefaultConfig = Config{
@@ -72,7 +74,7 @@ var DefaultConfig = Config{
 	PriceBump:     10, // Price bump percentage to replace an already existing transaction
 	BlobPriceBump: 100,
 
-	NoTxGossip: false,
+	NoGossip: false,
 }
 
 type DiscardReason uint8
