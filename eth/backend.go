@@ -616,6 +616,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		}
 		backend.historicalRPCService = client
 	}
+	config.TxPool.Optimism = config.Genesis.Config.IsOptimism()
 	config.TxPool.NoGossip = config.DisableTxPoolGossip
 	var miningRPC txpool_proto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)

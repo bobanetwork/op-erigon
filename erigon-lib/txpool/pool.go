@@ -805,6 +805,16 @@ func toBlobs(_blobs [][]byte) []gokzg4844.Blob {
 }
 
 func (p *TxPool) validateTx(txn *types.TxSlot, isLocal bool, stateCache kvcache.CacheView) txpoolcfg.DiscardReason {
+	// No unauthenticated deposits allowed in the transaction pool.
+	// This is for spam protection, not consensus,
+	// as the external engine-API user authenticates deposits.
+	if txn.Type == types.DepositTxType {
+		return txpoolcfg.TxTypeNotSupported
+	}
+	if p.cfg.Optimism && txn.Type == types.BlobTxType {
+		return txpoolcfg.TxTypeNotSupported
+	}
+
 	isShanghai := p.isShanghai() || p.isAgra()
 	if isShanghai {
 		if txn.DataLen > fixedgas.MaxInitCodeSize {
