@@ -5,12 +5,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
-	"github.com/ledgerwatch/erigon/cl/clparams"
 	"math/big"
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
+	"github.com/ledgerwatch/erigon/cl/clparams"
 
 	"github.com/ledgerwatch/log/v3"
 
@@ -108,7 +109,7 @@ func (s *EngineServer) checkWithdrawalsPresence(time uint64, withdrawals []*type
 	if !s.config.IsShanghai(time) && withdrawals != nil {
 		return &rpc.InvalidParamsError{Message: "withdrawals before shanghai"}
 	}
-	if s.config.IsShanghai(time) && withdrawals == nil {
+	if s.config.IsShanghai(time) && withdrawals == nil && !s.config.IsOptimism() {
 		return &rpc.InvalidParamsError{Message: "missing withdrawals list"}
 	}
 	return nil
