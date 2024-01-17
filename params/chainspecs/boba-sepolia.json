@@ -22,5 +22,6 @@
   "optimism": {
     "eip1559Elasticity": 6,
     "eip1559Denominator": 50
-  }
+  },
+  "shanghaiTime": 1705429032
 }
