@@ -4,7 +4,7 @@ footer: |  # define the footer with markdown
 base:
   name: ledgerwatch/erigon
   url: https://github.com/ledgerwatch/erigon
-  hash: 9e42b705ceab0e22d6b539852effec363c2cd47a
+  hash: 466031ab8f9cb2f0a4f0dcdfb9258d728b0ba57a
 fork:
   name: bobanetwork/v3-erigon
   url: https://github.com/bobanetwork/v3-erigon
