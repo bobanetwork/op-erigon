@@ -235,7 +235,7 @@ func (s *Merge) verifyHeader(chain consensus.ChainHeaderReader, header, parent *
 
 	// Verify existence / non-existence of withdrawalsHash
 	shanghai := chain.Config().IsShanghai(header.Time)
-	if shanghai && header.WithdrawalsHash == nil {
+	if shanghai && header.WithdrawalsHash == nil && !chain.Config().IsOptimism() {
 		return fmt.Errorf("missing withdrawalsHash")
 	}
 	if !shanghai && header.WithdrawalsHash != nil {
