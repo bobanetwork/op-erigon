@@ -21,6 +21,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/gointerfaces"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/execution"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
+	types2 "github.com/ledgerwatch/erigon-lib/gointerfaces/types"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
 	libstate "github.com/ledgerwatch/erigon-lib/state"
@@ -109,7 +110,7 @@ func (s *EngineServer) checkWithdrawalsPresence(time uint64, withdrawals []*type
 	if !s.config.IsShanghai(time) && withdrawals != nil {
 		return &rpc.InvalidParamsError{Message: "withdrawals before shanghai"}
 	}
-	if s.config.IsShanghai(time) && withdrawals == nil && !s.config.IsOptimism() {
+	if s.config.IsShanghai(time) && withdrawals == nil {
 		return &rpc.InvalidParamsError{Message: "missing withdrawals list"}
 	}
 	return nil
@@ -536,6 +537,11 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 
 	if version >= clparams.CapellaVersion {
 		req.Withdrawals = engine_types.ConvertWithdrawalsToRpc(payloadAttributes.Withdrawals)
+	}
+
+	// Override the withdrawals if we are in optimism mode and in Shanghai
+	if s.config.IsOptimism() && s.config.IsShanghai(timestamp) {
+		req.Withdrawals = make([]*types2.Withdrawal, 0)
 	}
 
 	if version >= clparams.DenebVersion {
