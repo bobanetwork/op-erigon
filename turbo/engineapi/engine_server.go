@@ -109,7 +109,7 @@ func (s *EngineServer) checkWithdrawalsPresence(time uint64, withdrawals []*type
 	if !s.config.IsShanghai(time) && withdrawals != nil {
 		return &rpc.InvalidParamsError{Message: "withdrawals before shanghai"}
 	}
-	if s.config.IsShanghai(time) && withdrawals == nil && !s.config.IsOptimism() {
+	if s.config.IsShanghai(time) && withdrawals == nil {
 		return &rpc.InvalidParamsError{Message: "missing withdrawals list"}
 	}
 	return nil
