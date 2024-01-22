@@ -225,7 +225,6 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 		data, nil, false,
 		true, // isFree
 		nil,  // maxFeePerBlobGas
-		0,    // rollupDataGas
 	)
 	vmConfig := vm.Config{NoReceipts: true, RestoreState: constCall}
 	// Create a new context to be used in the EVM environment
@@ -272,7 +271,6 @@ func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config
 		data, nil, false,
 		true, // isFree
 		nil,  // maxFeePerBlobGas
-		0,    // rollupDataGas
 	)
 	vmConfig := vm.Config{NoReceipts: true}
 	// Create a new context to be used in the EVM environment

@@ -480,7 +480,6 @@ func toMessage(tx stTransaction, ps stPostState, baseFee *big.Int) (core.Message
 		false, /* checkNonce */
 		false, /* isFree */
 		uint256.MustFromBig(blobFeeCap),
-		0, // rollupDataGas
 	)
 
 	return msg, nil

@@ -27,6 +27,7 @@ import (
 	cmath "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus/misc"
+	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -88,17 +89,18 @@ type Message interface {
 	MaxFeePerBlobGas() *uint256.Int
 	Value() *uint256.Int
 
+	// Mint is nil if there is no minting
+	Mint() *uint256.Int
+	IsSystemTx() bool
+	IsDepositTx() bool
+	IsFree() bool
+	RollupCostData() types.RollupCostData
+
 	Nonce() uint64
 	CheckNonce() bool
 	Data() []byte
 	AccessList() types2.AccessList
 	BlobHashes() []libcommon.Hash
-
-	IsFree() bool
-	IsSystemTx() bool
-	IsDepositTx() bool
-	RollupDataGas() uint64
-	Mint() *uint256.Int
 }
 
 // ExecutionResult includes all output after executing given evm

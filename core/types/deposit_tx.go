@@ -283,18 +283,17 @@ func (tx *DepositTransaction) DecodeRLP(s *rlp.Stream) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
-		txType:        DepositTxType,
-		sourceHash:    tx.SourceHash,
-		from:          *tx.From,
-		gasLimit:      tx.GasLimit,
-		to:            tx.To,
-		mint:          *tx.Mint,
-		amount:        *tx.Value,
-		isSystemTx:    tx.IsSystemTx,
-		data:          tx.Data,
-		accessList:    nil,
-		checkNonce:    true,
-		rollupDataGas: RollupDataGas(tx, rules),
+		txType:     DepositTxType,
+		sourceHash: tx.SourceHash,
+		from:       *tx.From,
+		gasLimit:   tx.GasLimit,
+		to:         tx.To,
+		mint:       *tx.Mint,
+		amount:     *tx.Value,
+		isSystemTx: tx.IsSystemTx,
+		data:       tx.Data,
+		accessList: nil,
+		checkNonce: true,
 	}
 	return msg, nil
 }
@@ -309,6 +308,10 @@ func (tx *DepositTransaction) FakeSign(address libcommon.Address) (Transaction, 
 	log.Error("FakeSign() called for a Deposit transaction")
 	cpy := tx.copy()
 	return cpy, nil
+}
+
+func (tx DepositTransaction) RollupCostData() RollupCostData {
+	return RollupCostData{}
 }
 
 // Hash computes the hash (but not for signatures!)
