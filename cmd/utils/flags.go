@@ -1771,7 +1771,7 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 
 	if ctx.IsSet(OverrideCancunFlag.Name) {
 		cfg.OverrideCancunTime = flags.GlobalBig(ctx, OverrideCancunFlag.Name)
-
+		cfg.TxPool.OverrideCancunTime = cfg.OverrideCancunTime
 	}
 
 	if ctx.IsSet(OverrideOptimismCanyonFlag.Name) {

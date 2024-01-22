@@ -327,6 +327,9 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		if chainConfig.CanyonTime == nil {
 			log.Warn("Optimism CanyonTime has not been set")
 		}
+		if chainConfig.EcotoneTime == nil {
+			log.Warn("Optimism EcotoneTime has not been set")
+		}
 	}
 	snapshotVersion := snapcfg.KnownCfg(chainConfig.ChainName, 0).Version
 
