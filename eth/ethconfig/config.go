@@ -246,9 +246,13 @@ type Config struct {
 	SentinelAddr                string
 	SentinelPort                uint64
 
-	OverrideCancunTime         *big.Int `toml:",omitempty"`
-	OverrideOptimismCanyonTime *big.Int `toml:",omitempty"`
-	ForcePartialCommit         bool
+	ForcePartialCommit bool
+
+	OverrideCancunTime   *big.Int `toml:",omitempty"`
+	OverrideShanghaiTime *big.Int `toml:",omitempty"`
+
+	OverrideOptimismCanyonTime  *big.Int `toml:",omitempty"`
+	OverrideOptimismEcotoneTime *big.Int `toml:",omitempty"`
 
 	// Embedded Silkworm support
 	SilkwormExecution bool

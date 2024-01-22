@@ -155,6 +155,7 @@ var DefaultFlags = []cli.Flag{
 	&utils.EthStatsURLFlag,
 	&utils.OverrideCancunFlag,
 	&utils.OverrideOptimismCanyonFlag,
+	&utils.OverrideOptimismEcotoneFlag,
 	&utils.RollupSequencerHTTPFlag,
 	&utils.RollupHistoricalRPCFlag,
 	&utils.RollupHistoricalRPCTimeoutFlag,
