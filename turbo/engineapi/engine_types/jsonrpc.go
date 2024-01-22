@@ -90,6 +90,7 @@ type GetPayloadResponse struct {
 	ExecutionPayload      *ExecutionPayload `json:"executionPayload" gencodec:"required"`
 	BlockValue            *hexutil.Big      `json:"blockValue"`
 	BlobsBundle           *BlobsBundleV1    `json:"blobsBundle"`
+	ParentBeaconBlockRoot *common.Hash      `json:"parentBeaconBlockRoot"`
 	ShouldOverrideBuilder bool              `json:"shouldOverrideBuilder"`
 }
 
