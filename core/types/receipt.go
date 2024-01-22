@@ -81,8 +81,8 @@ type Receipt struct {
 	// OVM legacy: extend receipts with their L1 price (if a rollup tx)
 	L1GasPrice *big.Int   `json:"l1GasPrice,omitempty"`
 	L1GasUsed  *big.Int   `json:"l1GasUsed,omitempty"`
-	L1Fee      *big.Int   `json:"l1Fee,omitempty"` // FIXME, should these be uint256?
-	FeeScalar  *big.Float `json:"l1FeeScalar,omitempty"`
+	L1Fee      *big.Int   `json:"l1Fee,omitempty"`
+	FeeScalar  *big.Float `json:"l1FeeScalar,omitempty"` // always nil after Ecotone hardfork
 
 	// DepositReceiptVersion was introduced in Canyon to indicate an update to how receipt hashes
 	// should be computed when set. The state transition process ensures this is only set for
