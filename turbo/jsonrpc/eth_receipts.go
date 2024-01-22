@@ -772,16 +772,16 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
 	}
-	if chainConfig.Optimism != nil && !txn.IsDepositTx() {
+	if chainConfig.Optimism != nil && txn.Type() != types.DepositTxType {
 		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
 		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
 		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
 		fields["l1FeeScalar"] = receipt.FeeScalar.String()
 	}
-	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositNonce != nil {
+	if chainConfig.Optimism != nil && txn.Type() == types.DepositTxType && receipt.DepositNonce != nil {
 		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
 	}
-	if chainConfig.Optimism != nil && txn.IsDepositTx() && receipt.DepositReceiptVersion != nil {
+	if chainConfig.Optimism != nil && txn.Type() == types.DepositTxType && receipt.DepositReceiptVersion != nil {
 		fields["depositReceiptVersion"] = hexutil.Uint64(*receipt.DepositReceiptVersion)
 	}
 	if !chainConfig.IsLondon(header.Number.Uint64()) {

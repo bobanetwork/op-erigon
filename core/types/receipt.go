@@ -23,11 +23,9 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
-
-	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 
 	"github.com/ledgerwatch/erigon/crypto"
@@ -618,27 +616,20 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 			logIndex++
 		}
 	}
-	rules := config.Rules(number, time)
-	if rules.IsBedrock && len(txs) >= 2 { // need at least an info tx and a non-info tx
-		if data := txs[0].GetData(); len(data) >= 4+32*8 { // function selector + 8 arguments to setL1BlockValues
-			l1Basefee := new(uint256.Int).SetBytes(data[4+32*2 : 4+32*3]) // arg index 2
-			overhead := new(uint256.Int).SetBytes(data[4+32*6 : 4+32*7])  // arg index 6
-			scalar := new(uint256.Int).SetBytes(data[4+32*7 : 4+32*8])    // arg index 7
-			fscalar := new(big.Float).SetInt(scalar.ToBig())              // legacy: format fee scalar as big Float
-			fdivisor := new(big.Float).SetUint64(1_000_000)               // 10**6, i.e. 6 decimals
-			feeScalar := new(big.Float).Quo(fscalar, fdivisor)
-			for i := 0; i < len(r); i++ {
-				if !txs[i].IsDepositTx() {
-					rollupDataGas := txs[i].RollupCostData().DataGas(time, config)
-					r[i].L1GasPrice = l1Basefee.ToBig()
-					// GasUsed reported in receipt should include the overhead
-					r[i].L1GasUsed = new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas), overhead.ToBig())
-					r[i].L1Fee = L1Cost(rollupDataGas, l1Basefee, overhead, scalar).ToBig()
-					r[i].FeeScalar = feeScalar
-				}
+	if config.IsOptimismBedrock(number) && len(txs) >= 2 { // need at least an info tx and a non-info tx
+		l1Basefee, costFunc, feeScalar, err := extractL1GasParams(config, time, txs[0].GetData())
+		if err != nil {
+			return err
+		}
+		for i := 0; i < len(r); i++ {
+			if txs[i].Type() == DepositTxType {
+				continue
 			}
-		} else {
-			return fmt.Errorf("L1 info tx only has %d bytes, cannot read gas price parameters", len(data))
+			r[i].L1GasPrice = l1Basefee.ToBig()
+			l1Fee, l1GasUsed := costFunc(txs[i].RollupCostData())
+			r[i].L1Fee = l1Fee.ToBig()
+			r[i].L1GasUsed = l1GasUsed.ToBig()
+			r[i].FeeScalar = feeScalar
 		}
 	}
 	return nil

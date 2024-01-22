@@ -96,7 +96,6 @@ type Transaction interface {
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
 	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwise returns itself.
-	IsDepositTx() bool
 	RollupCostData() RollupCostData
 }
 
@@ -146,8 +145,8 @@ func (tm *TransactionMisc) computeRollupGas(tx interface {
 		log.Error("failed to encode tx for L1 cost computation", "err", err)
 	}
 	total := RollupCostData{
-		Zeroes: c.zeroes,
-		Ones:   c.ones,
+		zeroes: c.zeroes,
+		ones:   c.ones,
 	}
 	tm.rollupGas.Store(total)
 	return total
@@ -617,20 +616,17 @@ func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amo
 	return m
 }
 
-func (m Message) From() libcommon.Address        { return m.from }
-func (m Message) To() *libcommon.Address         { return m.to }
-func (m Message) GasPrice() *uint256.Int         { return &m.gasPrice }
-func (m Message) FeeCap() *uint256.Int           { return &m.feeCap }
-func (m Message) Tip() *uint256.Int              { return &m.tip }
-func (m Message) Value() *uint256.Int            { return &m.amount }
-func (m Message) Mint() *uint256.Int             { return &m.mint }
-func (m Message) IsDepositTx() bool              { return m.txType == DepositTxType }
-func (m Message) RollupCostData() RollupCostData { return m.l1CostGas }
-func (m Message) Gas() uint64                    { return m.gasLimit }
-func (m Message) Nonce() uint64                  { return m.nonce }
-func (m Message) Data() []byte                   { return m.data }
-func (m Message) AccessList() types2.AccessList  { return m.accessList }
-func (m Message) CheckNonce() bool               { return m.checkNonce }
+func (m Message) From() libcommon.Address       { return m.from }
+func (m Message) To() *libcommon.Address        { return m.to }
+func (m Message) GasPrice() *uint256.Int        { return &m.gasPrice }
+func (m Message) FeeCap() *uint256.Int          { return &m.feeCap }
+func (m Message) Tip() *uint256.Int             { return &m.tip }
+func (m Message) Value() *uint256.Int           { return &m.amount }
+func (m Message) Gas() uint64                   { return m.gasLimit }
+func (m Message) Nonce() uint64                 { return m.nonce }
+func (m Message) Data() []byte                  { return m.data }
+func (m Message) AccessList() types2.AccessList { return m.accessList }
+func (m Message) CheckNonce() bool              { return m.checkNonce }
 func (m *Message) SetCheckNonce(checkNonce bool) {
 	m.checkNonce = checkNonce
 }
@@ -655,13 +651,16 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 	m.gasLimit = gas
 }
 
+func (m Message) IsSystemTx() bool               { return m.isSystemTx }
+func (m Message) IsDepositTx() bool              { return m.txType == DepositTxType }
+func (m Message) Mint() *uint256.Int             { return &m.mint }
+func (m Message) RollupCostData() RollupCostData { return m.l1CostGas }
+
 func (m Message) BlobGas() uint64 { return fixedgas.BlobGasPerBlob * uint64(len(m.blobHashes)) }
 
 func (m Message) MaxFeePerBlobGas() *uint256.Int {
 	return &m.maxFeePerBlobGas
 }
-
-func (m Message) IsSystemTx() bool { return m.isSystemTx }
 
 func (m Message) BlobHashes() []libcommon.Hash { return m.blobHashes }
 
