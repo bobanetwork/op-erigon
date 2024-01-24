@@ -18,7 +18,10 @@ jobs:
   tests:
     strategy:
       matrix:
-        os: [ ubuntu-22.04 ] # Disable macos as it is giving us "This Job Failed" errors with no logs, macos-13-xlarge ] # list of os: https://github.com/actions/virtual-environments
+        # list of os: https://github.com/actions/virtual-environments
+        os:
+          - ubuntu-22.04
+          - macos-13
     runs-on: ${{ matrix.os }}
 
     steps:

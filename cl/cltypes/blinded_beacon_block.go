@@ -19,8 +19,8 @@ type SignedBlindedBeaconBlock struct {
 }
 
 type BlindedBeaconBlock struct {
-	Slot          uint64             `json:"slot"`
-	ProposerIndex uint64             `json:"proposer_index"`
+	Slot          uint64             `json:"slot,string"`
+	ProposerIndex uint64             `json:"proposer_index,string"`
 	ParentRoot    libcommon.Hash     `json:"parent_root"`
 	StateRoot     libcommon.Hash     `json:"state_root"`
 	Body          *BlindedBeaconBody `json:"body"`
@@ -32,7 +32,7 @@ type BlindedBeaconBody struct {
 	// Data related to the Ethereum 1.0 chain
 	Eth1Data *Eth1Data `json:"eth1_data"`
 	// A byte array used to customize validators' behavior
-	Graffiti libcommon.Hash `json:"graffit"`
+	Graffiti libcommon.Hash `json:"graffiti"`
 	// A list of slashing events for validators who included invalid blocks in the chain
 	ProposerSlashings *solid.ListSSZ[*ProposerSlashing] `json:"proposer_slashings"`
 	// A list of slashing events for validators who included invalid attestations in the chain
@@ -307,6 +307,10 @@ func (b *BlindedBeaconBlock) Clone() clonable.Clonable {
 
 func (b *SignedBlindedBeaconBlock) Clone() clonable.Clonable {
 	return NewSignedBlindedBeaconBlock(b.Block.Body.beaconCfg)
+}
+
+func (b *BlindedBeaconBody) ExecutionPayloadMerkleProof() ([][32]byte, error) {
+	return merkle_tree.MerkleProof(4, 9, b.getSchema(false)...)
 }
 
 // make sure that the type implements the interface ssz2.ObjectSSZ

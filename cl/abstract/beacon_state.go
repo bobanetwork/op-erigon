@@ -22,7 +22,7 @@ type BeaconStateUpgradable interface {
 }
 
 type BeaconStateExtension interface {
-	SlashValidator(slashedInd uint64, whistleblowerInd *uint64) error
+	SlashValidator(slashedInd uint64, whistleblowerInd *uint64) (uint64, error)
 	InitiateValidatorExit(index uint64) error
 	GetActiveValidatorsIndices(epoch uint64) (indicies []uint64)
 	GetTotalActiveBalance() uint64
@@ -40,6 +40,7 @@ type BeaconStateExtension interface {
 	ValidatorIndexByPubkey(key [48]byte) (uint64, bool)
 	PreviousStateRoot() common.Hash
 	SetPreviousStateRoot(root common.Hash)
+	GetValidatorActivationChurnLimit() uint64
 }
 
 type BeaconStateBasic interface {
@@ -162,6 +163,8 @@ type BeaconStateMinimal interface {
 	Eth1Data() *cltypes.Eth1Data
 	Eth1DataVotes() *solid.ListSSZ[*cltypes.Eth1Data]
 	Eth1DepositIndex() uint64
+	ValidatorSet() *solid.ValidatorSet
+	PreviousEpochParticipation() *solid.BitList
 
 	ForEachValidator(fn func(v solid.Validator, idx int, total int) bool)
 	ValidatorForValidatorIndex(index int) (solid.Validator, error)
