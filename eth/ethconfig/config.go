@@ -34,6 +34,8 @@ import (
 	"github.com/ledgerwatch/erigon-lib/downloader/downloadercfg"
 	"github.com/ledgerwatch/erigon-lib/txpool/txpoolcfg"
 
+	"github.com/ledgerwatch/erigon/cl/beacon/beacon_router_configuration"
+	"github.com/ledgerwatch/erigon/cl/clparams"
 	"github.com/ledgerwatch/erigon/consensus/ethash/ethashcfg"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/ethconfig/estimate"
@@ -97,13 +99,10 @@ var Defaults = Config{
 
 	ImportMode: false,
 	Snapshot: BlocksFreezing{
-		Enabled:    false,
+		Enabled:    true,
 		KeepBlocks: false,
 		Produce:    true,
 	},
-
-	// applies if SilkwormPath is set
-	SilkwormExecution: true,
 }
 
 func init() {
@@ -186,8 +185,10 @@ type Config struct {
 
 	BadBlockHash common.Hash // hash of the block marked as bad
 
-	Snapshot   BlocksFreezing
-	Downloader *downloadercfg.Cfg
+	Snapshot     BlocksFreezing
+	Downloader   *downloadercfg.Cfg
+	BeaconRouter beacon_router_configuration.RouterConfiguration
+	CaplinConfig clparams.CaplinConfig
 
 	Dirs datadir.Dirs
 
@@ -252,16 +253,15 @@ type Config struct {
 	ForcePartialCommit         bool
 
 	// Embedded Silkworm support
-	SilkwormEnabled   bool
-	SilkwormPath      string
 	SilkwormExecution bool
 	SilkwormRpcDaemon bool
 	SilkwormSentry    bool
 
+	DisableTxPoolGossip bool
+
 	RollupSequencerHTTP        string
 	RollupHistoricalRPC        string
 	RollupHistoricalRPCTimeout time.Duration
-	RollupDisableTxPoolGossip  bool
 }
 
 type Sync struct {
@@ -281,6 +281,7 @@ var ChainsWithSnapshots = map[string]struct{}{
 	networkname.SepoliaChainName:    {},
 	networkname.GoerliChainName:     {},
 	networkname.MumbaiChainName:     {},
+	networkname.AmoyChainName:       {},
 	networkname.BorMainnetChainName: {},
 	networkname.GnosisChainName:     {},
 	networkname.ChiadoChainName:     {},

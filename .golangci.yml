@@ -25,7 +25,10 @@ linters:
     - errorlint #TODO: enable me
     - errchkjson #TODO: enable me
     - unused #TODO: enable me
+    - testifylint #TODO: enable me
+    - perfsprint #TODO: enable me
     - gocheckcompilerdirectives
+    - protogetter
   enable:
     - unconvert
     #    - predeclared #TODO: enable me
@@ -81,7 +84,7 @@ linters-settings:
         rules: "rules.go"
       hugeParam:
         # size in bytes that makes the warning trigger (default 80)
-        sizeThreshold: 1100
+        sizeThreshold: 1000
       rangeExprCopy:
         # size in bytes that makes the warning trigger (default 512)
         sizeThreshold: 512
@@ -124,6 +127,7 @@ issues:
         - unused
         - deadcode
         - gocritic
+        - perfsprint
     - path: hack\.go
       linters:
         - gosec

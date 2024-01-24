@@ -252,18 +252,18 @@ func TestNewRPCTransactionDepositTx(t *testing.T) {
 	nonce := uint64(12)
 	depositNonce := &nonce
 	receipt := &types.Receipt{DepositNonce: depositNonce}
-	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), receipt)
+	got := NewRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), receipt)
 	// Should provide zero values for unused fields that are required in other transactions
-	require.Equal(t, got.GasPrice, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().GasPrice = %v, want 0x0", got.GasPrice)
-	require.Equal(t, got.V, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().V = %v, want 0x0", got.V)
-	require.Equal(t, got.R, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().R = %v, want 0x0", got.R)
-	require.Equal(t, got.S, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().S = %v, want 0x0", got.S)
+	require.Equal(t, got.GasPrice, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().GasPrice = %v, want 0x0", got.GasPrice)
+	require.Equal(t, got.V, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().V = %v, want 0x0", got.V)
+	require.Equal(t, got.R, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().R = %v, want 0x0", got.R)
+	require.Equal(t, got.S, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().S = %v, want 0x0", got.S)
 
 	// Should include deposit tx specific fields
-	require.Equal(t, got.SourceHash, tx.SourceHash, "newRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
-	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "newRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
-	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "newRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
-	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "newRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
+	require.Equal(t, got.SourceHash, tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
+	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
+	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "NewRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
+	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "NewRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
 }
 
 func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
@@ -280,19 +280,19 @@ func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
 		DepositNonce:          &nonce,
 		DepositReceiptVersion: &version,
 	}
-	got := newRPCTransaction(tx, libcommon.Hash{}, uint64(12), uint64(1), big.NewInt(0), receipt)
+	got := NewRPCTransaction(tx, libcommon.Hash{}, uint64(12), uint64(1), big.NewInt(0), receipt)
 	// Should provide zero values for unused fields that are required in other transactions
-	require.Equal(t, got.GasPrice, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().GasPrice = %v, want 0x0", got.GasPrice)
-	require.Equal(t, got.V, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().V = %v, want 0x0", got.V)
-	require.Equal(t, got.R, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().R = %v, want 0x0", got.R)
-	require.Equal(t, got.S, (*hexutil.Big)(big.NewInt(0)), "newRPCTransaction().S = %v, want 0x0", got.S)
+	require.Equal(t, got.GasPrice, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().GasPrice = %v, want 0x0", got.GasPrice)
+	require.Equal(t, got.V, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().V = %v, want 0x0", got.V)
+	require.Equal(t, got.R, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().R = %v, want 0x0", got.R)
+	require.Equal(t, got.S, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().S = %v, want 0x0", got.S)
 
 	// Should include versioned deposit tx specific fields
-	require.Equal(t, got.SourceHash, tx.SourceHash, "newRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
-	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "newRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
-	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "newRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
-	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "newRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
-	require.Equal(t, *got.DepositReceiptVersion, (hexutil.Uint64(version)), "newRPCTransaction().DepositReceiptVersion = %v, want %v", *got.DepositReceiptVersion, version)
+	require.Equal(t, got.SourceHash, tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
+	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
+	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "NewRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
+	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "NewRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
+	require.Equal(t, *got.DepositReceiptVersion, (hexutil.Uint64(version)), "NewRPCTransaction().DepositReceiptVersion = %v, want %v", *got.DepositReceiptVersion, version)
 
 	// Make sure json marshal/unmarshal of the rpc tx preserves the receipt version
 	b, err := json.Marshal(got)
@@ -309,7 +309,7 @@ func TestNewRPCTransactionOmitIsSystemTxFalse(t *testing.T) {
 		From:       &common.Address{1},
 		Value:      uint256.NewInt(1337),
 	}
-	got := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
+	got := NewRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
 
 	require.False(t, got.IsSystemTx, "should omit IsSystemTx when false")
 }
@@ -391,7 +391,7 @@ func TestUnmarshalRpcDepositTx(t *testing.T) {
 				Mint:       uint256.NewInt(34),
 				Value:      uint256.NewInt(1337),
 			}
-			rpcTx := newRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
+			rpcTx := NewRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
 			test.modifier(rpcTx)
 			json, err := json.Marshal(rpcTx)
 			require.NoError(t, err, "marshalling failed: %w", err)
