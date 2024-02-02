@@ -457,6 +457,8 @@ func (tx *LegacyTx) Sender(signer Signer) (libcommon.Address, error) {
 	return addr, nil
 }
 
-func (tx *LegacyTx) RollupCostData() RollupCostData {
+func (tx *LegacyTx) IsDepositTx() bool { return false }
+
+func (tx *LegacyTx) RollupCostData() types2.RollupCostData {
 	return tx.computeRollupGas(tx)
 }

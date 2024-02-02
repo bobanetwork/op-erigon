@@ -11,6 +11,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 
 	"github.com/ledgerwatch/erigon/cmd/state/exec22"
 	"github.com/ledgerwatch/erigon/consensus"
@@ -204,7 +205,7 @@ func (rw *Worker) RunTxTaskNoLock(txTask *exec22.TxTask) {
 		if !rw.background {
 			getHashFn := core.GetHashFn(header, rw.getHeader)
 			blockContext = core.NewEVMBlockContext(header, getHashFn, rw.engine, nil /* author */)
-			blockContext.L1CostFunc = types.NewL1CostFunc(rw.chainConfig, rw.ibs)
+			blockContext.L1CostFunc = opstack.NewL1CostFunc(rw.chainConfig, rw.ibs)
 		}
 		rw.evm.ResetBetweenBlocks(blockContext, core.NewEVMTxContext(msg), ibs, vmConfig, rules)
 

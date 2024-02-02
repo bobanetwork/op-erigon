@@ -288,7 +288,7 @@ func (tx DepositTransaction) AsMessage(s Signer, _ *big.Int, rules *chain.Rules)
 		from:       *tx.From,
 		gasLimit:   tx.GasLimit,
 		to:         tx.To,
-		mint:       *tx.Mint,
+		mint:       tx.Mint,
 		amount:     *tx.Value,
 		isSystemTx: tx.IsSystemTx,
 		data:       tx.Data,
@@ -310,8 +310,8 @@ func (tx *DepositTransaction) FakeSign(address libcommon.Address) (Transaction, 
 	return cpy, nil
 }
 
-func (tx DepositTransaction) RollupCostData() RollupCostData {
-	return RollupCostData{}
+func (tx DepositTransaction) RollupCostData() types2.RollupCostData {
+	return types2.RollupCostData{}
 }
 
 // Hash computes the hash (but not for signatures!)

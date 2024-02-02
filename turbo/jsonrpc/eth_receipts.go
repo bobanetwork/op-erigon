@@ -8,6 +8,7 @@ import (
 	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/holiman/uint256"
@@ -535,7 +536,7 @@ func txnExecutor(tx kv.TemporalTx, chainConfig *chain.Config, engine consensus.E
 func (e *intraBlockExec) changeBlock(header *types.Header) {
 	e.blockNum = header.Number.Uint64()
 	blockCtx := transactions.NewEVMBlockContext(e.engine, header, true /* requireCanonical */, e.tx, e.br)
-	blockCtx.L1CostFunc = types.NewL1CostFunc(e.chainConfig, e.ibs)
+	blockCtx.L1CostFunc = opstack.NewL1CostFunc(e.chainConfig, e.ibs)
 	e.blockCtx = &blockCtx
 	e.blockHash = header.Hash()
 	e.header = header

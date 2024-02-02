@@ -95,8 +95,8 @@ type Transaction interface {
 	GetSender() (libcommon.Address, bool)
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
-	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwise returns itself.
-	RollupCostData() RollupCostData
+	RollupCostData() types2.RollupCostData
+	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwiwes returns itself.
 }
 
 // TransactionMisc is collection of miscelaneous fields for transaction that is supposed to be embedded into concrete
@@ -132,22 +132,19 @@ func (r *rollupGasCounter) Write(p []byte) (int, error) {
 func (tm *TransactionMisc) computeRollupGas(tx interface {
 	MarshalBinary(w io.Writer) error
 	Type() byte
-}) RollupCostData {
+}) types2.RollupCostData {
 	if tx.Type() == DepositTxType {
-		return RollupCostData{}
+		return types2.RollupCostData{}
 	}
 	if v := tm.rollupGas.Load(); v != nil {
-		return v.(RollupCostData)
+		return v.(types2.RollupCostData)
 	}
 	var c rollupGasCounter
 	err := tx.MarshalBinary(&c)
 	if err != nil { // Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
 		log.Error("failed to encode tx for L1 cost computation", "err", err)
 	}
-	total := RollupCostData{
-		zeroes: c.zeroes,
-		ones:   c.ones,
-	}
+	total := types2.RollupCostData{Zeroes: c.zeroes, Ones: c.ones}
 	tm.rollupGas.Store(total)
 	return total
 }
@@ -570,7 +567,6 @@ type Message struct {
 	to               *libcommon.Address
 	from             libcommon.Address
 	nonce            uint64
-	mint             uint256.Int
 	amount           uint256.Int
 	gasLimit         uint64
 	gasPrice         uint256.Int
@@ -582,8 +578,10 @@ type Message struct {
 	checkNonce       bool
 	isFree           bool
 	blobHashes       []libcommon.Hash
-	isSystemTx       bool
-	l1CostGas        RollupCostData
+
+	isSystemTx bool
+	mint       *uint256.Int
+	l1CostGas  types2.RollupCostData
 }
 
 func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64,
@@ -651,10 +649,10 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 	m.gasLimit = gas
 }
 
-func (m Message) IsSystemTx() bool               { return m.isSystemTx }
-func (m Message) IsDepositTx() bool              { return m.txType == DepositTxType }
-func (m Message) Mint() *uint256.Int             { return &m.mint }
-func (m Message) RollupCostData() RollupCostData { return m.l1CostGas }
+func (m Message) IsSystemTx() bool                      { return m.isSystemTx }
+func (m Message) IsDepositTx() bool                     { return m.txType == DepositTxType }
+func (m Message) Mint() *uint256.Int                    { return m.mint }
+func (m Message) RollupCostData() types2.RollupCostData { return m.l1CostGas }
 
 func (m Message) BlobGas() uint64 { return fixedgas.BlobGasPerBlob * uint64(len(m.blobHashes)) }
 

@@ -27,7 +27,6 @@ import (
 	cmath "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus/misc"
-	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -94,7 +93,7 @@ type Message interface {
 	IsSystemTx() bool
 	IsDepositTx() bool
 	IsFree() bool
-	RollupCostData() types.RollupCostData
+	RollupCostData() types2.RollupCostData
 
 	Nonce() uint64
 	CheckNonce() bool
