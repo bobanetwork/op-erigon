@@ -776,7 +776,9 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
 		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
 		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
-		fields["l1FeeScalar"] = receipt.FeeScalar.String()
+		if receipt.FeeScalar != nil { // removed in Ecotone
+			fields["l1FeeScalar"] = receipt.FeeScalar
+		}
 	}
 	if chainConfig.Optimism != nil && txn.Type() == types.DepositTxType && receipt.DepositNonce != nil {
 		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
@@ -800,6 +802,7 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	if receipt.ContractAddress != (common.Address{}) {
 		fields["contractAddress"] = receipt.ContractAddress
 	}
+
 	// Set derived blob related fields
 	numBlobs := len(txn.GetBlobHashes())
 	if numBlobs > 0 {
