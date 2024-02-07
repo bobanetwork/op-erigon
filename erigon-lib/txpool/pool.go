@@ -309,6 +309,14 @@ func New(newTxs chan types.Announcements, coreDB kv.RoDB, cfg txpoolcfg.Config, 
 	return res, nil
 }
 
+// SetInitialBlockGasLimit is a hack to allow the txpool to function before the
+// op-node makes the call to create the first block, setting the block gas
+// limit, and triggering the processing of the transactions in the transaction
+// pool
+func (p *TxPool) SetInitialBlockGasLimit(limit uint64) {
+	p.blockGasLimit.Store(limit)
+}
+
 func (p *TxPool) Start(ctx context.Context, db kv.RwDB) error {
 	if p.started.Load() {
 		return nil

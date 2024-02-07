@@ -630,6 +630,9 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		backend.txPoolDB, backend.txPool, backend.txPoolFetch, backend.txPoolSend, backend.txPoolGrpcServer, err = txpooluitl.AllComponents(
 			ctx, config.TxPool, kvcache.NewDummy(), backend.newTxs, backend.chainDB, backend.sentriesClient.Sentries(), stateDiffClient, misc.Eip1559FeeCalculator, logger,
 		)
+		// TODO(jky) this is a bit of a hack, and should probably be passed as a
+		// parameter through the AllComponents call above
+		backend.txPool.SetInitialBlockGasLimit(config.Miner.GasLimit)
 		if err != nil {
 			return nil, err
 		}
