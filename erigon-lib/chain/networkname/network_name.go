@@ -14,7 +14,7 @@ const (
 	BorE2ETestChain2ValName  = "bor-e2e-test-2Val"
 	ChiadoChainName          = "chiado"
 	OptimismMainnetChainName = "optimism-mainnet"
-	OptimismGoerliChainName  = "optimism-goerli"
+	OptimismSepoliaChainName = "optimism-sepolia"
 	BobaSepoliaChainName     = "boba-sepolia"
 )
 
@@ -30,6 +30,6 @@ var All = []string{
 	GnosisChainName,
 	ChiadoChainName,
 	OptimismMainnetChainName,
-	OptimismGoerliChainName,
+	OptimismSepoliaChainName,
 	BobaSepoliaChainName,
 }
