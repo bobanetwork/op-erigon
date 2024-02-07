@@ -83,9 +83,10 @@ type Config struct {
 	BurntContract map[string]common.Address `json:"burntContract,omitempty"`
 
 	// Various consensus engines
-	Ethash   *EthashConfig   `json:"ethash,omitempty"`
-	Clique   *CliqueConfig   `json:"clique,omitempty"`
-	Aura     *AuRaConfig     `json:"aura,omitempty"`
+	Ethash *EthashConfig `json:"ethash,omitempty"`
+	Clique *CliqueConfig `json:"clique,omitempty"`
+	Aura   *AuRaConfig   `json:"aura,omitempty"`
+
 	Optimism *OptimismConfig `json:"optimism,omitempty"`
 
 	Bor     BorConfig       `json:"-"`
