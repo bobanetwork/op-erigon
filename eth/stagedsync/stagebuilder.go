@@ -76,7 +76,7 @@ func MiningStages(
 			ID:          stages.IntermediateHashes,
 			Description: "Generate intermediate hashes and computing state root",
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, tx kv.RwTx, logger log.Logger) error {
-				stateRoot, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, logger)
+				stateRoot, err := SpawnIntermediateHashesStage(s, u, tx, trieCfg, ctx, &finish.chainConfig, logger)
 				if err != nil {
 					return err
 				}

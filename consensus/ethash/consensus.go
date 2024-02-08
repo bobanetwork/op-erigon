@@ -209,8 +209,10 @@ func VerifyHeaderBasics(chain consensus.ChainHeaderReader, header, parent *types
 			return consensus.ErrFutureBlock
 		}
 	}
-	if header.Time <= parent.Time {
-		return errOlderBlockTime
+	if !chain.Config().IsOptimismPreBedrock(header.Number.Uint64()) {
+		if header.Time <= parent.Time {
+			return errOlderBlockTime
+		}
 	}
 	// Verify that the gas limit is <= 2^63-1
 	if header.GasLimit > params.MaxGasLimit {
@@ -662,11 +664,13 @@ func AccumulateRewards(config *chain.Config, header *types.Header, uncles []*typ
 
 // accumulateRewards retrieves rewards for a block and applies them to the coinbase accounts for miner and uncle miners
 func accumulateRewards(config *chain.Config, state *state.IntraBlockState, header *types.Header, uncles []*types.Header) {
-	minerReward, uncleRewards := AccumulateRewards(config, header, uncles)
-	for i, uncle := range uncles {
-		if i < len(uncleRewards) {
-			state.AddBalance(uncle.Coinbase, &uncleRewards[i])
+	if !config.IsOptimismPreBedrock(header.Number.Uint64()) {
+		minerReward, uncleRewards := AccumulateRewards(config, header, uncles)
+		for i, uncle := range uncles {
+			if i < len(uncleRewards) {
+				state.AddBalance(uncle.Coinbase, &uncleRewards[i])
+			}
 		}
+		state.AddBalance(header.Coinbase, &minerReward)
 	}
-	state.AddBalance(header.Coinbase, &minerReward)
 }

@@ -38,6 +38,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/rlp"
+	"github.com/ledgerwatch/erigon/rpc"
 )
 
 var (
@@ -81,7 +82,7 @@ func ExecuteBlockEphemerally(
 	engine consensus.Engine, block *types.Block,
 	stateReader state.StateReader, stateWriter state.WriterWithChangeSets,
 	chainReader consensus.ChainReader, getTracer func(txIndex int, txHash libcommon.Hash) (vm.EVMLogger, error),
-	logger log.Logger,
+	historicalRPCService *rpc.Client, historicalRPCTimeout *time.Duration, logger log.Logger,
 ) (*EphemeralExecResult, error) {
 
 	defer blockExecutionTimer.ObserveDuration(time.Now())
@@ -120,7 +121,7 @@ func ExecuteBlockEphemerally(
 			vmConfig.Tracer = tracer
 			writeTrace = true
 		}
-		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, usedBlobGas, *vmConfig)
+		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, usedBlobGas, *vmConfig, historicalRPCService, historicalRPCTimeout)
 		if writeTrace {
 			if ftracer, ok := vmConfig.Tracer.(vm.FlushableTracer); ok {
 				ftracer.Flush(tx)

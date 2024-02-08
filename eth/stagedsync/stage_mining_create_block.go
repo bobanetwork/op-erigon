@@ -185,6 +185,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 
 	stateReader := state.NewPlainStateReader(tx)
 	ibs := state.New(stateReader)
+	isBobaLegacyBlock := cfg.chainConfig.IsBobaLegacyBlock(blockNum)
 
 	if err = cfg.engine.Prepare(chain, header, ibs); err != nil {
 		logger.Error("Failed to prepare header for mining",
@@ -209,6 +210,13 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 
 		current.Deposits = cfg.blockBuilderParameters.Deposits
 		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
+
+		if isBobaLegacyBlock {
+			current.Header.GasLimit = uint64(cfg.chainConfig.GetBobaGenesisGasLimit())
+			current.Header.Coinbase = libcommon.HexToAddress(cfg.chainConfig.GetBobaGenesisCoinbase())
+			current.Header.BaseFee = nil
+		}
+
 		return nil
 	}
 
@@ -290,6 +298,13 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 	current.Header = header
 	current.Uncles = makeUncles(env.uncles)
 	current.Withdrawals = nil
+
+	if isBobaLegacyBlock {
+		current.Header.GasLimit = uint64(cfg.chainConfig.GetBobaGenesisGasLimit())
+		current.Header.Coinbase = libcommon.HexToAddress(cfg.chainConfig.GetBobaGenesisCoinbase())
+		current.Header.BaseFee = nil
+	}
+
 	return nil
 }
 

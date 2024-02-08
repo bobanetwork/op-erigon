@@ -17,6 +17,10 @@
 package core
 
 import (
+	"context"
+	"fmt"
+	"time"
+
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/log/v3"
@@ -27,6 +31,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
+	"github.com/ledgerwatch/erigon/rpc"
 )
 
 // applyTransaction attempts to apply a transaction to the given state database
@@ -35,7 +40,7 @@ import (
 // indicating the block was invalid.
 func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *GasPool, ibs *state.IntraBlockState,
 	stateWriter state.StateWriter, header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64,
-	evm *vm.EVM, cfg vm.Config) (*types.Receipt, []byte, error) {
+	evm *vm.EVM, cfg vm.Config, historicalRPCService *rpc.Client, historicalRPCTimeout *time.Duration) (*types.Receipt, []byte, error) {
 	rules := evm.ChainRules()
 	msg, err := tx.AsMessage(*types.MakeSigner(config, header.Number.Uint64(), header.Time), header.BaseFee, rules)
 	if err != nil {
@@ -64,10 +69,21 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		nonce = ibs.GetNonce(msg.From())
 	}
 
-	result, err := ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
-	if err != nil {
-		return nil, nil, err
+	var legacyReceipt *types.Receipt
+	isOptimismPreBlock := evm.ChainConfig().IsOptimismPreBedrock(header.Number.Uint64())
+	result := &ExecutionResult{
+		UsedGas:    msg.Gas(),
+		Err:        nil,
+		ReturnData: []byte{},
 	}
+
+	if !isOptimismPreBlock {
+		result, err = ApplyMessage(evm, msg, gp, true /* refunds */, false /* gasBailout */)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
 	// Update the state with pending changes
 	if err = ibs.FinalizeTx(rules, stateWriter); err != nil {
 		return nil, nil, err
@@ -75,6 +91,20 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 	*usedGas += result.UsedGas
 	if usedBlobGas != nil {
 		*usedBlobGas += tx.GetBlobGas()
+	}
+
+	if isOptimismPreBlock {
+		if historicalRPCService != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), *historicalRPCTimeout)
+			err = historicalRPCService.CallContext(ctx, &legacyReceipt, "eth_getTransactionReceipt", tx.Hash().String())
+			cancel()
+			if err != nil {
+				return nil, nil, err
+			}
+			*usedGas = legacyReceipt.GasUsed
+		} else {
+			return nil, nil, fmt.Errorf("legacy block must be handled by the historicalRPCService")
+		}
 	}
 
 	// Set the receipt logs and create the bloom filter.
@@ -108,9 +138,22 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 		}
 		// Set the receipt logs and create a bloom for filtering
 		receipt.Logs = ibs.GetLogs(tx.Hash())
-		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 		receipt.BlockNumber = header.Number
 		receipt.TransactionIndex = uint(ibs.TxIndex())
+
+		if isOptimismPreBlock {
+			receipt.GasUsed = legacyReceipt.GasUsed
+			receipt.Logs = legacyReceipt.Logs
+			receipt.Status = legacyReceipt.Status
+			// The following fields can not be set in the legacy receipt
+			// The math of calculating legacy and new receipts is not compatible
+			receipt.L1GasPrice = legacyReceipt.L1GasPrice
+			receipt.L1GasUsed = legacyReceipt.L1GasUsed
+			receipt.L1Fee = legacyReceipt.L1Fee
+			receipt.FeeScalar = legacyReceipt.FeeScalar
+		}
+
+		receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 	}
 
 	return receipt, result.ReturnData, err
@@ -123,6 +166,7 @@ func applyTransaction(config *chain.Config, engine consensus.EngineReader, gp *G
 func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader,
 	author *libcommon.Address, gp *GasPool, ibs *state.IntraBlockState, stateWriter state.StateWriter,
 	header *types.Header, tx types.Transaction, usedGas, usedBlobGas *uint64, cfg vm.Config,
+	historicalRPCService *rpc.Client, historicalRPCTimeout *time.Duration,
 ) (*types.Receipt, []byte, error) {
 	log.Debug("ApplyTransaction called for", "txhash", tx.Hash(), "blockNum", header.Number.Uint64())
 	// Create a new context to be used in the EVM environment
@@ -135,5 +179,5 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, l1CostFunc)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
-	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedBlobGas, vmenv, cfg)
+	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedBlobGas, vmenv, cfg, historicalRPCService, historicalRPCTimeout)
 }

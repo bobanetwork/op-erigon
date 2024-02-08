@@ -195,7 +195,7 @@ var (
 			EIP1559Elasticity:  8,
 			EIP1559Denominator: 1,
 		},
-		BedrockBlock: big.NewInt(1000000000000000000),
+		BedrockBlock: big.NewInt(1),
 	}
 
 	TestRules = TestChainConfig.Rules(0, 0)
