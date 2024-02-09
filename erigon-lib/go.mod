@@ -150,6 +150,6 @@ require (
 	zombiezen.com/go/sqlite v0.13.1 // indirect
 )
 
-replace github.com/ledgerwatch/interfaces => github.com/bobanetwork/v3-erigon-interfaces v0.0.0-20240124153147-63af2e42e1b1
+replace github.com/ledgerwatch/interfaces => github.com/bobanetwork/v3-erigon-interfaces v0.0.0-20240209204708-d76c58717dca
 
 // replace github.com/ledgerwatch/interfaces => ../erigon-interfaces
