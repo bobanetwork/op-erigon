@@ -18,6 +18,7 @@ import (
 	"github.com/ledgerwatch/erigon/cl/freezer"
 	freezer2 "github.com/ledgerwatch/erigon/cl/freezer"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
+	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync/freezeblocks"
 
 	"github.com/ledgerwatch/erigon/cl/persistence"
@@ -87,7 +88,7 @@ func OpenCaplinDatabase(ctx context.Context,
 
 func RunCaplinPhase1(ctx context.Context, sentinel sentinel.SentinelClient, engine execution_client.ExecutionEngine,
 	beaconConfig *clparams.BeaconChainConfig, genesisConfig *clparams.GenesisConfig, state *state.CachingBeaconState,
-	caplinFreezer freezer.Freezer, dirs datadir.Dirs, cfg beacon_router_configuration.RouterConfiguration, eth1Getter snapshot_format.ExecutionBlockReaderByNumber,
+	caplinFreezer freezer.Freezer, dirs datadir.Dirs, snapshotVersion uint8, cfg beacon_router_configuration.RouterConfiguration, eth1Getter snapshot_format.ExecutionBlockReaderByNumber,
 	snDownloader proto_downloader.DownloaderClient, backfilling bool, states bool, historyDB persistence.BeaconChainDatabase, indexDB kv.RwDB) error {
 	rawDB, af := persistence.AferoRawBeaconBlockChainFromOsPath(beaconConfig, dirs.CaplinHistory)
 
@@ -98,7 +99,7 @@ func RunCaplinPhase1(ctx context.Context, sentinel sentinel.SentinelClient, engi
 
 	logger := log.New("app", "caplin")
 
-	csn := freezeblocks.NewCaplinSnapshots(ethconfig.BlocksFreezing{}, beaconConfig, dirs.Snap, logger)
+	csn := freezeblocks.NewCaplinSnapshots(ethconfig.BlocksFreezing{}, beaconConfig, dirs.Snap, snapshotVersion, logger)
 	rcsn := freezeblocks.NewBeaconSnapshotReader(csn, eth1Getter, historyDB, beaconConfig)
 
 	if caplinFreezer != nil {
@@ -197,7 +198,7 @@ func RunCaplinPhase1(ctx context.Context, sentinel sentinel.SentinelClient, engi
 	if err != nil {
 		return err
 	}
-	antiq := antiquary.NewAntiquary(ctx, genesisState, vTables, beaconConfig, dirs, snDownloader, indexDB, csn, rcsn, historyDB, logger, states, af)
+	antiq := antiquary.NewAntiquary(ctx, genesisState, vTables, beaconConfig, dirs, snDownloader, indexDB, csn, rcsn, historyDB, logger, states, backfilling, af)
 	// Create the antiquary
 	go func() {
 		if err := antiq.Loop(); err != nil {
@@ -212,7 +213,7 @@ func RunCaplinPhase1(ctx context.Context, sentinel sentinel.SentinelClient, engi
 	statesReader := historical_states_reader.NewHistoricalStatesReader(beaconConfig, rcsn, vTables, af, genesisState)
 	syncedDataManager := synced_data.NewSyncedDataManager(cfg.Active, beaconConfig)
 	if cfg.Active {
-		apiHandler := handler.NewApiHandler(genesisConfig, beaconConfig, rawDB, indexDB, forkChoice, pool, rcsn, syncedDataManager, statesReader)
+		apiHandler := handler.NewApiHandler(genesisConfig, beaconConfig, rawDB, indexDB, forkChoice, pool, rcsn, syncedDataManager, statesReader, sentinel, params.GitTag)
 		headApiHandler := &validatorapi.ValidatorApiHandler{
 			FC:             forkChoice,
 			BeaconChainCfg: beaconConfig,
@@ -225,11 +226,13 @@ func RunCaplinPhase1(ctx context.Context, sentinel sentinel.SentinelClient, engi
 		log.Info("Beacon API started", "addr", cfg.Address)
 	}
 
+	forkChoice.StartAttestationsRTT()
+
 	stageCfg := stages.ClStagesCfg(beaconRpc, antiq, genesisConfig, beaconConfig, state, engine, gossipManager, forkChoice, historyDB, indexDB, csn, dirs.Tmp, dbConfig, backfilling, syncedDataManager)
 	sync := stages.ConsensusClStages(ctx, stageCfg)
 
 	logger.Info("[Caplin] starting clstages loop")
-	err = sync.StartWithStage(ctx, "WaitForPeers", logger, stageCfg)
+	err = sync.StartWithStage(ctx, "DownloadHistoricalBlocks", logger, stageCfg)
 	logger.Info("[Caplin] exiting clstages loop")
 	if err != nil {
 		return err

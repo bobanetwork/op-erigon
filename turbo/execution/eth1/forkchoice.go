@@ -10,6 +10,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/execution"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
+	"github.com/ledgerwatch/erigon-lib/wrap"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/eth/stagedsync"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
@@ -138,18 +139,17 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 		return
 	}
 
+	// Only Optimism allows unwinding to previously canonical hashes
 	unwindingToCanonical := false
 	if e.config.IsOptimism() {
 		headHash := rawdb.ReadHeadBlockHash(tx)
-		unwindingToCanonical = blockHash != headHash
+		unwindingToCanonical = (blockHash != headHash) && (canonicalHash == blockHash)
 		if unwindingToCanonical {
-			e.logger.Info("Optimism ForkChoice is choosing to unwind to a previously canonical block", "blockHash", blockHash, "blockNumber", fcuHeader.Number.Uint64())
+			e.logger.Info("Optimism ForkChoice is choosing to unwind to a previously canonical block", "blockHash", blockHash, "blockNumber", fcuHeader.Number.Uint64(), "headHash", headHash)
 		}
 	}
 
-	// Optimism allows unwinding to previously canonical hashes
 	if canonicalHash == blockHash {
-
 		// if block hash is part of the canonical chain treat it as no-op.
 		writeForkChoiceHashes(tx, blockHash, safeHash, finalizedHash)
 		valid, err := e.verifyForkchoiceHashes(ctx, tx, blockHash, finalizedHash, safeHash)
@@ -254,7 +254,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 	}
 
 	// Run the unwind
-	if err := e.executionPipeline.RunUnwind(e.db, tx); err != nil {
+	if err := e.executionPipeline.RunUnwind(e.db, wrap.TxContainer{Tx: tx}); err != nil {
 		err = fmt.Errorf("updateForkChoice: %w", err)
 		sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
 		return
@@ -325,7 +325,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 		}
 	}
 	// Run the forkchoice
-	if err := e.executionPipeline.Run(e.db, tx, false); err != nil {
+	if _, err := e.executionPipeline.Run(e.db, wrap.TxContainer{Tx: tx}, false); err != nil {
 		err = fmt.Errorf("updateForkChoice: %w", err)
 		sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
 		return

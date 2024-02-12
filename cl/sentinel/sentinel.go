@@ -92,7 +92,7 @@ func (s *Sentinel) createLocalNode(
 	udpPort, tcpPort int,
 	tmpDir string,
 ) (*enode.LocalNode, error) {
-	db, err := enode.OpenDB(s.ctx, "", tmpDir)
+	db, err := enode.OpenDB(s.ctx, "", tmpDir, s.logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not open node's peer database: %w", err)
 	}
@@ -262,7 +262,7 @@ func (s *Sentinel) ReqRespHandler() http.Handler {
 	return s.httpApi
 }
 
-func (s *Sentinel) RecvGossip() <-chan *pubsub.Message {
+func (s *Sentinel) RecvGossip() <-chan *GossipMessage {
 	return s.subManager.Recv()
 }
 
