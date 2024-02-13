@@ -131,8 +131,8 @@ func ApplyTransaction(config *chain.Config, blockHashFunc func(n uint64) libcomm
 	// about the transaction and calling mechanisms.
 	cfg.SkipAnalysis = SkipAnalysis(config, header.Number.Uint64())
 
-	l1CostFunc := types.NewL1CostFunc(config, ibs)
-	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author, l1CostFunc)
+	blockContext := NewEVMBlockContext(header, blockHashFunc, engine, author)
+	blockContext.L1CostFunc = types.NewL1CostFunc(config, ibs)
 	vmenv := vm.NewEVM(blockContext, evmtypes.TxContext{}, ibs, config, cfg)
 
 	return applyTransaction(config, engine, gp, ibs, stateWriter, header, tx, usedGas, usedBlobGas, vmenv, cfg)

@@ -238,8 +238,8 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 		author = &state.SystemAddress
 		txContext = NewEVMTxContext(msg)
 	}
-	l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author, l1CostFunc)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author)
+	blockContext.L1CostFunc = types.NewL1CostFunc(chainConfig, ibs)
 	evm := vm.NewEVM(blockContext, txContext, ibs, chainConfig, vmConfig)
 
 	ret, _, err := evm.Call(
@@ -276,8 +276,8 @@ func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config
 	// Create a new context to be used in the EVM environment
 	author := &contract
 	txContext := NewEVMTxContext(msg)
-	l1CostFunc := types.NewL1CostFunc(&chainConfig, ibs)
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author, l1CostFunc)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author)
+	blockContext.L1CostFunc = types.NewL1CostFunc(&chainConfig, ibs)
 	evm := vm.NewEVM(blockContext, txContext, ibs, &chainConfig, vmConfig)
 
 	ret, _, err := evm.SysCreate(

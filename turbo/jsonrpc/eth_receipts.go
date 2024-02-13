@@ -534,8 +534,8 @@ func txnExecutor(tx kv.TemporalTx, chainConfig *chain.Config, engine consensus.E
 
 func (e *intraBlockExec) changeBlock(header *types.Header) {
 	e.blockNum = header.Number.Uint64()
-	l1CostFunc := types.NewL1CostFunc(e.chainConfig, e.ibs) // FIXME? is ibs current?
-	blockCtx := transactions.NewEVMBlockContext(e.engine, header, true /* requireCanonical */, e.tx, e.br, l1CostFunc)
+	blockCtx := transactions.NewEVMBlockContext(e.engine, header, true /* requireCanonical */, e.tx, e.br)
+	blockCtx.L1CostFunc = types.NewL1CostFunc(e.chainConfig, e.ibs)
 	e.blockCtx = &blockCtx
 	e.blockHash = header.Hash()
 	e.header = header

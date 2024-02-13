@@ -125,13 +125,13 @@ func TestGetReceipts(t *testing.T) {
 	require.Equal(t, 2, len(receipts))
 
 	require.Equal(t, new(uint256.Int).SetBytes(l1BaseFee[:]).ToBig(), receipts[0].L1GasPrice)
-	rollupDataGas1 := tx1.RollupCostData().DataGas(0, m.ChainConfig)
+	rollupDataGas1 := uint64(2492)
 	require.Equal(t, new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas1), new(uint256.Int).SetBytes(overhead[:]).ToBig()), receipts[0].L1GasUsed)
 	require.Equal(t, types.L1Cost(rollupDataGas1, new(uint256.Int).SetBytes(l1BaseFee[:]), new(uint256.Int).SetBytes(overhead[:]), new(uint256.Int).SetBytes(scalar[:])).ToBig(), receipts[0].L1Fee)
 	require.Equal(t, feeScalar, receipts[0].FeeScalar)
 
 	require.Equal(t, new(uint256.Int).SetBytes(l1BaseFee[:]).ToBig(), receipts[1].L1GasPrice)
-	rollupDataGas2 := tx2.RollupCostData().DataGas(0, m.ChainConfig)
+	rollupDataGas2 := uint64(1340)
 	require.Equal(t, new(big.Int).Add(new(big.Int).SetUint64(rollupDataGas2), new(uint256.Int).SetBytes(overhead[:]).ToBig()), receipts[1].L1GasUsed)
 	require.Equal(t, types.L1Cost(rollupDataGas2, new(uint256.Int).SetBytes(l1BaseFee[:]), new(uint256.Int).SetBytes(overhead[:]), new(uint256.Int).SetBytes(scalar[:])).ToBig(), receipts[1].L1Fee)
 	require.Equal(t, feeScalar, receipts[1].FeeScalar)
