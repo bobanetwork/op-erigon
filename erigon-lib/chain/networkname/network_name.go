@@ -15,7 +15,7 @@ const (
 	ChiadoChainName         = "chiado"
 
 	OptimismMainnetChainName = "optimism-mainnet"
-	OptimismGoerliChainName  = "optimism-goerli"
+	OptimismSepoliaChainName = "optimism-sepolia"
 	BobaSepoliaChainName     = "boba-sepolia"
 )
 
@@ -32,6 +32,6 @@ var All = []string{
 	ChiadoChainName,
 
 	OptimismMainnetChainName,
-	OptimismGoerliChainName,
+	OptimismSepoliaChainName,
 	BobaSepoliaChainName,
 }

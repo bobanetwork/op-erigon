@@ -155,7 +155,7 @@ var (
 
 	OptimismMainnetChainConfig = readChainSpec("chainspecs/optimism-mainnet.json")
 
-	OptimismGoerliChainConfig = readChainSpec("chainspecs/optimism-goerli.json")
+	OptimismSepoliaChainConfig = readChainSpec("chainspecs/optimism-sepolia.json")
 
 	BobaSepoliaChainConfig = readChainSpec("chainspecs/boba-sepolia.json")
 
@@ -273,8 +273,8 @@ func ChainConfigByChainName(chain string) *chain.Config {
 		return ChiadoChainConfig
 	case networkname.OptimismMainnetChainName:
 		return OptimismMainnetChainConfig
-	case networkname.OptimismGoerliChainName:
-		return OptimismGoerliChainConfig
+	case networkname.OptimismSepoliaChainName:
+		return OptimismSepoliaChainConfig
 	case networkname.BobaSepoliaChainName:
 		return BobaSepoliaChainConfig
 	default:
@@ -306,7 +306,7 @@ func GenesisHashByChainName(chain string) *libcommon.Hash {
 		return &ChiadoGenesisHash
 	case networkname.OptimismMainnetChainName:
 		return &OptimismMainnetGenesisHash
-	case networkname.OptimismGoerliChainName:
+	case networkname.OptimismSepoliaChainName:
 		return &OptimismGoerliGenesisHash
 	case networkname.BobaSepoliaChainName:
 		return &BobaSepoliaGenesisHash

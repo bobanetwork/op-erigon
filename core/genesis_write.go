@@ -105,43 +105,24 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrideCancunTime, o
 		if overrideCancunTime != nil {
 			config.CancunTime = overrideCancunTime
 		}
-		if config.IsOptimism() && overrideOptimismCanyonTime != nil {
-			config.CanyonTime = overrideOptimismCanyonTime
-			// Shanghai hardfork is included in canyon hardfork
-			config.ShanghaiTime = overrideOptimismCanyonTime
+		if config.IsOptimism() && overrideOptimismEcotoneTime != nil {
+			config.EcotoneTime = overrideOptimismEcotoneTime
+			// Cancun hardfork is included in Ecotone hardfork
+			config.CancunTime = overrideOptimismEcotoneTime
+			config.ShanghaiTime = overrideOptimismEcotoneTime
 			if config.Optimism.EIP1559DenominatorCanyon == 0 {
 				logger.Warn("EIP1559DenominatorCanyon set to 0. Overriding to 250 to avoid divide by zero.")
 				config.Optimism.EIP1559DenominatorCanyon = 250
 			}
 		}
-		if config.ShanghaiTime != nil && config.IsOptimism() && overrideOptimismCanyonTime != nil {
-			if config.ShanghaiTime.Cmp(overrideOptimismCanyonTime) != 0 {
-				logger.Warn("Shanghai hardfork time is overridden by optimism canyon time",
-					"shanghai", config.ShanghaiTime.String(), "canyon", overrideOptimismCanyonTime.String())
-			}
-		}
-		if config.Optimism != nil && config.ChainID != nil {
-			if config.ChainID.Cmp(params.OptimismGoerliChainConfig.ChainID) == 0 {
-				config.RegolithTime = params.OptimismGoerliChainConfig.RegolithTime
-				if overrideOptimismCanyonTime == nil {
-					// fall back to default hardfork time
-					config.ShanghaiTime = params.OptimismGoerliChainConfig.ShanghaiTime
-					config.CanyonTime = params.OptimismGoerliChainConfig.CanyonTime
-				}
-			}
-			if config.ChainID.Cmp(params.OptimismMainnetChainConfig.ChainID) == 0 {
-				config.RegolithTime = params.OptimismMainnetChainConfig.RegolithTime
-			}
-		}
-		if config.IsOptimism() && overrideOptimismEcotoneTime != nil {
-			config.EcotoneTime = overrideOptimismEcotoneTime
-			// Cancun hardfork is included in Ecotone hardfork
-			config.CancunTime = overrideOptimismEcotoneTime
-		}
 		if overrideCancunTime != nil && config.IsOptimism() && overrideOptimismEcotoneTime != nil {
 			if overrideCancunTime.Cmp(overrideOptimismEcotoneTime) != 0 {
 				logger.Warn("Cancun hardfork time is overridden by optimism Ecotone time",
 					"cancun", overrideCancunTime.String(), "ecotone", overrideOptimismEcotoneTime.String())
+			}
+			if config.ShanghaiTime.Cmp(overrideOptimismCanyonTime) != 0 {
+				logger.Warn("Shanghai hardfork time is overridden by optimism Ecotone time",
+					"shanghai", config.ShanghaiTime.String(), "canyon", overrideOptimismCanyonTime.String())
 			}
 		}
 	}
@@ -518,14 +499,14 @@ func OptimismMainnetGenesisBlock() *types.Genesis {
 	}
 }
 
-func OptimismGoerliGenesisBlock() *types.Genesis {
+func OptimismSepoliaGenesisBlock() *types.Genesis {
 	return &types.Genesis{
-		Config:     params.OptimismGoerliChainConfig,
+		Config:     params.OptimismSepoliaChainConfig,
 		Difficulty: big.NewInt(1),
 		Mixhash:    libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
 		ExtraData:  hexutil.MustDecode("0x000000000000000000000000000000000000000000000000000000000000000027770a9694e4b4b1e130ab91bc327c36855f612e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
 		GasLimit:   15000000,
-		Alloc:      readPrealloc("allocs/optimism_goerli.json"),
+		Alloc:      readPrealloc("allocs/optimism_sepolia.json"),
 	}
 }
 
@@ -760,8 +741,8 @@ func GenesisBlockByChainName(chain string) *types.Genesis {
 		return ChiadoGenesisBlock()
 	case networkname.OptimismMainnetChainName:
 		return OptimismMainnetGenesisBlock()
-	case networkname.OptimismGoerliChainName:
-		return OptimismGoerliGenesisBlock()
+	case networkname.OptimismSepoliaChainName:
+		return OptimismSepoliaGenesisBlock()
 	case networkname.BobaSepoliaChainName:
 		return BobaSepoliaGenesisBlock()
 	default:
