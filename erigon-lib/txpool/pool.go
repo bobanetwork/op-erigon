@@ -228,8 +228,6 @@ type TxPool struct {
 	maxBlobsPerBlock        uint64
 	feeCalculator           FeeCalculator
 	logger                  log.Logger
-
-	l1Cost types.L1CostFn
 }
 
 type FeeCalculator interface {
