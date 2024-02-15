@@ -136,7 +136,7 @@ jobs:
         description: The make target to execute
         type: string
     docker:
-      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:latest
+      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.2.0
     resource_class: xlarge
     steps:
       - attach_workspace: { at: "." }
@@ -155,12 +155,16 @@ jobs:
           command: mkdir -p /tmp/test-results
           working_directory: ~/project/v3-anchorage
       - run:
-          name: install geth
-          command: make install-geth
+          name: Initial build
+          command: make
           working_directory: ~/project/v3-anchorage
       - run:
-          name: git submodules
-          command: git submodule update --init --recursive
+          name: Devnet-allocs
+          command: make devnet-allocs
+          working_directory: ~/project/v3-anchorage
+      - run:
+          name: Cannon-prestate
+          command: make cannon-prestate
           working_directory: ~/project/v3-anchorage
       - run:
           name: print go's available MIPS targets
