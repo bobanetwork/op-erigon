@@ -109,6 +109,8 @@ type TxSlot struct {
 	Blobs       [][]byte
 	Commitments []gokzg4844.KZGCommitment
 	Proofs      []gokzg4844.KZGProof
+
+	RollupCostData RollupCostData
 }
 
 const (
@@ -124,6 +126,7 @@ var ErrParseTxn = fmt.Errorf("%w transaction", rlp.ErrParse)
 var ErrRejected = errors.New("rejected")
 var ErrAlreadyKnown = errors.New("already known")
 var ErrRlpTooBig = errors.New("txn rlp too big")
+var ErrTxTypeNotSupported = errors.New("transaction type not supported")
 
 // Set the RLP validate function
 func (ctx *TxParseContext) ValidateRLP(f func(txnRlp []byte) error) { ctx.validateRlp = f }
@@ -327,6 +330,80 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 		}
 	}
 
+	if slot.Type == DepositTxType {
+		// SourchHash
+		p, _, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx sourchHash: %s", ErrParseTxn, err) //nolint
+		}
+		// From
+		dataPos, dataLen, err := rlp.String(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx from: %s", ErrParseTxn, err) //nolint
+		}
+		if ctx.withSender {
+			copy(sender, payload[dataPos:dataPos+dataLen])
+		}
+		p = dataPos + dataLen
+		// To
+		p, dataLen, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx to: %s", ErrParseTxn, err) //nolint
+		}
+		slot.Creation = dataLen == 0
+		// Mint
+		p, _, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx mint: %s", ErrParseTxn, err) //nolint
+		}
+		// Value
+		p, err = rlp.U256(payload, p, &slot.Value)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depostTx value: %s", ErrParseTxn, err) //nolint
+		}
+		// Gas
+		p, slot.Gas, err = rlp.U64(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depositTx gas: %s", ErrParseTxn, err) //nolint
+		}
+		// Data
+		dataPos, dataLen, err = rlp.String(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depositTx data len: %s", ErrParseTxn, err) //nolint
+		}
+		slot.DataLen = dataLen
+
+		// Zero and non-zero bytes are priced differently
+		slot.DataNonZeroLen = 0
+		for _, byt := range payload[dataPos : dataPos+dataLen] {
+			if byt != 0 {
+				slot.DataNonZeroLen++
+			}
+		}
+		{
+			// full tx contents count towards rollup data gas, not just tx data
+			var zeroes, ones uint64
+			for _, byt := range payload {
+				if byt == 0 {
+					zeroes++
+				} else {
+					ones++
+				}
+			}
+			slot.RollupCostData = RollupCostData{Zeroes: zeroes, Ones: ones}
+		}
+		p = dataPos + dataLen
+
+		// Set IDHash to slot
+		_, _ = ctx.Keccak1.(io.Reader).Read(slot.IDHash[:32])
+		if validateHash != nil {
+			if err := validateHash(slot.IDHash[:32]); err != nil {
+				return p, err
+			}
+		}
+		return p, nil
+	}
+
 	// Remember where signing hash data begins (it will need to be wrapped in an RLP list)
 	sigHashPos := p
 
@@ -440,6 +517,19 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 		if byt != 0 {
 			slot.DataNonZeroLen++
 		}
+	}
+
+	{
+		// full tx contents count towards rollup data gas, not just tx data
+		var zeroes, ones uint64
+		for _, byt := range payload {
+			if byt == 0 {
+				zeroes++
+			} else {
+				ones++
+			}
+		}
+		slot.RollupCostData = RollupCostData{Zeroes: zeroes, Ones: ones}
 	}
 
 	p = dataPos + dataLen
@@ -1033,3 +1123,11 @@ func (al AccessList) StorageKeys() int {
 	}
 	return sum
 }
+
+// RollupCostData is a transaction structure that caches data for quickly computing the data
+// availablility costs for the transaction.
+type RollupCostData struct {
+	Zeroes, Ones uint64
+}
+
+type L1CostFn func(tx *TxSlot) *uint256.Int

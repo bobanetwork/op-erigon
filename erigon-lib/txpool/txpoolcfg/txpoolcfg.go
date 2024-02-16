@@ -54,6 +54,7 @@ type Config struct {
 	MdbxDBSizeLimit datasize.ByteSize
 	MdbxGrowthStep  datasize.ByteSize
 
+	Optimism bool
 	NoGossip bool // this mode doesn't broadcast any txs, and if receive remote-txn - skip it
 }
 
@@ -110,6 +111,7 @@ const (
 	BlobHashCheckFail   DiscardReason = 28 // KZGcommitment's versioned hash has to be equal to blob_versioned_hash at the same index
 	UnmatchedBlobTxExt  DiscardReason = 29 // KZGcommitments must match the corresponding blobs and proofs
 	BlobTxReplace       DiscardReason = 30 // Cannot replace type-3 blob txn with another type of txn
+	TxTypeNotSupported  DiscardReason = 31
 )
 
 func (r DiscardReason) String() string {
@@ -162,6 +164,8 @@ func (r DiscardReason) String() string {
 		return "initcode too large"
 	case TypeNotActivated:
 		return "fork supporting this transaction type is not activated yet"
+	case TxTypeNotSupported:
+		return types.ErrTxTypeNotSupported.Error()
 	case CreateBlobTxn:
 		return "blob transactions cannot have the form of a create transaction"
 	case NoBlobs:

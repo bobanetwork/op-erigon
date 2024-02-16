@@ -29,6 +29,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/cmp"
 	"github.com/ledgerwatch/erigon-lib/metrics"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus"
@@ -225,7 +226,6 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 		data, nil, false,
 		true, // isFree
 		nil,  // maxFeePerBlobGas
-		0,    // rollupDataGas
 	)
 	vmConfig := vm.Config{NoReceipts: true, RestoreState: constCall}
 	// Create a new context to be used in the EVM environment
@@ -239,8 +239,8 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig *chain
 		author = &state.SystemAddress
 		txContext = NewEVMTxContext(msg)
 	}
-	l1CostFunc := types.NewL1CostFunc(chainConfig, ibs)
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author, l1CostFunc)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author)
+	blockContext.L1CostFunc = opstack.NewL1CostFunc(chainConfig, ibs)
 	evm := vm.NewEVM(blockContext, txContext, ibs, chainConfig, vmConfig)
 
 	ret, _, err := evm.Call(
@@ -272,14 +272,13 @@ func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config
 		data, nil, false,
 		true, // isFree
 		nil,  // maxFeePerBlobGas
-		0,    // rollupDataGas
 	)
 	vmConfig := vm.Config{NoReceipts: true}
 	// Create a new context to be used in the EVM environment
 	author := &contract
 	txContext := NewEVMTxContext(msg)
-	l1CostFunc := types.NewL1CostFunc(&chainConfig, ibs)
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author, l1CostFunc)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author)
+	blockContext.L1CostFunc = opstack.NewL1CostFunc(&chainConfig, ibs)
 	evm := vm.NewEVM(blockContext, txContext, ibs, &chainConfig, vmConfig)
 
 	ret, _, err := evm.SysCreate(

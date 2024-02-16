@@ -57,6 +57,8 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	"github.com/ledgerwatch/erigon-lib/metrics"
+	"github.com/ledgerwatch/erigon-lib/opstack"
+	"github.com/ledgerwatch/erigon-lib/rlp"
 	"github.com/ledgerwatch/erigon-lib/txpool/txpoolcfg"
 	"github.com/ledgerwatch/erigon-lib/types"
 )
@@ -342,6 +344,56 @@ func (p *TxPool) Start(ctx context.Context, db kv.RwDB) error {
 
 		return nil
 	})
+}
+
+func RawRLPTxToOptimismL1CostFn(payload []byte) (types.L1CostFn, error) {
+	// skip prefix byte
+	if len(payload) == 0 {
+		return nil, fmt.Errorf("empty tx payload")
+	}
+	offset, _, err := rlp.String(payload, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse rlp string: %w", err)
+	}
+	if payload[offset] != 0x7E {
+		return nil, fmt.Errorf("expected deposit tx type, but got %d", payload[offset])
+	}
+	pos := offset + 1
+	_, _, isList, err := rlp.Prefix(payload, pos)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse rlp prefix: %w", err)
+	}
+	if !isList {
+		return nil, fmt.Errorf("expected list")
+	}
+	dataPos, _, err := rlp.List(payload, pos)
+	if err != nil {
+		return nil, fmt.Errorf("bad tx rlp list start: %w", err)
+	}
+	pos = dataPos
+
+	// skip 7 fields:
+	// source hash
+	// from
+	// to
+	// mint
+	// value
+	// gas
+	// isSystemTx
+	for i := 0; i < 7; i++ {
+		dataPos, dataLen, _, err := rlp.Prefix(payload, pos)
+		if err != nil {
+			return nil, fmt.Errorf("failed to skip rlp element of tx: %w", err)
+		}
+		pos = dataPos + dataLen
+	}
+	// data
+	dataPos, dataLen, _, err := rlp.Prefix(payload, pos)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tx data entry rlp prefix: %w", err)
+	}
+	txCalldata := payload[dataPos : dataPos+dataLen]
+	return opstack.L1CostFnForTxPool(txCalldata)
 }
 
 func (p *TxPool) OnNewBlock(ctx context.Context, stateChanges *remote.StateChangeBatch, unwindTxs, unwindBlobTxs, minedTxs types.TxSlots, tx kv.Tx) error {
@@ -805,6 +857,16 @@ func toBlobs(_blobs [][]byte) []gokzg4844.Blob {
 }
 
 func (p *TxPool) validateTx(txn *types.TxSlot, isLocal bool, stateCache kvcache.CacheView) txpoolcfg.DiscardReason {
+	// No unauthenticated deposits allowed in the transaction pool.
+	// This is for spam protection, not consensus,
+	// as the external engine-API user authenticates deposits.
+	if txn.Type == types.DepositTxType {
+		return txpoolcfg.TxTypeNotSupported
+	}
+	if p.cfg.Optimism && txn.Type == types.BlobTxType {
+		return txpoolcfg.TxTypeNotSupported
+	}
+
 	isShanghai := p.isShanghai() || p.isAgra()
 	if isShanghai {
 		if txn.DataLen > fixedgas.MaxInitCodeSize {
@@ -1195,7 +1257,6 @@ func (p *TxPool) coreDBWithCache() (kv.RoDB, kvcache.Cache) {
 	defer p.lock.Unlock()
 	return p._chainDB, p._stateCache
 }
-
 func (p *TxPool) addTxs(blockNum uint64, cacheView kvcache.CacheView, senders *sendersBatch,
 	newTxs types.TxSlots, pendingBaseFee, pendingBlobFee, blockGasLimit uint64, collect bool, logger log.Logger) (types.Announcements, []txpoolcfg.DiscardReason, error) {
 	if assert.Enable {

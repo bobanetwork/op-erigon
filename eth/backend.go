@@ -305,7 +305,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			genesisSpec = nil
 		}
 		var genesisErr error
-		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, config.OverrideCancunTime, config.OverrideOptimismCanyonTime, tmpdir, logger)
+		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, config.OverrideCancunTime, config.OverrideShanghaiTime, config.OverrideOptimismCanyonTime, config.OverrideOptimismEcotoneTime, tmpdir, logger)
 		if _, ok := genesisErr.(*chain.ConfigCompatError); genesisErr != nil && !ok {
 			return genesisErr
 		}
@@ -326,6 +326,9 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		}
 		if chainConfig.CanyonTime == nil {
 			log.Warn("Optimism CanyonTime has not been set")
+		}
+		if chainConfig.EcotoneTime == nil {
+			log.Warn("Optimism EcotoneTime has not been set")
 		}
 	}
 	snapshotVersion := snapcfg.KnownCfg(chainConfig.ChainName, 0).Version
@@ -616,6 +619,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		}
 		backend.historicalRPCService = client
 	}
+	config.TxPool.Optimism = config.Genesis.Config.IsOptimism()
 	config.TxPool.NoGossip = config.DisableTxPoolGossip
 	var miningRPC txpool_proto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)

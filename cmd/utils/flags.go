@@ -116,6 +116,10 @@ var (
 		Name:  "override.canyon",
 		Usage: "Manually specify the Optimism Canyon fork time, overriding the bundled setting",
 	}
+	OverrideOptimismEcotoneFlag = flags.BigFlag{
+		Name:  "override.ecotone",
+		Usage: "Manually specify the Optimism Ecotone fork time, overriding the bundled setting",
+	}
 	TrustedSetupFile = cli.StringFlag{
 		Name:  "trusted-setup-file",
 		Usage: "Absolute path to trusted_setup.json file",
@@ -1773,6 +1777,22 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 	if ctx.IsSet(OverrideOptimismCanyonFlag.Name) {
 		cfg.OverrideOptimismCanyonTime = flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
 		cfg.TxPool.OverrideOptimismCanyonTime = cfg.OverrideOptimismCanyonTime
+	}
+
+	if ctx.IsSet(OverrideOptimismEcotoneFlag.Name) {
+		cfg.OverrideOptimismEcotoneTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+		// Cancun hardfork is included in Ecotone hardfork
+		cfg.OverrideCancunTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+		cfg.TxPool.OverrideCancunTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+	}
+
+	if ctx.IsSet(OverrideCancunFlag.Name) && ctx.IsSet(OverrideOptimismEcotoneFlag.Name) {
+		overrideCancunTime := flags.GlobalBig(ctx, OverrideCancunFlag.Name)
+		overrideOptimismEcotoneTime := flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
+		if overrideCancunTime.Cmp(overrideOptimismEcotoneTime) != 0 {
+			logger.Warn("Cancun hardfork time is overridden by optimism Ecotone hardfork time",
+				"cancun", overrideCancunTime.String(), "ecotone", overrideOptimismEcotoneTime.String())
+		}
 	}
 
 	if ctx.IsSet(InternalConsensusFlag.Name) && clparams.EmbeddedSupported(cfg.NetworkID) {

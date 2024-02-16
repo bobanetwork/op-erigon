@@ -88,17 +88,18 @@ type Message interface {
 	MaxFeePerBlobGas() *uint256.Int
 	Value() *uint256.Int
 
+	// Mint is nil if there is no minting
+	Mint() *uint256.Int
+	IsSystemTx() bool
+	IsDepositTx() bool
+	IsFree() bool
+	RollupCostData() types2.RollupCostData
+
 	Nonce() uint64
 	CheckNonce() bool
 	Data() []byte
 	AccessList() types2.AccessList
 	BlobHashes() []libcommon.Hash
-
-	IsFree() bool
-	IsSystemTx() bool
-	IsDepositTx() bool
-	RollupDataGas() uint64
-	Mint() *uint256.Int
 }
 
 // ExecutionResult includes all output after executing given evm
@@ -205,13 +206,11 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 		return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 	}
 	var l1Cost *uint256.Int
-	if st.evm.ChainRules().IsBedrock {
-		l1Cost = st.evm.Context.L1CostFunc(st.evm.Context.BlockNumber, st.msg)
-		if l1Cost != nil {
-			if _, overflow = gasVal.AddOverflow(gasVal, l1Cost); overflow {
-				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
-			}
-		}
+	if fn := st.evm.Context.L1CostFunc; fn != nil {
+		l1Cost = fn(st.msg.RollupCostData(), st.evm.Context.Time)
+	}
+	if l1Cost != nil {
+		gasVal = gasVal.Add(gasVal, l1Cost)
 	}
 
 	// compute blob fee for eip-4844 data blobs if any
@@ -570,9 +569,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		if st.evm.Context.L1CostFunc == nil {
 			log.Error("Expected L1CostFunc to be set, but it is not")
 		}
-		cost := st.evm.Context.L1CostFunc(st.evm.Context.BlockNumber, st.msg)
-		log.Info("Calculated Optimism fees", "gasUsed", st.gasUsed, "baseFee", st.evm.Context.BaseFee, "L1Cost", cost)
-		if cost != nil {
+		if cost := st.evm.Context.L1CostFunc(st.msg.RollupCostData(), st.evm.Context.Time); cost != nil {
 			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
 		}
 	}

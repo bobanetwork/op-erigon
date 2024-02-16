@@ -37,7 +37,6 @@ import (
 
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/crypto"
-	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/rlp"
 )
 
@@ -96,8 +95,8 @@ type Transaction interface {
 	GetSender() (libcommon.Address, bool)
 	SetSender(libcommon.Address)
 	IsContractDeploy() bool
-	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwise returns itself.
-	IsDepositTx() bool
+	RollupCostData() types2.RollupCostData
+	Unwrap() Transaction // If this is a network wrapper, returns the unwrapped tx. Otherwiwes returns itself.
 }
 
 // TransactionMisc is collection of miscelaneous fields for transaction that is supposed to be embedded into concrete
@@ -108,6 +107,46 @@ type TransactionMisc struct {
 	// caches
 	hash atomic.Value //nolint:structcheck
 	from atomic.Value
+
+	// cache how much gas the tx takes on L1 for its share of rollup data
+	rollupGas atomic.Value
+}
+
+type rollupGasCounter struct {
+	zeroes uint64
+	ones   uint64
+}
+
+func (r *rollupGasCounter) Write(p []byte) (int, error) {
+	for _, byt := range p {
+		if byt == 0 {
+			r.zeroes++
+		} else {
+			r.ones++
+		}
+	}
+	return len(p), nil
+}
+
+// computeRollupGas is a helper method to compute and cache the rollup gas cost for any tx type
+func (tm *TransactionMisc) computeRollupGas(tx interface {
+	MarshalBinary(w io.Writer) error
+	Type() byte
+}) types2.RollupCostData {
+	if tx.Type() == DepositTxType {
+		return types2.RollupCostData{}
+	}
+	if v := tm.rollupGas.Load(); v != nil {
+		return v.(types2.RollupCostData)
+	}
+	var c rollupGasCounter
+	err := tx.MarshalBinary(&c)
+	if err != nil { // Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
+		log.Error("failed to encode tx for L1 cost computation", "err", err)
+	}
+	total := types2.RollupCostData{Zeroes: c.zeroes, Ones: c.ones}
+	tm.rollupGas.Store(total)
+	return total
 }
 
 // RLP-marshalled legacy transactions and binary-marshalled (not wrapped into an RLP string) typed (EIP-2718) transactions
@@ -127,38 +166,6 @@ func (tm TransactionMisc) Time() time.Time {
 
 func (tm TransactionMisc) From() *atomic.Value {
 	return &tm.from
-}
-
-func RollupDataGas(tx binMarshalable, rules *chain.Rules) uint64 {
-	var buf bytes.Buffer
-	if err := tx.MarshalBinary(&buf); err != nil {
-		// Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
-		log.Error("failed to encode tx for L1 cost computation", "err", err)
-		return 0
-	}
-	var zeroes uint64
-	var ones uint64
-	for _, byt := range buf.Bytes() {
-		if byt == 0 {
-			zeroes++
-		} else {
-			ones++
-		}
-	}
-	zeroesGas := zeroes * params.TxDataZeroGas
-	var onesGas uint64
-	if rules.IsOptimismRegolith {
-		onesGas = ones * params.TxDataNonZeroGasEIP2028
-	} else {
-		onesGas = (ones + 68) * params.TxDataNonZeroGasEIP2028
-	}
-	total := zeroesGas + onesGas
-	log.Debug("Computed rollupDataGas", "total", total, "tx", tx)
-	return total
-}
-
-type binMarshalable interface {
-	MarshalBinary(io.Writer) error
 }
 
 func DecodeRLPTransaction(s *rlp.Stream) (Transaction, error) {
@@ -560,7 +567,6 @@ type Message struct {
 	to               *libcommon.Address
 	from             libcommon.Address
 	nonce            uint64
-	mint             uint256.Int
 	amount           uint256.Int
 	gasLimit         uint64
 	gasPrice         uint256.Int
@@ -572,25 +578,26 @@ type Message struct {
 	checkNonce       bool
 	isFree           bool
 	blobHashes       []libcommon.Hash
-	isSystemTx       bool
-	rollupDataGas    uint64
+
+	isSystemTx bool
+	mint       *uint256.Int
+	l1CostGas  types2.RollupCostData
 }
 
 func NewMessage(from libcommon.Address, to *libcommon.Address, nonce uint64, amount *uint256.Int, gasLimit uint64,
 	gasPrice *uint256.Int, feeCap, tip *uint256.Int, data []byte, accessList types2.AccessList, checkNonce bool,
-	isFree bool, maxFeePerBlobGas *uint256.Int, rollupDataGas uint64,
+	isFree bool, maxFeePerBlobGas *uint256.Int,
 ) Message {
 	m := Message{
-		from:          from,
-		to:            to,
-		nonce:         nonce,
-		amount:        *amount,
-		gasLimit:      gasLimit,
-		data:          data,
-		accessList:    accessList,
-		checkNonce:    checkNonce,
-		isFree:        isFree,
-		rollupDataGas: rollupDataGas,
+		from:       from,
+		to:         to,
+		nonce:      nonce,
+		amount:     *amount,
+		gasLimit:   gasLimit,
+		data:       data,
+		accessList: accessList,
+		checkNonce: checkNonce,
+		isFree:     isFree,
 	}
 	if gasPrice != nil {
 		m.gasPrice.Set(gasPrice)
@@ -613,9 +620,6 @@ func (m Message) GasPrice() *uint256.Int        { return &m.gasPrice }
 func (m Message) FeeCap() *uint256.Int          { return &m.feeCap }
 func (m Message) Tip() *uint256.Int             { return &m.tip }
 func (m Message) Value() *uint256.Int           { return &m.amount }
-func (m Message) Mint() *uint256.Int            { return &m.mint }
-func (m Message) IsDepositTx() bool             { return m.txType == DepositTxType }
-func (m Message) RollupDataGas() uint64         { return m.rollupDataGas }
 func (m Message) Gas() uint64                   { return m.gasLimit }
 func (m Message) Nonce() uint64                 { return m.nonce }
 func (m Message) Data() []byte                  { return m.data }
@@ -645,13 +649,16 @@ func (m *Message) ChangeGas(globalGasCap, desiredGas uint64) {
 	m.gasLimit = gas
 }
 
+func (m Message) IsSystemTx() bool                      { return m.isSystemTx }
+func (m Message) IsDepositTx() bool                     { return m.txType == DepositTxType }
+func (m Message) Mint() *uint256.Int                    { return m.mint }
+func (m Message) RollupCostData() types2.RollupCostData { return m.l1CostGas }
+
 func (m Message) BlobGas() uint64 { return fixedgas.BlobGasPerBlob * uint64(len(m.blobHashes)) }
 
 func (m Message) MaxFeePerBlobGas() *uint256.Int {
 	return &m.maxFeePerBlobGas
 }
-
-func (m Message) IsSystemTx() bool { return m.isSystemTx }
 
 func (m Message) BlobHashes() []libcommon.Hash { return m.blobHashes }
 

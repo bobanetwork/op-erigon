@@ -14,6 +14,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/opstack"
 
 	ethereum "github.com/ledgerwatch/erigon"
 	"github.com/ledgerwatch/erigon/consensus"
@@ -57,8 +58,8 @@ func ComputeTxEnv(ctx context.Context, engine consensus.EngineReader, block *typ
 	}
 	header := block.HeaderNoCopy()
 
-	l1CostFunc := types.NewL1CostFunc(cfg, statedb)
-	blockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, l1CostFunc)
+	blockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil)
+	blockContext.L1CostFunc = opstack.NewL1CostFunc(cfg, statedb)
 
 	// Recompute transactions up to the target index.
 	signer := types.MakeSigner(cfg, block.NumberU64(), block.Time())

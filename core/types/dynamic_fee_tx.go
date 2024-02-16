@@ -357,17 +357,17 @@ func (tx *DynamicFeeTransaction) DecodeRLP(s *rlp.Stream) error {
 // AsMessage returns the transaction as a core.Message.
 func (tx DynamicFeeTransaction) AsMessage(s Signer, baseFee *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
-		nonce:         tx.Nonce,
-		gasLimit:      tx.Gas,
-		gasPrice:      *tx.FeeCap,
-		tip:           *tx.Tip,
-		feeCap:        *tx.FeeCap,
-		to:            tx.To,
-		amount:        *tx.Value,
-		data:          tx.Data,
-		accessList:    tx.AccessList,
-		checkNonce:    true,
-		rollupDataGas: RollupDataGas(tx, rules),
+		nonce:      tx.Nonce,
+		gasLimit:   tx.Gas,
+		gasPrice:   *tx.FeeCap,
+		tip:        *tx.Tip,
+		feeCap:     *tx.FeeCap,
+		to:         tx.To,
+		amount:     *tx.Value,
+		data:       tx.Data,
+		accessList: tx.AccessList,
+		checkNonce: true,
+		l1CostGas:  tx.RollupCostData(),
 	}
 	if !rules.IsLondon {
 		return msg, errors.New("eip-1559 transactions require London")
@@ -462,4 +462,10 @@ func NewEIP1559Transaction(chainID uint256.Int, nonce uint64, to libcommon.Addre
 		Tip:     gasTip,
 		FeeCap:  gasFeeCap,
 	}
+}
+
+func (tx *DynamicFeeTransaction) IsDepositTx() bool { return false }
+
+func (tx *DynamicFeeTransaction) RollupCostData() types2.RollupCostData {
+	return tx.computeRollupGas(tx)
 }
