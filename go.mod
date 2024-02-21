@@ -1,6 +1,8 @@
 module github.com/ledgerwatch/erigon
 
-go 1.20
+go 1.21
+
+toolchain go1.21.5
 
 require (
 	github.com/erigontech/mdbx-go v0.27.21
@@ -33,6 +35,7 @@ require (
 	github.com/dop251/goja v0.0.0-20220405120441-9037c2b61cbf
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/emicklei/dot v1.6.0
+	github.com/ethereum-optimism/superchain-registry/superchain v0.0.0-20240201223137-d57c2429e4fc
 	github.com/fjl/gencodec v0.0.0-20220412091415-8bb9e558978c
 	github.com/gballet/go-verkle v0.0.0-20221121182333-31427a1f2d35
 	github.com/gfx-labs/sse v0.0.0-20231226060816-f747e26a9baa
@@ -87,8 +90,8 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.10
 	github.com/xsleonard/go-merkle v1.1.0
 	go.uber.org/zap v1.26.0
-	golang.org/x/crypto v0.17.0
-	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
+	golang.org/x/crypto v0.18.0
+	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 	golang.org/x/net v0.19.0
 	golang.org/x/sync v0.6.0
 	golang.org/x/sys v0.16.0
@@ -300,3 +303,5 @@ require (
 replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
 
 replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.12
+
+replace github.com/ethereum-optimism/superchain-registry/superchain => github.com/ethereum-optimism/superchain-registry/superchain v0.0.0-20240207091552-bfa80184df11
