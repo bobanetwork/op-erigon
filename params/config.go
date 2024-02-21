@@ -77,7 +77,7 @@ var (
 	OPGoerliGenesisHash  = libcommon.HexToHash("0xc1fc15cd51159b1f1e5cbc4b82e85c1447ddfa33c52cf1d98d14fba0d6354be1")
 	OPSepoliaGenesisHash = libcommon.HexToHash("0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d")
 
-	BobaSepoliaGenesisHash = libcommon.HexToHash("0x8c571a8c282dcba86a5f47b823defbf108999e8375982d339122b9e7264993b1")
+	BobaSepoliaGenesisHash = libcommon.HexToHash("0xc6171953a6a376ece6e33149686044f24f58a387ce2636a54e391d330b2326b5")
 )
 
 var (

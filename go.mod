@@ -302,4 +302,4 @@ replace github.com/ledgerwatch/erigon-lib => ./erigon-lib
 
 replace github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.12
 
-replace github.com/ethereum-optimism/superchain-registry/superchain => github.com/ethereum-optimism/superchain-registry/superchain v0.0.0-20240207091552-bfa80184df11
+replace github.com/ethereum-optimism/superchain-registry/superchain => github.com/bobanetwork/superchain-registry/superchain v0.0.0-20240221212341-971aec86b904
