@@ -161,7 +161,6 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 	case chaosnetChainID:
 		out.RegolithTime = chaosnetRegolithTime
 		out.Optimism.EIP1559Elasticity = 10
-
 	case BobaSepoliaChainID:
 		out.BerlinBlock = big.NewInt(511)
 		out.LondonBlock = big.NewInt(511)

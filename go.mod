@@ -2,8 +2,6 @@ module github.com/ledgerwatch/erigon
 
 go 1.21
 
-toolchain go1.21.5
-
 require (
 	github.com/erigontech/mdbx-go v0.27.21
 	github.com/erigontech/silkworm-go v0.10.0
