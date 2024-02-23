@@ -14,9 +14,17 @@ const (
 	BorE2ETestChain2ValName = "bor-e2e-test-2Val"
 	ChiadoChainName         = "chiado"
 
-	OptimismMainnetChainName = "optimism-mainnet"
-	OptimismSepoliaChainName = "optimism-sepolia"
-	BobaSepoliaChainName     = "boba-sepolia"
+	OPMainnetChainName = "op-mainnet"
+	OPGoerliChainName  = "op-goerli"
+	OPSepoliaChainName = "op-sepolia"
+
+	BobaSepoliaChainName = "boba-sepolia"
+
+	LegacyOPMainnetChainName = "optimism-mainnet"
+	LegacyOPGoerliChainName  = "optimism-goerli"
+	LegacyOPSepoliaChainName = "optimism-sepolia"
+
+	BobaSepoliaSuperchainName = "boba-boba-sepolia"
 )
 
 var All = []string{
@@ -31,7 +39,31 @@ var All = []string{
 	GnosisChainName,
 	ChiadoChainName,
 
-	OptimismMainnetChainName,
-	OptimismSepoliaChainName,
+	OPMainnetChainName,
+	OPSepoliaChainName,
+	OPGoerliChainName,
+
 	BobaSepoliaChainName,
+}
+
+func HandleLegacyName(name string) string {
+	switch name {
+	case LegacyOPGoerliChainName:
+		return OPGoerliChainName
+	case LegacyOPSepoliaChainName:
+		return OPSepoliaChainName
+	case LegacyOPMainnetChainName:
+		return OPMainnetChainName
+	default:
+		return name
+	}
+}
+
+func HandleBobaSuperchainName(name string) string {
+	switch name {
+	case BobaSepoliaChainName:
+		return BobaSepoliaSuperchainName
+	default:
+		return name
+	}
 }

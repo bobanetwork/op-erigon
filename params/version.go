@@ -41,26 +41,11 @@ const (
 
 // OPVersion is the version of op-geth
 var (
-	OPVersionMajor    = 0          // Major version component of the current release
-	OPVersionMinor    = 2          // Minor version component of the current release
-	OPVersionMicro    = 0          // Patch version component of the current release
+	OPVersionMajor    = 1          // Major version component of the current release
+	OPVersionMinor    = 0          // Minor version component of the current release
+	OPVersionMicro    = 1          // Patch version component of the current release
 	OPVersionModifier = "unstable" // Version metadata to append to the version string
 )
-
-func withModifier(vsn string) string {
-	if !isStable() {
-		vsn += "-" + OPVersionModifier
-	}
-	return vsn
-}
-
-func isStable() bool {
-	return OPVersionModifier == "stable"
-}
-
-func isRelease() bool {
-	return isStable() || OPVersionModifier == "alpha" || OPVersionModifier == "beta"
-}
 
 // Version holds the textual version string.
 var Version = func() string {

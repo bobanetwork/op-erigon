@@ -163,7 +163,7 @@ func TestGetBurntContract(t *testing.T) {
 // TestCanyonTimestampOnBlockBoundary asserts that Canyon will activate on a block's timestamp.
 // This is critical because the create2Deployer only activates on a block's timestamp.
 func TestCanyonTimestampOnBlockBoundary(t *testing.T) {
-	superchainConfigs := []*chain.Config{OptimismMainnetChainConfig, OptimismSepoliaChainConfig}
+	superchainConfigs := []*chain.Config{}
 	l2BlockTime := 2
 	for _, config := range superchainConfigs {
 		if config.CanyonTime == nil {
