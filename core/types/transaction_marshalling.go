@@ -119,7 +119,7 @@ func (tx DepositTx) MarshalJSON() ([]byte, error) {
 	enc.Hash = tx.Hash()
 	enc.Type = hexutil.Uint64(tx.Type())
 	enc.ChainID = (*hexutil.Big)(libcommon.Big0)
-	enc.Gas = (*hexutil.Uint64)(&tx.GasLimit)
+	enc.Gas = (*hexutil.Uint64)(&tx.Gas)
 	enc.Value = (*hexutil.Big)(tx.Value.ToBig())
 	enc.Data = (*hexutility.Bytes)(&tx.Data)
 	enc.To = tx.To
@@ -465,7 +465,7 @@ func (tx *DepositTx) UnmarshalJSON(input []byte) error {
 	if dec.To != nil {
 		tx.To = dec.To
 	}
-	tx.GasLimit = uint64(*dec.Gas)
+	tx.Gas = uint64(*dec.Gas)
 	if dec.Value == nil {
 		return errors.New("missing required field 'value' in transaction")
 	}
