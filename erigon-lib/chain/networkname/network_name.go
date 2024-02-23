@@ -23,6 +23,8 @@ const (
 	LegacyOPMainnetChainName = "optimism-mainnet"
 	LegacyOPGoerliChainName  = "optimism-goerli"
 	LegacyOPSepoliaChainName = "optimism-sepolia"
+
+	BobaSepoliaSuperchainName = "boba-boba-sepolia"
 )
 
 var All = []string{
@@ -52,6 +54,15 @@ func HandleLegacyName(name string) string {
 		return OPSepoliaChainName
 	case LegacyOPMainnetChainName:
 		return OPMainnetChainName
+	default:
+		return name
+	}
+}
+
+func HandleBobaSuperchainName(name string) string {
+	switch name {
+	case BobaSepoliaChainName:
+		return BobaSepoliaSuperchainName
 	default:
 		return name
 	}

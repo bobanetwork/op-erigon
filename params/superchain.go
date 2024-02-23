@@ -32,6 +32,8 @@ var (
 func OPStackChainConfigByName(name string) *superchain.ChainConfig {
 	// Handle legacy name aliases
 	name = networkname.HandleLegacyName(name)
+	// Handle Boba superchain name
+	name = networkname.HandleBobaSuperchainName(name)
 	for _, chainCfg := range superchain.OPChains {
 		if strings.EqualFold(chainCfg.Chain+"-"+chainCfg.Superchain, name) {
 			return chainCfg
