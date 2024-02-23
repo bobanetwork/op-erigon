@@ -292,6 +292,16 @@ func CheckEip1559TxGasFeeCap(from libcommon.Address, gasFeeCap, tip, baseFee *ui
 // DESCRIBED: docs/programmers_guide/guide.md#nonce
 func (st *StateTransition) preCheck(gasBailout bool) error {
 	if st.msg.IsDepositTx() {
+		// Check clause 6: caller has enough balance to cover asset transfer for **topmost** call
+		// buyGas method originally handled balance check, but deposit tx does not use it
+		// Therefore explicit check required for separating consensus error and evm internal error.
+		// If not check it here, it will trigger evm internal error and break consensus.
+		if have, want := st.state.GetBalance(st.msg.From()), st.msg.Value(); have.Cmp(want) < 0 {
+			if !gasBailout {
+				return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
+			}
+		}
+
 		log.Debug("preCheck for Deposit txn", "from", st.msg.From(), "to", st.msg.To(), "mint", st.msg.Mint(), "value", st.msg.Mint())
 
 		// Following section copied from Optimism patchset
@@ -489,26 +499,25 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value, bailout)
 	}
-	if refunds {
-
-		// if deposit: skip refunds, skip tipping coinbase
-		// Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
-		if st.msg.IsDepositTx() && !rules.IsOptimismRegolith {
-			// Record deposits as using all their gas (matches the gas pool)
-			// System Transactions are special & are not recorded as using any gas (anywhere)
-			gasUsed := st.msg.Gas()
-			if st.msg.IsSystemTx() {
-				gasUsed = 0
-			}
-			return &ExecutionResult{
-				UsedGas:    gasUsed,
-				Err:        vmerr,
-				ReturnData: ret,
-			}, nil
+	// if deposit: skip refunds, skip tipping coinbase
+	// Regolith changes this behaviour to report the actual gasUsed instead of always reporting all gas used.
+	if st.msg.IsDepositTx() && !rules.IsOptimismRegolith {
+		// Record deposits as using all their gas (matches the gas pool)
+		// System Transactions are special & are not recorded as using any gas (anywhere)
+		gasUsed := st.msg.Gas()
+		if st.msg.IsSystemTx() {
+			gasUsed = 0
 		}
-		// Note for deposit tx there is no ETH refunded for unused gas, but that's taken care of by the fact that gasPrice
-		// is always 0 for deposit tx. So calling refundGas will ensure the gasUsed accounting is correct without actually
-		// changing the sender's balance
+		return &ExecutionResult{
+			UsedGas:    gasUsed,
+			Err:        vmerr,
+			ReturnData: ret,
+		}, nil
+	}
+	// Note for deposit tx there is no ETH refunded for unused gas, but that's taken care of by the fact that gasPrice
+	// is always 0 for deposit tx. So calling refundGas will ensure the gasUsed accounting is correct without actually
+	// changing the sender's balance
+	if refunds {
 		if rules.IsLondon {
 			// After EIP-3529: refunds are capped to gasUsed / 5
 			st.refundGas(params.RefundQuotientEIP3529)
@@ -516,15 +525,14 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 			// Before EIP-3529: refunds were capped to gasUsed / 2
 			st.refundGas(params.RefundQuotient)
 		}
-
-		if st.msg.IsDepositTx() && rules.IsOptimismRegolith {
-			// Skip coinbase payments for deposit tx in Regolith
-			return &ExecutionResult{
-				UsedGas:    st.gasUsed(),
-				Err:        vmerr,
-				ReturnData: ret,
-			}, nil
-		}
+	}
+	if st.msg.IsDepositTx() && rules.IsOptimismRegolith {
+		// Skip coinbase payments for deposit tx in Regolith
+		return &ExecutionResult{
+			UsedGas:    st.gasUsed(),
+			Err:        vmerr,
+			ReturnData: ret,
+		}, nil
 	}
 	effectiveTip := st.gasPrice
 	if rules.IsLondon {
@@ -566,8 +574,8 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
 	if rules.IsBedrock {
 		st.state.AddBalance(params.OptimismBaseFeeRecipient, new(uint256.Int).Mul(uint256.NewInt(st.gasUsed()), st.evm.Context.BaseFee))
-		if st.evm.Context.L1CostFunc == nil {
-			log.Error("Expected L1CostFunc to be set, but it is not")
+		if st.evm.Context.L1CostFunc == nil { // Erigon EVM context is used in many unexpected/hacky ways, let's panic if it's misconfigured
+			panic("missing L1 cost func in block context, please configure l1 cost when using optimism config to run EVM")
 		}
 		if cost := st.evm.Context.L1CostFunc(st.msg.RollupCostData(), st.evm.Context.Time); cost != nil {
 			st.state.AddBalance(params.OptimismL1FeeRecipient, cost)
