@@ -108,9 +108,17 @@ var (
 		Name:  "whitelist",
 		Usage: "Comma separated block number-to-hash mappings to enforce (<number>=<hash>)",
 	}
+	OverrideShanghaiTime = flags.BigFlag{
+		Name:  "override.shanghai",
+		Usage: "Manually specify the Shanghai fork time, overriding the bundled setting",
+	}
 	OverrideCancunFlag = flags.BigFlag{
 		Name:  "override.cancun",
 		Usage: "Manually specify the Cancun fork time, overriding the bundled setting",
+	}
+	TrustedSetupFile = cli.StringFlag{
+		Name:  "trusted-setup-file",
+		Usage: "Absolute path to trusted_setup.json file",
 	}
 	OverrideOptimismCanyonFlag = flags.BigFlag{
 		Name:  "override.canyon",
@@ -119,10 +127,6 @@ var (
 	OverrideOptimismEcotoneFlag = flags.BigFlag{
 		Name:  "override.ecotone",
 		Usage: "Manually specify the Optimism Ecotone fork time, overriding the bundled setting",
-	}
-	TrustedSetupFile = cli.StringFlag{
-		Name:  "trusted-setup-file",
-		Usage: "Absolute path to trusted_setup.json file",
 	}
 	// Ethash settings
 	EthashCachesInMemoryFlag = cli.IntFlag{

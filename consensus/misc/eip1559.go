@@ -42,7 +42,7 @@ func VerifyEip1559Header(config *chain.Config, parent, header *types.Header, ski
 			parentGasLimit = parent.GasLimit * config.ElasticityMultiplier(params.ElasticityMultiplier)
 		}
 
-		if config.Optimism == nil {
+		if config.Optimism == nil { // gasLimit can adjust instantly in optimism
 			if err := VerifyGaslimit(parentGasLimit, header.GasLimit); err != nil {
 				return err
 			}
