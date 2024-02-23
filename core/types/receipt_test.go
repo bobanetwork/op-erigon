@@ -347,11 +347,11 @@ func TestDeriveFields(t *testing.T) {
 		},
 		&DepositTx{
 			Value:    uint256.NewInt(3),
-			From:     &libcommon.Address{},
+			From:     libcommon.Address{},
 			GasLimit: 4,
 		},
 		&DepositTx{
-			From:     &libcommon.Address{},
+			From:     libcommon.Address{},
 			To:       nil, // contract creation
 			Value:    uint256.NewInt(6),
 			GasLimit: 5,

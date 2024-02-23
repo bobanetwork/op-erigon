@@ -10,8 +10,8 @@ import (
 
 func TestDepositTxHash(t *testing.T) {
 	dtx := DepositTx{
-		SourceHash: ptr(common.HexToHash("0xc9fa17cc88928d8303f4efcc0053ddbd8c5baea5ed4c1da2efd019833070c182")),
-		From:       ptr(common.HexToAddress("0x976EA74026E726554dB657fA54763abd0C3a0aa9")),
+		SourceHash: common.HexToHash("0xc9fa17cc88928d8303f4efcc0053ddbd8c5baea5ed4c1da2efd019833070c182"),
+		From:       common.HexToAddress("0x976EA74026E726554dB657fA54763abd0C3a0aa9"),
 		To:         ptr(common.HexToAddress("0x976EA74026E726554dB657fA54763abd0C3a0aa9")),
 		Mint:       uint256.NewInt(1_000_000_000_000),
 		Value:      uint256.NewInt(0),

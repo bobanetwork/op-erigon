@@ -40,22 +40,52 @@ import (
 type DepositTx struct {
 	TransactionMisc
 
-	SourceHash *libcommon.Hash
-	From       *libcommon.Address
-	To         *libcommon.Address
-	Mint       *uint256.Int
-	Value      *uint256.Int
-	GasLimit   uint64
-	IsSystemTx bool
-	Data       []byte
+	// SourceHash uniquely identifies the source of the deposit
+	SourceHash libcommon.Hash
+	// From is exposed through the types.Signer, not through TxData
+	From libcommon.Address
+	// nil means contract creation
+	To *libcommon.Address `rlp:"nil"`
+	// Mint is minted on L2, locked on L1, nil if no minting.
+	Mint *uint256.Int `rlp:"nil"`
+	// Value is transferred from L2 balance, executed after Mint (if any)
+	Value *uint256.Int
+	// gas limit
+	GasLimit uint64
+	// Field indicating if this transaction is exmpt from the L2 gas limit
+	IsSystemTransaction bool
+	// Normal Tx data
+	Data []byte
 }
 
-func (tx DepositTx) GetBlobGas() uint64      { return 0 } // FIXME - do we need this?
-func (tx DepositTx) GetGas() uint64          { return tx.GasLimit }
+var _ Transaction = (*DepositTx)(nil)
+
+func (tx DepositTx) GetChainID() *uint256.Int {
+	panic("deposits are not signed and do not have a chain-ID")
+}
+
+func (tx DepositTx) GetNonce() uint64 {
+	return 0
+}
+
+func (tx DepositTx) GetTo() *libcommon.Address {
+	return tx.To
+}
+
+func (tx DepositTx) GetBlobGas() uint64 {
+	return 0
+}
+
+func (tx DepositTx) GetBlobHashes() []libcommon.Hash {
+	return []libcommon.Hash{}
+}
+
+func (tx DepositTx) GetGas() uint64 {
+	return tx.GasLimit
+}
 func (tx DepositTx) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx DepositTx) GetTip() *uint256.Int    { return uint256.NewInt(0) }
 func (tx DepositTx) GetFeeCap() *uint256.Int { return uint256.NewInt(0) }
-func (tx DepositTx) GetNonce() uint64        { return 0 }
 func (tx DepositTx) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
 	return uint256.NewInt(0)
 }
@@ -72,10 +102,6 @@ func (tx DepositTx) GetAccessList() types2.AccessList {
 }
 func (tx DepositTx) GetData() []byte {
 	return tx.Data
-}
-func (tx DepositTx) GetBlobHashes() []libcommon.Hash {
-	// Only blob txs have data hashes
-	return []libcommon.Hash{}
 }
 
 func (tx DepositTx) Protected() bool {
@@ -96,14 +122,14 @@ func (tx DepositTx) EncodingSize() int {
 // copy creates a deep copy of the transaction data and initializes all fields.
 func (tx DepositTx) copy() *DepositTx {
 	cpy := &DepositTx{
-		SourceHash: tx.SourceHash,
-		From:       tx.From,
-		To:         tx.To,
-		Mint:       tx.Mint,
-		Value:      tx.Value,
-		GasLimit:   tx.GasLimit,
-		IsSystemTx: tx.IsSystemTx,
-		Data:       libcommon.CopyBytes(tx.Data),
+		SourceHash:          tx.SourceHash,
+		From:                tx.From,
+		To:                  tx.To,
+		Mint:                tx.Mint,
+		Value:               tx.Value,
+		GasLimit:            tx.GasLimit,
+		IsSystemTransaction: tx.IsSystemTransaction,
+		Data:                libcommon.CopyBytes(tx.Data),
 	}
 
 	return cpy
@@ -154,7 +180,7 @@ func (tx DepositTx) EncodeRLP(w io.Writer) error {
 		return err
 	}
 	boolVal := uint64(0)
-	if tx.IsSystemTx {
+	if tx.IsSystemTransaction {
 		boolVal = 1
 	}
 	if err := rlp.EncodeInt(boolVal, w, b[:]); err != nil {
@@ -226,7 +252,6 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read SourceHash: %w", err)
 	}
-	tx.SourceHash = new(libcommon.Hash)
 	tx.SourceHash.SetBytes(b)
 
 	if b, err = s.Bytes(); err != nil {
@@ -235,8 +260,7 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 	if len(b) != 20 {
 		return fmt.Errorf("wrong size for From: %d", len(b))
 	}
-	tx.From = &libcommon.Address{}
-	copy((*tx.From)[:], b)
+	copy((tx.From)[:], b)
 
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read To: %w", err)
@@ -265,7 +289,7 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 		return fmt.Errorf("read GasLimit: %w", err)
 	}
 
-	if tx.IsSystemTx, err = s.Bool(); err != nil {
+	if tx.IsSystemTransaction, err = s.Bool(); err != nil {
 		return fmt.Errorf("read IsSystemTx: %w", err)
 	}
 
@@ -284,13 +308,13 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 func (tx DepositTx) AsMessage(s Signer, _ *big.Int, rules *chain.Rules) (Message, error) {
 	msg := Message{
 		txType:     DepositTxType,
-		sourceHash: tx.SourceHash,
-		from:       *tx.From,
+		sourceHash: &tx.SourceHash,
+		from:       tx.From,
 		gasLimit:   tx.GasLimit,
 		to:         tx.To,
 		mint:       tx.Mint,
 		amount:     *tx.Value,
-		isSystemTx: tx.IsSystemTx,
+		isSystemTx: tx.IsSystemTransaction,
 		data:       tx.Data,
 		accessList: nil,
 		checkNonce: true,
@@ -328,7 +352,7 @@ func (tx *DepositTx) Hash() libcommon.Hash {
 			tx.Mint,
 			tx.Value,
 			tx.GasLimit,
-			tx.IsSystemTx,
+			tx.IsSystemTransaction,
 			tx.Data,
 		},
 	)
@@ -349,15 +373,8 @@ func (tx DepositTx) RawSignatureValues() (*uint256.Int, *uint256.Int, *uint256.I
 	return uint256.NewInt(0), uint256.NewInt(0), uint256.NewInt(0)
 }
 
-func (tx DepositTx) GetChainID() *uint256.Int {
-	log.Error("GetChainID() called for a Deposit transaction")
-	return new(uint256.Int)
-}
 func (tx DepositTx) GetSender() (libcommon.Address, bool) {
-	return *tx.From, true
-}
-func (tx DepositTx) GetTo() *libcommon.Address {
-	return tx.To
+	return tx.From, true
 }
 
 func (tx DepositTx) GetValue() *uint256.Int {
@@ -377,10 +394,11 @@ func (tx DepositTx) IsStarkNet() bool {
 }
 
 func (tx *DepositTx) Sender(signer Signer) (libcommon.Address, error) {
-	return *tx.From, nil
+	return tx.From, nil
 }
+
 func (tx *DepositTx) SetSender(addr libcommon.Address) {
-	if tx.From != nil && *tx.From != addr {
+	if tx.From != addr {
 		log.Error("SetSender() address confict for Deposit transaction", "old", tx.From, "new", addr)
 	}
 	// otherwise a NOP

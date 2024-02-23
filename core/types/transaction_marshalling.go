@@ -123,12 +123,12 @@ func (tx DepositTx) MarshalJSON() ([]byte, error) {
 	enc.Value = (*hexutil.Big)(tx.Value.ToBig())
 	enc.Data = (*hexutility.Bytes)(&tx.Data)
 	enc.To = tx.To
-	enc.SourceHash = tx.SourceHash
-	enc.From = tx.From
+	enc.SourceHash = &tx.SourceHash
+	enc.From = &tx.From
 	if tx.Mint != nil {
 		enc.Mint = (*hexutil.Big)(tx.Mint.ToBig())
 	}
-	enc.IsSystemTx = &tx.IsSystemTx
+	enc.IsSystemTx = &tx.IsSystemTransaction
 	// other fields will show up as null.
 	return json.Marshal(&enc)
 }
@@ -486,14 +486,14 @@ func (tx *DepositTx) UnmarshalJSON(input []byte) error {
 	if dec.From == nil {
 		return errors.New("missing required field 'from' in transaction")
 	}
-	tx.From = dec.From
+	tx.From = *dec.From
 	if dec.SourceHash == nil {
 		return errors.New("missing required field 'sourceHash' in transaction")
 	}
-	tx.SourceHash = dec.SourceHash
+	tx.SourceHash = *dec.SourceHash
 	// IsSystemTx may be omitted. Defaults to false.
 	if dec.IsSystemTx != nil {
-		tx.IsSystemTx = *dec.IsSystemTx
+		tx.IsSystemTransaction = *dec.IsSystemTx
 	}
 	// nonce is not checked becaues depositTx has no nonce field.
 	return nil
