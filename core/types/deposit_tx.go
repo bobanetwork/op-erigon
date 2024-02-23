@@ -1,5 +1,4 @@
 // Copyright 2021 The go-ethereum Authors
-//
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,7 +13,6 @@
 //
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-//
 
 package types
 
@@ -23,19 +21,23 @@ import (
 	"io"
 	"math/big"
 	"math/bits"
+	"sync/atomic"
+	"time"
 
-	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	types2 "github.com/ledgerwatch/erigon-lib/types"
+
 	"github.com/ledgerwatch/erigon/rlp"
-	"github.com/ledgerwatch/log/v3"
+
+	"github.com/holiman/uint256"
 )
 
-// DepositTx is the transaction data of an Optimism Deposit Transaction
 type DepositTx struct {
-	TransactionMisc
-
+	time time.Time // Time first seen locally (spam avoidance)
+	// caches
+	hash atomic.Value //nolint:structcheck
+	size atomic.Value //nolint:structcheck
 	// SourceHash uniquely identifies the source of the deposit
 	SourceHash libcommon.Hash
 	// From is exposed through the types.Signer, not through TxData
@@ -104,8 +106,9 @@ func (tx DepositTx) SigningHash(chainID *big.Int) libcommon.Hash {
 	panic("deposit tx does not have a signing hash")
 }
 
+// NOTE: Need to check this
 func (tx DepositTx) EncodingSize() int {
-	payloadSize := tx.payloadSize()
+	payloadSize, _, _, _ := tx.payloadSize()
 	envelopeSize := payloadSize
 	// Add envelope size and type size
 	if payloadSize >= 56 {
@@ -117,39 +120,41 @@ func (tx DepositTx) EncodingSize() int {
 
 // MarshalBinary returns the canonical encoding of the transaction.
 func (tx DepositTx) MarshalBinary(w io.Writer) error {
-	return tx.EncodeRLP(w)
+	payloadSize, nonceLen, gasLen, accessListLen := tx.payloadSize()
+	var b [33]byte
+	// encode TxType
+	b[0] = DepositTxType
+	if _, err := w.Write(b[:1]); err != nil {
+		return err
+	}
+	if err := tx.encodePayload(w, b[:], payloadSize, nonceLen, gasLen, accessListLen); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (tx DepositTx) payloadSize() int {
-	// SourceHash
-	payloadSize := 1
-	payloadSize += len(tx.SourceHash)
-
-	// From
-	payloadSize++
-	payloadSize += len(tx.From)
-
-	// To
+func (tx DepositTx) payloadSize() (payloadSize int, nonceLen, gasLen, accessListLen int) {
+	// size of SourceHash
+	payloadSize += 33
+	// size of From
+	payloadSize += 21
+	// size of To
 	payloadSize++
 	if tx.To != nil {
-		payloadSize += len(tx.To)
+		payloadSize += 20
 	}
-
-	// Mint
+	// size of Mint
 	payloadSize++
 	payloadSize += rlp.Uint256LenExcludingHead(tx.Mint)
-
-	// Value
+	// size of Value
 	payloadSize++
 	payloadSize += rlp.Uint256LenExcludingHead(tx.Value)
-
-	// GasLimit
+	// size of Gas
 	payloadSize++
-	payloadSize += rlp.IntLenExcludingHead(tx.Gas)
-
-	// IsSystemTx
+	gasLen = rlp.IntLenExcludingHead(tx.Gas)
+	payloadSize += gasLen
+	// size of IsSystemTransaction
 	payloadSize++
-
 	// size of Data
 	payloadSize++
 	switch len(tx.Data) {
@@ -160,24 +165,35 @@ func (tx DepositTx) payloadSize() int {
 		}
 	default:
 		if len(tx.Data) >= 56 {
-			payloadSize += libcommon.BitLenToByteLen(bits.Len(uint(len(tx.Data))))
+			payloadSize += (bits.Len(uint(len(tx.Data))) + 7) / 8
 		}
 		payloadSize += len(tx.Data)
 	}
-	return payloadSize
+	return payloadSize, 0, gasLen, 0
 }
 
-func (tx DepositTx) encodePayload(w io.Writer, b []byte, payloadSize int) error {
+func (tx DepositTx) encodePayload(w io.Writer, b []byte, payloadSize, nonceLen, gasLen, accessListLen int) error {
 	// prefix
 	if err := EncodeStructSizePrefix(payloadSize, w, b); err != nil {
 		return err
 	}
-	if err := rlp.EncodeString(tx.SourceHash[:], w, b); err != nil {
-		return err
+	// encode SourceHash
+	b[0] = 128 + 32
+	if _, err := w.Write(b[:1]); err != nil {
+		return nil
 	}
-	if err := rlp.EncodeString(tx.From[:], w, b); err != nil {
-		return err
+	if _, err := w.Write(tx.SourceHash.Bytes()); err != nil {
+		return nil
 	}
+	// encode From
+	b[0] = 128 + 20
+	if _, err := w.Write(b[:1]); err != nil {
+		return nil
+	}
+	if _, err := w.Write(tx.From.Bytes()); err != nil {
+		return nil
+	}
+	// encode To
 	if tx.To == nil {
 		b[0] = 128
 	} else {
@@ -191,108 +207,113 @@ func (tx DepositTx) encodePayload(w io.Writer, b []byte, payloadSize int) error 
 			return err
 		}
 	}
+	// encode Mint
 	if err := tx.Mint.EncodeRLP(w); err != nil {
 		return err
 	}
+	// encode Value
 	if err := tx.Value.EncodeRLP(w); err != nil {
 		return err
 	}
+	// encode Gas
 	if err := rlp.EncodeInt(tx.Gas, w, b); err != nil {
 		return err
 	}
-	boolVal := uint64(0)
+	// encode IsSystemTransaction
 	if tx.IsSystemTransaction {
-		boolVal = 1
+		b[0] = 0x01
+	} else {
+		b[0] = 0x80
 	}
-	if err := rlp.EncodeInt(boolVal, w, b); err != nil {
-		return err
+	if _, err := w.Write(b[:1]); err != nil {
+		return nil
 	}
+	// encode Data
 	if err := rlp.EncodeString(tx.Data, w, b); err != nil {
 		return err
 	}
-
 	return nil
 }
 
-// EncodeRLP implements rlp.Encoder
 func (tx DepositTx) EncodeRLP(w io.Writer) error {
+	payloadSize, nonceLen, gasLen, accessListLen := tx.payloadSize()
+	envelopeSize := payloadSize
+	if payloadSize >= 56 {
+		envelopeSize += (bits.Len(uint(payloadSize)) + 7) / 8
+	}
+	// size of struct prefix and TxType
+	envelopeSize += 2
 	var b [33]byte
-	rlp.EncodeInt(DepositTxType, w, b[:])
-
-	payloadSize := tx.payloadSize()
-
-	if err := tx.encodePayload(w, b[:], payloadSize); err != nil {
+	// envelope
+	if err := rlp.EncodeStringSizePrefix(envelopeSize, w, b[:]); err != nil {
 		return err
 	}
-
+	// encode TxType
+	b[0] = DepositTxType
+	if _, err := w.Write(b[:1]); err != nil {
+		return err
+	}
+	if err := tx.encodePayload(w, b[:], payloadSize, nonceLen, gasLen, accessListLen); err != nil {
+		return err
+	}
 	return nil
 }
 
-// DecodeRLP decodes DepositTransaction but with the list token already consumed and encodingSize being presented
 func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
-	var err error
-	var b []byte
-
-	if _, err := s.List(); err != nil {
-		return fmt.Errorf("list header: %w", err)
+	_, err := s.List()
+	if err != nil {
+		return err
 	}
+	var b []byte
 	// SourceHash
 	if b, err = s.Bytes(); err != nil {
-		return fmt.Errorf("read SourceHash: %w", err)
+		return err
 	}
 	if len(b) != 32 {
 		return fmt.Errorf("wrong size for Source hash: %d", len(b))
 	}
-	tx.SourceHash.SetBytes(b)
+	copy(tx.SourceHash[:], b)
 	// From
 	if b, err = s.Bytes(); err != nil {
-		return fmt.Errorf("read From: %w", err)
+		return err
 	}
 	if len(b) != 20 {
-		return fmt.Errorf("wrong size for From: %d", len(b))
+		return fmt.Errorf("wrong size for From hash: %d", len(b))
 	}
-	copy((tx.From)[:], b)
-	// To
+	copy(tx.From[:], b)
+	// To (optional)
 	if b, err = s.Bytes(); err != nil {
-		return fmt.Errorf("read To: %w", err)
+		return err
 	}
-	switch len(b) {
-	case 20:
+	if len(b) > 0 && len(b) != 20 {
+		return fmt.Errorf("wrong size for To: %d", len(b))
+	}
+	if len(b) > 0 {
 		tx.To = &libcommon.Address{}
 		copy((*tx.To)[:], b)
-	case 0:
-		// contract creation
-	default:
-		return fmt.Errorf("wrong size for To: %d", len(b))
 	}
 	// Mint
 	if b, err = s.Uint256Bytes(); err != nil {
-		return fmt.Errorf("read Mint: %w", err)
+		return err
 	}
 	tx.Mint = new(uint256.Int).SetBytes(b)
-	// Gas
+	// Value
 	if b, err = s.Uint256Bytes(); err != nil {
-		return fmt.Errorf("read Value: %w", err)
+		return err
 	}
 	tx.Value = new(uint256.Int).SetBytes(b)
-
+	// Gas
 	if tx.Gas, err = s.Uint(); err != nil {
-		return fmt.Errorf("read GasLimit: %w", err)
+		return err
+	}
+	if tx.IsSystemTransaction, err = s.Bool(); err != nil {
+		return err
 	}
 	// Data
-	if tx.IsSystemTransaction, err = s.Bool(); err != nil {
-		return fmt.Errorf("read IsSystemTx: %w", err)
-	}
-
 	if tx.Data, err = s.Bytes(); err != nil {
-		return fmt.Errorf("read Data: %w", err)
+		return err
 	}
-
-	if err = s.ListEnd(); err != nil {
-		return fmt.Errorf("close tx struct: %w", err)
-	}
-
-	return nil
+	return s.ListEnd()
 }
 
 func (tx *DepositTx) FakeSign(address libcommon.Address) (Transaction, error) {
@@ -303,6 +324,10 @@ func (tx *DepositTx) FakeSign(address libcommon.Address) (Transaction, error) {
 
 func (tx *DepositTx) WithSignature(signer Signer, sig []byte) (Transaction, error) {
 	return tx.copy(), nil
+}
+
+func (tx DepositTx) Time() time.Time {
+	return tx.time
 }
 
 func (tx DepositTx) Type() byte { return DepositTxType }
@@ -323,15 +348,15 @@ func (tx *DepositTx) Hash() libcommon.Hash {
 	})
 	tx.hash.Store(&hash)
 	return hash
-
 }
 
+// not sure ab this one lol
 func (tx DepositTx) Protected() bool {
 	return true
 }
 
 func (tx DepositTx) IsContractDeploy() bool {
-	return tx.GetTo() == nil
+	return false
 }
 
 func (tx DepositTx) IsStarkNet() bool {
@@ -343,18 +368,52 @@ func (tx DepositTx) GetPrice() *uint256.Int  { return uint256.NewInt(0) }
 func (tx DepositTx) GetTip() *uint256.Int    { return uint256.NewInt(0) }
 func (tx DepositTx) GetFeeCap() *uint256.Int { return uint256.NewInt(0) }
 
+// Is this needed at all?
 func (tx DepositTx) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
-	return uint256.NewInt(0)
+	if baseFee == nil {
+		return tx.GetTip()
+	}
+	gasFeeCap := tx.GetFeeCap()
+	// return 0 because effectiveFee cant be < 0
+	if gasFeeCap.Lt(baseFee) {
+		return uint256.NewInt(0)
+	}
+	effectiveFee := new(uint256.Int).Sub(gasFeeCap, baseFee)
+	if tx.GetTip().Lt(effectiveFee) {
+		return tx.GetTip()
+	} else {
+		return effectiveFee
+	}
 }
 
 func (tx DepositTx) Cost() *uint256.Int {
-	log.Error("Cost() called for a Deposit transaction")
-	total := new(uint256.Int)
-	return total
+	return tx.Value.Clone()
 }
 
 func (tx DepositTx) GetAccessList() types2.AccessList {
-	return types2.AccessList{}
+	return nil
+}
+
+// NewDepositTransaction creates a deposit transaction
+func NewDepositTransaction(
+	sourceHash libcommon.Hash,
+	from libcommon.Address,
+	to libcommon.Address,
+	mint *uint256.Int,
+	value *uint256.Int,
+	gasLimit uint64,
+	isSystemTx bool,
+	data []byte) *DepositTx {
+	return &DepositTx{
+		SourceHash:          sourceHash,
+		From:                from,
+		To:                  &to,
+		Mint:                mint,
+		Value:               value,
+		Gas:                 gasLimit,
+		IsSystemTransaction: isSystemTx,
+		Data:                data,
+	}
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
@@ -389,8 +448,7 @@ func (tx DepositTx) AsMessage(s Signer, _ *big.Int, rules *chain.Rules) (Message
 		accessList: nil,
 		checkNonce: true,
 		isSystemTx: tx.IsSystemTransaction,
-		sourceHash: &tx.SourceHash,
-		txType:     DepositTxType,
+		txType:     tx.Type(),
 		mint:       tx.Mint,
 	}
 	return msg, nil
@@ -406,8 +464,4 @@ func (tx DepositTx) RollupCostData() types2.RollupCostData {
 
 func (tx *DepositTx) Unwrap() Transaction {
 	return tx
-}
-
-func (tx DepositTx) IsDepositTx() bool {
-	return true
 }
