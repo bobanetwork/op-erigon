@@ -46,6 +46,8 @@ func OPStackChainConfigByGenesisHash(genesisHash common.Hash) *superchain.ChainC
 		return superchain.OPChains[OPMainnetChainID]
 	} else if bytes.Equal(genesisHash.Bytes(), OPSepoliaGenesisHash.Bytes()) {
 		return superchain.OPChains[OPSepoliaChainID]
+	} else if bytes.Equal(genesisHash.Bytes(), BobaSepoliaGenesisHash.Bytes()) {
+		return superchain.OPChains[BobaSepoliaChainID]
 	}
 	for _, chainCfg := range superchain.OPChains {
 		if bytes.Equal(chainCfg.Genesis.L2.Hash[:], genesisHash.Bytes()) {
