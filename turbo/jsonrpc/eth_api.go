@@ -463,7 +463,7 @@ func NewRPCTransaction(tx types.Transaction, blockHash common.Hash, blockNumber 
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
 		result.MaxFeePerBlobGas = (*hexutil.Big)(t.MaxFeePerBlobGas.ToBig())
 		result.BlobVersionedHashes = t.BlobVersionedHashes
-	case *types.DepositTransaction:
+	case *types.DepositTx:
 		result.SourceHash = t.SourceHash
 		if t.IsSystemTx {
 			result.IsSystemTx = t.IsSystemTx

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/holiman/uint256"
@@ -112,7 +113,7 @@ func (tx DynamicFeeTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&enc)
 }
 
-func (tx DepositTransaction) MarshalJSON() ([]byte, error) {
+func (tx DepositTx) MarshalJSON() ([]byte, error) {
 	var enc txJSON
 	// These are set for all tx types.
 	enc.Hash = tx.Hash()
@@ -202,7 +203,7 @@ func UnmarshalTransactionFromJSON(input []byte) (Transaction, error) {
 		}
 		return tx, nil
 	case DepositTxType:
-		tx := &DepositTransaction{}
+		tx := &DepositTx{}
 		if err = tx.UnmarshalJSON(input); err != nil {
 			return nil, err
 		}
@@ -445,7 +446,7 @@ func (tx *DynamicFeeTransaction) UnmarshalJSON(input []byte) error {
 	return nil
 }
 
-func (tx *DepositTransaction) UnmarshalJSON(input []byte) error {
+func (tx *DepositTx) UnmarshalJSON(input []byte) error {
 	var dec txJSON
 	if err := json.Unmarshal(input, &dec); err != nil {
 		return err

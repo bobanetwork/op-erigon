@@ -242,7 +242,7 @@ func TestCall_ByBlockHash_WithRequireCanonicalTrue_NonCanonicalBlock(t *testing.
 }
 
 func TestNewRPCTransactionDepositTx(t *testing.T) {
-	tx := &types.DepositTransaction{
+	tx := &types.DepositTx{
 		SourceHash: &common.Hash{1},
 		From:       &common.Address{1},
 		IsSystemTx: true,
@@ -267,7 +267,7 @@ func TestNewRPCTransactionDepositTx(t *testing.T) {
 }
 
 func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
-	tx := &types.DepositTransaction{
+	tx := &types.DepositTx{
 		SourceHash: &common.Hash{1},
 		From:       &common.Address{1},
 		IsSystemTx: true,
@@ -304,7 +304,7 @@ func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
 }
 
 func TestNewRPCTransactionOmitIsSystemTxFalse(t *testing.T) {
-	tx := &types.DepositTransaction{
+	tx := &types.DepositTx{
 		IsSystemTx: false,
 		From:       &common.Address{1},
 		Value:      uint256.NewInt(1337),
@@ -384,7 +384,7 @@ func TestUnmarshalRpcDepositTx(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tx := &types.DepositTransaction{
+			tx := &types.DepositTx{
 				SourceHash: &common.Hash{1},
 				From:       &common.Address{1},
 				IsSystemTx: true,
@@ -395,7 +395,7 @@ func TestUnmarshalRpcDepositTx(t *testing.T) {
 			test.modifier(rpcTx)
 			json, err := json.Marshal(rpcTx)
 			require.NoError(t, err, "marshalling failed: %w", err)
-			parsed := &types.DepositTransaction{}
+			parsed := &types.DepositTx{}
 			err = parsed.UnmarshalJSON(json)
 			if test.valid {
 				require.NoError(t, err, "unmarshal failed: %w", err)
