@@ -343,8 +343,6 @@ func (txw *BlobTxWrapper) SetSender(address libcommon.Address) { txw.Tx.SetSende
 
 func (txw *BlobTxWrapper) IsContractDeploy() bool { return txw.Tx.IsContractDeploy() }
 
-func (txw *BlobTxWrapper) IsDepositTx() bool { return false }
-
 func (txw *BlobTxWrapper) Unwrap() Transaction { return &txw.Tx }
 
 func (txw *BlobTxWrapper) DecodeRLP(s *rlp.Stream) error {

@@ -370,28 +370,15 @@ func (tx DepositTx) GetFeeCap() *uint256.Int { return uint256.NewInt(0) }
 
 // Is this needed at all?
 func (tx DepositTx) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
-	if baseFee == nil {
-		return tx.GetTip()
-	}
-	gasFeeCap := tx.GetFeeCap()
-	// return 0 because effectiveFee cant be < 0
-	if gasFeeCap.Lt(baseFee) {
-		return uint256.NewInt(0)
-	}
-	effectiveFee := new(uint256.Int).Sub(gasFeeCap, baseFee)
-	if tx.GetTip().Lt(effectiveFee) {
-		return tx.GetTip()
-	} else {
-		return effectiveFee
-	}
+	return uint256.NewInt(0)
 }
 
 func (tx DepositTx) Cost() *uint256.Int {
-	return tx.Value.Clone()
+	return tx.Value.Clone() // TODO(jky) evaluate correctness
 }
 
 func (tx DepositTx) GetAccessList() types2.AccessList {
-	return nil
+	return nil // TODO(jky) evaluate correctness vs an empty List
 }
 
 // NewDepositTransaction creates a deposit transaction
