@@ -1,8 +1,4 @@
-// Portions copyright 2022-2023 mmontour@enya.ai based on legacy_tx.go (original copyright below)
-// This file adds support for the Optimistic Rollup deposit transaction type
-// as specified at https://github.com/ethereum-optimism/optimism/blob/develop/specs/deposits.md
-
-// Copyright 2020 The go-ethereum Authors
+// Copyright 2021 The go-ethereum Authors
 //
 // This file is part of the go-ethereum library.
 //
@@ -108,10 +104,6 @@ func (tx DepositTx) SigningHash(chainID *big.Int) libcommon.Hash {
 	panic("deposit tx does not have a signing hash")
 }
 
-func (tx DepositTx) GetAccessList() types2.AccessList {
-	return types2.AccessList{}
-}
-
 func (tx DepositTx) EncodingSize() int {
 	payloadSize := tx.payloadSize()
 	envelopeSize := payloadSize
@@ -126,59 +118,6 @@ func (tx DepositTx) EncodingSize() int {
 // MarshalBinary returns the canonical encoding of the transaction.
 func (tx DepositTx) MarshalBinary(w io.Writer) error {
 	return tx.EncodeRLP(w)
-}
-
-// EncodeRLP implements rlp.Encoder
-func (tx DepositTx) EncodeRLP(w io.Writer) error {
-	var b [33]byte
-	rlp.EncodeInt(DepositTxType, w, b[:])
-
-	payloadSize := tx.payloadSize()
-
-	// prefix
-	if err := EncodeStructSizePrefix(payloadSize, w, b[:]); err != nil {
-		return err
-	}
-	if err := rlp.EncodeString(tx.SourceHash[:], w, b[:]); err != nil {
-		return err
-	}
-	if err := rlp.EncodeString(tx.From[:], w, b[:]); err != nil {
-		return err
-	}
-	if tx.To == nil {
-		b[0] = 128
-	} else {
-		b[0] = 128 + 20
-	}
-	if _, err := w.Write(b[:1]); err != nil {
-		return err
-	}
-	if tx.To != nil {
-		if _, err := w.Write(tx.To.Bytes()); err != nil {
-			return err
-		}
-	}
-	if err := tx.Mint.EncodeRLP(w); err != nil {
-		return err
-	}
-	if err := tx.Value.EncodeRLP(w); err != nil {
-		return err
-	}
-	if err := rlp.EncodeInt(tx.Gas, w, b[:]); err != nil {
-		return err
-	}
-	boolVal := uint64(0)
-	if tx.IsSystemTransaction {
-		boolVal = 1
-	}
-	if err := rlp.EncodeInt(boolVal, w, b[:]); err != nil {
-		return err
-	}
-	if err := rlp.EncodeString(tx.Data, w, b[:]); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (tx DepositTx) payloadSize() int {
@@ -228,6 +167,67 @@ func (tx DepositTx) payloadSize() int {
 	return payloadSize
 }
 
+func (tx DepositTx) encodePayload(w io.Writer, b []byte, payloadSize int) error {
+	// prefix
+	if err := EncodeStructSizePrefix(payloadSize, w, b); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.SourceHash[:], w, b); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.From[:], w, b); err != nil {
+		return err
+	}
+	if tx.To == nil {
+		b[0] = 128
+	} else {
+		b[0] = 128 + 20
+	}
+	if _, err := w.Write(b[:1]); err != nil {
+		return err
+	}
+	if tx.To != nil {
+		if _, err := w.Write(tx.To.Bytes()); err != nil {
+			return err
+		}
+	}
+	if err := tx.Mint.EncodeRLP(w); err != nil {
+		return err
+	}
+	if err := tx.Value.EncodeRLP(w); err != nil {
+		return err
+	}
+	if err := rlp.EncodeInt(tx.Gas, w, b); err != nil {
+		return err
+	}
+	boolVal := uint64(0)
+	if tx.IsSystemTransaction {
+		boolVal = 1
+	}
+	if err := rlp.EncodeInt(boolVal, w, b); err != nil {
+		return err
+	}
+	if err := rlp.EncodeString(tx.Data, w, b); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// EncodeRLP implements rlp.Encoder
+func (tx DepositTx) EncodeRLP(w io.Writer) error {
+	var b [33]byte
+	rlp.EncodeInt(DepositTxType, w, b[:])
+
+	payloadSize := tx.payloadSize()
+
+	if err := tx.encodePayload(w, b[:], payloadSize); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // DecodeRLP decodes DepositTransaction but with the list token already consumed and encodingSize being presented
 func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 	var err error
@@ -236,12 +236,15 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 	if _, err := s.List(); err != nil {
 		return fmt.Errorf("list header: %w", err)
 	}
-
+	// SourceHash
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read SourceHash: %w", err)
 	}
+	if len(b) != 32 {
+		return fmt.Errorf("wrong size for Source hash: %d", len(b))
+	}
 	tx.SourceHash.SetBytes(b)
-
+	// From
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read From: %w", err)
 	}
@@ -249,7 +252,7 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 		return fmt.Errorf("wrong size for From: %d", len(b))
 	}
 	copy((tx.From)[:], b)
-
+	// To
 	if b, err = s.Bytes(); err != nil {
 		return fmt.Errorf("read To: %w", err)
 	}
@@ -262,12 +265,12 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 	default:
 		return fmt.Errorf("wrong size for To: %d", len(b))
 	}
-
+	// Mint
 	if b, err = s.Uint256Bytes(); err != nil {
 		return fmt.Errorf("read Mint: %w", err)
 	}
 	tx.Mint = new(uint256.Int).SetBytes(b)
-
+	// Gas
 	if b, err = s.Uint256Bytes(); err != nil {
 		return fmt.Errorf("read Value: %w", err)
 	}
@@ -276,7 +279,7 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 	if tx.Gas, err = s.Uint(); err != nil {
 		return fmt.Errorf("read GasLimit: %w", err)
 	}
-
+	// Data
 	if tx.IsSystemTransaction, err = s.Bool(); err != nil {
 		return fmt.Errorf("read IsSystemTx: %w", err)
 	}
@@ -292,19 +295,18 @@ func (tx *DepositTx) DecodeRLP(s *rlp.Stream) error {
 	return nil
 }
 
-func (tx *DepositTx) WithSignature(signer Signer, sig []byte) (Transaction, error) {
-	log.Error("WithSignature() called for a Deposit transaction")
-	cpy := tx.copy()
-	return cpy, nil
-}
-
 func (tx *DepositTx) FakeSign(address libcommon.Address) (Transaction, error) {
-	log.Error("FakeSign() called for a Deposit transaction")
 	cpy := tx.copy()
+	cpy.SetSender(address)
 	return cpy, nil
 }
 
-// Hash computes the hash (but not for signatures!)
+func (tx *DepositTx) WithSignature(signer Signer, sig []byte) (Transaction, error) {
+	return tx.copy(), nil
+}
+
+func (tx DepositTx) Type() byte { return DepositTxType }
+
 func (tx *DepositTx) Hash() libcommon.Hash {
 	if hash := tx.hash.Load(); hash != nil {
 		return *hash.(*libcommon.Hash)
@@ -318,8 +320,7 @@ func (tx *DepositTx) Hash() libcommon.Hash {
 		tx.Gas,
 		tx.IsSystemTransaction,
 		tx.Data,
-	},
-	)
+	})
 	tx.hash.Store(&hash)
 	return hash
 
@@ -350,6 +351,10 @@ func (tx DepositTx) Cost() *uint256.Int {
 	log.Error("Cost() called for a Deposit transaction")
 	total := new(uint256.Int)
 	return total
+}
+
+func (tx DepositTx) GetAccessList() types2.AccessList {
+	return types2.AccessList{}
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
@@ -402,8 +407,6 @@ func (tx DepositTx) RollupCostData() types2.RollupCostData {
 func (tx *DepositTx) Unwrap() Transaction {
 	return tx
 }
-
-func (tx DepositTx) Type() byte { return DepositTxType }
 
 func (tx DepositTx) IsDepositTx() bool {
 	return true
