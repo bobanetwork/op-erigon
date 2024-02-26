@@ -72,6 +72,10 @@ type Receipt struct {
 	// DepositNonce was introduced in Regolith to store the actual nonce used by deposit transactions
 	// The state transition process ensures this is only set for Regolith deposit transactions.
 	DepositNonce *uint64 `json:"depositNonce,omitempty"`
+	// The position of DepositNonce variable must NOT be changed. If changed, cbor decoding will fail
+	// for the data following previous struct and leading to decoding error(triggering backward imcompatibility).
+
+	// Further fields when added must be appended after the last variable. Watch out for cbor.
 
 	// Inclusion information: These fields provide information about the inclusion of the
 	// transaction corresponding to this receipt.
@@ -92,16 +96,19 @@ type Receipt struct {
 }
 
 type receiptMarshaling struct {
-	Type                  hexutil.Uint64
-	PostState             hexutility.Bytes
-	Status                hexutil.Uint64
-	CumulativeGasUsed     hexutil.Uint64
-	GasUsed               hexutil.Uint64
-	BlockNumber           *hexutil.Big
-	TransactionIndex      hexutil.Uint
-	L1Fee                 *hexutil.Big
-	L1GasUsed             *hexutil.Big
+	Type              hexutil.Uint64
+	PostState         hexutility.Bytes
+	Status            hexutil.Uint64
+	CumulativeGasUsed hexutil.Uint64
+	GasUsed           hexutil.Uint64
+	BlockNumber       *hexutil.Big
+	TransactionIndex  hexutil.Uint
+
+	// Optimism
 	L1GasPrice            *hexutil.Big
+	L1GasUsed             *hexutil.Big
+	L1Fee                 *hexutil.Big
+	FeeScalar             *big.Float
 	DepositNonce          *hexutil.Uint64
 	DepositReceiptVersion *hexutil.Uint64
 }
@@ -543,11 +550,6 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 		if err := rlp.Encode(w, data); err != nil {
 			panic(err)
 		}
-	case BlobTxType:
-		w.WriteByte(BlobTxType)
-		if err := rlp.Encode(w, data); err != nil {
-			panic(err)
-		}
 	case DepositTxType:
 		w.WriteByte(DepositTxType)
 		if r.DepositReceiptVersion != nil {
@@ -560,6 +562,11 @@ func (rs Receipts) EncodeIndex(i int, w *bytes.Buffer) {
 			if err := rlp.Encode(w, data); err != nil {
 				panic(err)
 			}
+		}
+	case BlobTxType:
+		w.WriteByte(BlobTxType)
+		if err := rlp.Encode(w, data); err != nil {
+			panic(err)
 		}
 	default:
 		// For unsupported types, write nothing. Since this is for
@@ -630,7 +637,9 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 			l1Fee, l1GasUsed := costFunc(txs[i].RollupCostData())
 			r[i].L1Fee = l1Fee.ToBig()
 			r[i].L1GasUsed = l1GasUsed.ToBig()
-			r[i].FeeScalar = feeScalar
+			if feeScalar != nil {
+				r[i].FeeScalar = feeScalar
+			}
 		}
 	}
 	return nil
