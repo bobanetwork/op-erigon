@@ -468,19 +468,17 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	}
 
 	if payloadAttributes != nil {
-		if version < clparams.DenebVersion && payloadAttributes.ParentBeaconBlockRoot != nil {
-			return nil, &engine_helpers.InvalidPayloadAttributesErr // Unexpected Beacon Root
-		}
-		if version >= clparams.DenebVersion && payloadAttributes.ParentBeaconBlockRoot == nil {
-			return nil, &engine_helpers.InvalidPayloadAttributesErr // Beacon Root missing
-		}
-
 		timestamp := uint64(payloadAttributes.Timestamp)
-		if !s.config.IsCancun(timestamp) && version >= clparams.DenebVersion { // V3 before cancun
+		if s.config.IsCancun(timestamp) && version < clparams.DenebVersion { // Not V3 after cancun
+			if payloadAttributes.ParentBeaconBlockRoot != nil {
+				return nil, &rpc.InvalidParamsError{Message: "Unexpected Beacon Root"}
+			}
 			return nil, &rpc.UnsupportedForkError{Message: "Unsupported fork"}
 		}
-		if s.config.IsCancun(timestamp) && version < clparams.DenebVersion { // Not V3 after cancun
-			return nil, &rpc.UnsupportedForkError{Message: "Unsupported fork"}
+		if s.config.IsCancun(timestamp) && version >= clparams.DenebVersion {
+			if payloadAttributes.ParentBeaconBlockRoot == nil {
+				return nil, &rpc.InvalidParamsError{Message: "Beacon Root missing"}
+			}
 		}
 	}
 
@@ -516,7 +514,10 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	if headHeader.Time >= timestamp {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
-
+	txs := make([][]byte, len(payloadAttributes.Transactions))
+	for i, tx := range payloadAttributes.Transactions {
+		txs[i] = tx
+	}
 	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
@@ -527,14 +528,8 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		PrevRandao:            gointerfaces.ConvertHashToH256(payloadAttributes.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
 		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
-		Transactions: func() [][]byte {
-			res := make([][]byte, len(payloadAttributes.Transactions))
-			for i, tx := range payloadAttributes.Transactions {
-				res[i] = []byte(tx)
-			}
-			return res
-		}(),
-		NoTxPool: payloadAttributes.NoTxPool,
+		Transactions:          txs,
+		NoTxPool:              payloadAttributes.NoTxPool,
 	}
 
 	if version >= clparams.CapellaVersion {
