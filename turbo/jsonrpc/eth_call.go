@@ -46,7 +46,8 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, blockNrOrHa
 	}
 	defer tx.Rollback()
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -54,15 +55,15 @@ func (api *APIImpl) Call(ctx context.Context, args ethapi2.CallArgs, blockNrOrHa
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result hexutility.Bytes
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_call", args, hexutil.EncodeUint64(bn)); err != nil {
-				return nil, fmt.Errorf("historical backend failed: %w", err)
-			}
-			return result, nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
 		}
-		return nil, rpc.ErrNoHistoricalFallback
+		var result hexutility.Bytes
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_call", args, hexutil.EncodeUint64(blockNum), overrides); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return result, nil
 	}
 
 	engine := api.engine()
@@ -158,7 +159,8 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 		bNrOrHash = *blockNrOrHash
 	}
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(dbtx, &bNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(dbtx, &bNrOrHash)
 	if err != nil {
 		return 0, err
 	}
@@ -166,15 +168,15 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 	if err != nil {
 		return 0, fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result hexutil.Uint64
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_estimateGas", args, hexutil.EncodeUint64(bn)); err != nil {
-				return 0, fmt.Errorf("historical backend failed: %w", err)
-			}
-			return result, nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return 0, rpc.ErrNoHistoricalFallback
 		}
-		return 0, rpc.ErrNoHistoricalFallback
+		var result hexutil.Uint64
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_estimateGas", args, hexutil.EncodeUint64(blockNum)); err != nil {
+			return 0, fmt.Errorf("historical backend error: %w", err)
+		}
+		return result, nil
 	}
 
 	// Determine the highest gas limit can be used during the estimation.
@@ -359,7 +361,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 		return nil, fmt.Errorf("not supported by Erigon3")
 	}
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -367,15 +370,15 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result accounts.AccProofResult
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getProof", address, storageKeys, hexutil.EncodeUint64(bn)); err != nil {
-				return nil, fmt.Errorf("historical backend failed: %w", err)
-			}
-			return &result, nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
 		}
-		return nil, rpc.ErrNoHistoricalFallback
+		var result accounts.AccProofResult
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_getProof", address, storageKeys, hexutil.EncodeUint64(blockNum)); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return &result, nil
 	}
 
 	blockNr, _, _, err := rpchelper.GetBlockNumber(blockNrOrHash, tx, api.filters)
@@ -487,7 +490,8 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 	}
 	defer tx.Rollback()
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(tx, blockNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -495,15 +499,15 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result accessListResult
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_createAccessList", args, hexutil.EncodeUint64(bn)); err != nil {
-				return nil, fmt.Errorf("historical backend failed: %w", err)
-			}
-			return &result, nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
 		}
-		return nil, rpc.ErrNoHistoricalFallback
+		var result accessListResult
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_createAccessList", args, hexutil.EncodeUint64(blockNum)); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return &result, nil
 	}
 
 	engine := api.engine()

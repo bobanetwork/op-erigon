@@ -3,8 +3,9 @@ package jsonrpc
 import (
 	"context"
 	"fmt"
-	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"math/big"
+
+	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
@@ -27,7 +28,8 @@ func (api *APIImpl) GetBalance(ctx context.Context, address libcommon.Address, b
 	}
 	defer tx.Rollback()
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -35,15 +37,15 @@ func (api *APIImpl) GetBalance(ctx context.Context, address libcommon.Address, b
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result hexutil.Big
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getBalance", address, hexutil.EncodeUint64(bn)); err != nil {
-				return nil, fmt.Errorf("historical backend failed: %w", err)
-			}
-			return &result, nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
 		}
-		return nil, rpc.ErrNoHistoricalFallback
+		var result hexutil.Big
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_getBalance", address, hexutil.EncodeUint64(blockNum)); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return &result, nil
 	}
 
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), "")
@@ -83,7 +85,8 @@ func (api *APIImpl) GetTransactionCount(ctx context.Context, address libcommon.A
 	}
 	defer tx.Rollback()
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -91,15 +94,15 @@ func (api *APIImpl) GetTransactionCount(ctx context.Context, address libcommon.A
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result hexutil.Uint64
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getTransactionCount", address, hexutil.EncodeUint64(bn)); err != nil {
-				return nil, fmt.Errorf("historical backend failed: %w", err)
-			}
-			return &result, nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
 		}
-		return nil, rpc.ErrNoHistoricalFallback
+		var result hexutil.Uint64
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_getTransactionCount", address, hexutil.EncodeUint64(blockNum)); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return &result, nil
 	}
 
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), "")
@@ -122,7 +125,8 @@ func (api *APIImpl) GetCode(ctx context.Context, address libcommon.Address, bloc
 	}
 	defer tx.Rollback()
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
@@ -130,15 +134,15 @@ func (api *APIImpl) GetCode(ctx context.Context, address libcommon.Address, bloc
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result hexutility.Bytes
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getCode", address, hexutil.EncodeUint64(bn)); err != nil {
-				return nil, fmt.Errorf("historical backend failed: %w", err)
-			}
-			return result, nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return nil, rpc.ErrNoHistoricalFallback
 		}
-		return nil, rpc.ErrNoHistoricalFallback
+		var result hexutility.Bytes
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_getCode", address, hexutil.EncodeUint64(blockNum)); err != nil {
+			return nil, fmt.Errorf("historical backend error: %w", err)
+		}
+		return result, nil
 	}
 
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), chainConfig.ChainName)
@@ -167,7 +171,8 @@ func (api *APIImpl) GetStorageAt(ctx context.Context, address libcommon.Address,
 	}
 	defer tx.Rollback()
 
-	bn, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
+	// Handle pre-bedrock blocks
+	blockNum, err := api.blockNumberFromBlockNumberOrHash(tx, &blockNrOrHash)
 	if err != nil {
 		return hexutility.Encode(common.LeftPadBytes(empty, 32)), err
 	}
@@ -175,15 +180,15 @@ func (api *APIImpl) GetStorageAt(ctx context.Context, address libcommon.Address,
 	if err != nil {
 		return hexutility.Encode(common.LeftPadBytes(empty, 32)), fmt.Errorf("read chain config: %v", err)
 	}
-	if chainConfig.IsOptimismPreBedrock(bn) {
-		if api.historicalRPCService != nil {
-			var result hexutility.Bytes
-			if err := api.historicalRPCService.CallContext(ctx, &result, "eth_getStorageAt", address, index, hexutil.EncodeUint64(bn)); err != nil {
-				return hexutility.Encode(common.LeftPadBytes(empty, 32)), fmt.Errorf("historical backend failed: %w", err)
-			}
-			return hexutility.Encode(common.LeftPadBytes(result, 32)), nil
+	if chainConfig.IsOptimismPreBedrock(blockNum) {
+		if api.historicalRPCService == nil {
+			return hexutility.Encode(common.LeftPadBytes(empty, 32)), rpc.ErrNoHistoricalFallback
 		}
-		return hexutility.Encode(common.LeftPadBytes(empty, 32)), rpc.ErrNoHistoricalFallback
+		var result hexutility.Bytes
+		if err := api.relayToHistoricalBackend(ctx, &result, "eth_getStorageAt", address, index, hexutil.EncodeUint64(blockNum)); err != nil {
+			return hexutility.Encode(common.LeftPadBytes(empty, 32)), fmt.Errorf("historical backend error: %w", err)
+		}
+		return hexutility.Encode(common.LeftPadBytes(result, 32)), nil
 	}
 
 	reader, err := rpchelper.CreateStateReader(ctx, tx, blockNrOrHash, 0, api.filters, api.stateCache, api.historyV3(tx), "")

@@ -86,7 +86,7 @@ func TestEstimateGasHistoricalRPC(t *testing.T) {
 			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
 			appendAPI: true,
 			isError:   true,
-			expected:  "historical backend failed: error",
+			expected:  "historical backend error: error",
 		},
 	}
 
@@ -311,7 +311,7 @@ func TestGetProofHistoricalRPC(t *testing.T) {
 			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
 			appendAPI: true,
 			isError:   true,
-			expected:  "historical backend failed: error",
+			expected:  "historical backend error: error",
 		},
 	}
 

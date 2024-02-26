@@ -101,6 +101,10 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.Tx, ctx context.Context, blockNu
 		_ = ibs.FinalizeTx(rules, cachedWriter)
 
 		if tracer.Found {
+			var receipt *types.Receipt
+			if chainConfig.IsOptimism() && idx < len(block.Transactions()) {
+				receipt = blockReceipts[idx]
+			}
 			if idx > len(blockReceipts) {
 				select { // it may happen because request canceled, then return canelation error
 				case <-ctx.Done():
@@ -108,10 +112,6 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.Tx, ctx context.Context, blockNu
 				default:
 				}
 				return false, nil, fmt.Errorf("requested receipt idx %d, but have only %d", idx, len(blockReceipts)) // otherwise return some error for debugging
-			}
-			var receipt *types.Receipt
-			if chainConfig.IsOptimism() && idx < len(block.Transactions()) {
-				receipt = blockReceipts[idx]
 			}
 			rpcTx := NewRPCTransaction(tx, block.Hash(), blockNum, uint64(idx), block.BaseFee(), receipt)
 			mReceipt := marshalReceipt(blockReceipts[idx], tx, chainConfig, block.HeaderNoCopy(), tx.Hash(), true)
