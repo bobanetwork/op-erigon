@@ -86,11 +86,6 @@ func (ct CommonTx) IsContractDeploy() bool {
 	return ct.GetTo() == nil
 }
 
-// IsDepositTx returns true if the transaction is a deposit tx type.
-func (ct CommonTx) IsDepositTx() bool {
-	return false
-}
-
 func (ct *CommonTx) GetBlobHashes() []libcommon.Hash {
 	// Only blob txs have blob hashes
 	return []libcommon.Hash{}

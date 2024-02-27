@@ -489,10 +489,10 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
 		result.MaxFeePerBlobGas = (*hexutil.Big)(t.MaxFeePerBlobGas.ToBig())
 		result.BlobVersionedHashes = t.GetBlobHashes()
-	case *types.DepositTransaction:
-		result.SourceHash = t.SourceHash
-		if t.IsSystemTx {
-			result.IsSystemTx = t.IsSystemTx
+	case *types.DepositTx:
+		result.SourceHash = &t.SourceHash
+		if t.IsSystemTransaction {
+			result.IsSystemTx = t.IsSystemTransaction
 		}
 		if receipt != nil && receipt.DepositNonce != nil {
 			result.Nonce = hexutil.Uint64(*receipt.DepositNonce)

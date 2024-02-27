@@ -345,16 +345,16 @@ func TestDeriveFields(t *testing.T) {
 				GasPrice: uint256.NewInt(3),
 			},
 		},
-		&DepositTransaction{
-			Value:    uint256.NewInt(3),
-			From:     &libcommon.Address{},
-			GasLimit: 4,
+		&DepositTx{
+			Value: uint256.NewInt(3),
+			From:  libcommon.Address{},
+			Gas:   4,
 		},
-		&DepositTransaction{
-			From:     &libcommon.Address{},
-			To:       nil, // contract creation
-			Value:    uint256.NewInt(6),
-			GasLimit: 5,
+		&DepositTx{
+			From:  libcommon.Address{},
+			To:    nil, // contract creation
+			Value: uint256.NewInt(6),
+			Gas:   5,
 		},
 	}
 	depNonce := uint64(7)
@@ -746,11 +746,11 @@ func getOptimismTxReceipts(
 	//to4 := common.HexToAddress("0x4")
 	// Create a few transactions to have receipts for
 	txs := Transactions{
-		&DepositTransaction{
-			To:       nil, // contract creation
-			Value:    uint256.NewInt(6),
-			GasLimit: 50,
-			Data:     l1AttributesPayload,
+		&DepositTx{
+			To:    nil, // contract creation
+			Value: uint256.NewInt(6),
+			Gas:   50,
+			Data:  l1AttributesPayload,
 		},
 		emptyTx,
 	}

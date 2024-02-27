@@ -242,12 +242,12 @@ func TestCall_ByBlockHash_WithRequireCanonicalTrue_NonCanonicalBlock(t *testing.
 }
 
 func TestNewRPCTransactionDepositTx(t *testing.T) {
-	tx := &types.DepositTransaction{
-		SourceHash: &common.Hash{1},
-		From:       &common.Address{1},
-		IsSystemTx: true,
-		Mint:       uint256.NewInt(34),
-		Value:      uint256.NewInt(1337),
+	tx := &types.DepositTx{
+		SourceHash:          common.Hash{1},
+		From:                common.Address{1},
+		IsSystemTransaction: true,
+		Mint:                uint256.NewInt(34),
+		Value:               uint256.NewInt(1337),
 	}
 	nonce := uint64(12)
 	depositNonce := &nonce
@@ -260,19 +260,19 @@ func TestNewRPCTransactionDepositTx(t *testing.T) {
 	require.Equal(t, got.S, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().S = %v, want 0x0", got.S)
 
 	// Should include deposit tx specific fields
-	require.Equal(t, got.SourceHash, tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
-	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
+	require.Equal(t, got.SourceHash, &tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
+	require.Equal(t, got.IsSystemTx, tx.IsSystemTransaction, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTransaction)
 	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "NewRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
 	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "NewRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
 }
 
 func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
-	tx := &types.DepositTransaction{
-		SourceHash: &common.Hash{1},
-		From:       &common.Address{1},
-		IsSystemTx: true,
-		Mint:       uint256.NewInt(34),
-		Value:      uint256.NewInt(1337),
+	tx := &types.DepositTx{
+		SourceHash:          common.Hash{1},
+		From:                common.Address{1},
+		IsSystemTransaction: true,
+		Mint:                uint256.NewInt(34),
+		Value:               uint256.NewInt(1337),
 	}
 	nonce := uint64(7)
 	version := types.CanyonDepositReceiptVersion
@@ -288,8 +288,8 @@ func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
 	require.Equal(t, got.S, (*hexutil.Big)(big.NewInt(0)), "NewRPCTransaction().S = %v, want 0x0", got.S)
 
 	// Should include versioned deposit tx specific fields
-	require.Equal(t, got.SourceHash, tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
-	require.Equal(t, got.IsSystemTx, tx.IsSystemTx, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTx)
+	require.Equal(t, got.SourceHash, &tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
+	require.Equal(t, got.IsSystemTx, tx.IsSystemTransaction, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTransaction)
 	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "NewRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
 	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "NewRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
 	require.Equal(t, *got.DepositReceiptVersion, (hexutil.Uint64(version)), "NewRPCTransaction().DepositReceiptVersion = %v, want %v", *got.DepositReceiptVersion, version)
@@ -304,10 +304,10 @@ func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
 }
 
 func TestNewRPCTransactionOmitIsSystemTxFalse(t *testing.T) {
-	tx := &types.DepositTransaction{
-		IsSystemTx: false,
-		From:       &common.Address{1},
-		Value:      uint256.NewInt(1337),
+	tx := &types.DepositTx{
+		IsSystemTransaction: false,
+		From:                common.Address{1},
+		Value:               uint256.NewInt(1337),
 	}
 	got := NewRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
 
@@ -384,18 +384,18 @@ func TestUnmarshalRpcDepositTx(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tx := &types.DepositTransaction{
-				SourceHash: &common.Hash{1},
-				From:       &common.Address{1},
-				IsSystemTx: true,
-				Mint:       uint256.NewInt(34),
-				Value:      uint256.NewInt(1337),
+			tx := &types.DepositTx{
+				SourceHash:          common.Hash{1},
+				From:                common.Address{1},
+				IsSystemTransaction: true,
+				Mint:                uint256.NewInt(34),
+				Value:               uint256.NewInt(1337),
 			}
 			rpcTx := NewRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
 			test.modifier(rpcTx)
 			json, err := json.Marshal(rpcTx)
 			require.NoError(t, err, "marshalling failed: %w", err)
-			parsed := &types.DepositTransaction{}
+			parsed := &types.DepositTx{}
 			err = parsed.UnmarshalJSON(json)
 			if test.valid {
 				require.NoError(t, err, "unmarshal failed: %w", err)

@@ -250,7 +250,7 @@ func UnmarshalTransactionFromBinary(data []byte) (Transaction, error) {
 		return t, nil
 	case DepositTxType:
 		s := rlp.NewStream(bytes.NewReader(data[1:]), uint64(len(data)-1))
-		t := &DepositTransaction{}
+		t := &DepositTx{}
 		if err := t.DecodeRLP(s); err != nil {
 			return nil, err
 		}
@@ -563,7 +563,6 @@ func (t *TransactionsFixedOrder) Pop() {
 // Message is a fully derived transaction and implements core.Message
 type Message struct {
 	txType           byte
-	sourceHash       *libcommon.Hash // TODO(jky) Why is this here?
 	to               *libcommon.Address
 	from             libcommon.Address
 	nonce            uint64

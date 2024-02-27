@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 
 	"github.com/holiman/uint256"
@@ -112,22 +113,22 @@ func (tx DynamicFeeTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&enc)
 }
 
-func (tx DepositTransaction) MarshalJSON() ([]byte, error) {
+func (tx DepositTx) MarshalJSON() ([]byte, error) {
 	var enc txJSON
 	// These are set for all tx types.
 	enc.Hash = tx.Hash()
 	enc.Type = hexutil.Uint64(tx.Type())
 	enc.ChainID = (*hexutil.Big)(libcommon.Big0)
-	enc.Gas = (*hexutil.Uint64)(&tx.GasLimit)
+	enc.Gas = (*hexutil.Uint64)(&tx.Gas)
 	enc.Value = (*hexutil.Big)(tx.Value.ToBig())
 	enc.Data = (*hexutility.Bytes)(&tx.Data)
 	enc.To = tx.To
-	enc.SourceHash = tx.SourceHash
-	enc.From = tx.From
+	enc.SourceHash = &tx.SourceHash
+	enc.From = &tx.From
 	if tx.Mint != nil {
 		enc.Mint = (*hexutil.Big)(tx.Mint.ToBig())
 	}
-	enc.IsSystemTx = &tx.IsSystemTx
+	enc.IsSystemTx = &tx.IsSystemTransaction
 	// other fields will show up as null.
 	return json.Marshal(&enc)
 }
@@ -202,7 +203,7 @@ func UnmarshalTransactionFromJSON(input []byte) (Transaction, error) {
 		}
 		return tx, nil
 	case DepositTxType:
-		tx := &DepositTransaction{}
+		tx := &DepositTx{}
 		if err = tx.UnmarshalJSON(input); err != nil {
 			return nil, err
 		}
@@ -445,7 +446,7 @@ func (tx *DynamicFeeTransaction) UnmarshalJSON(input []byte) error {
 	return nil
 }
 
-func (tx *DepositTransaction) UnmarshalJSON(input []byte) error {
+func (tx *DepositTx) UnmarshalJSON(input []byte) error {
 	var dec txJSON
 	if err := json.Unmarshal(input, &dec); err != nil {
 		return err
@@ -464,7 +465,7 @@ func (tx *DepositTransaction) UnmarshalJSON(input []byte) error {
 	if dec.To != nil {
 		tx.To = dec.To
 	}
-	tx.GasLimit = uint64(*dec.Gas)
+	tx.Gas = uint64(*dec.Gas)
 	if dec.Value == nil {
 		return errors.New("missing required field 'value' in transaction")
 	}
@@ -485,14 +486,14 @@ func (tx *DepositTransaction) UnmarshalJSON(input []byte) error {
 	if dec.From == nil {
 		return errors.New("missing required field 'from' in transaction")
 	}
-	tx.From = dec.From
+	tx.From = *dec.From
 	if dec.SourceHash == nil {
 		return errors.New("missing required field 'sourceHash' in transaction")
 	}
-	tx.SourceHash = dec.SourceHash
+	tx.SourceHash = *dec.SourceHash
 	// IsSystemTx may be omitted. Defaults to false.
 	if dec.IsSystemTx != nil {
-		tx.IsSystemTx = *dec.IsSystemTx
+		tx.IsSystemTransaction = *dec.IsSystemTx
 	}
 	// nonce is not checked becaues depositTx has no nonce field.
 	return nil

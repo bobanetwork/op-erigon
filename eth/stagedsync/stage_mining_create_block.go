@@ -207,7 +207,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		current.Uncles = nil
 		current.Withdrawals = cfg.blockBuilderParameters.Withdrawals
 
-		current.Deposits = cfg.blockBuilderParameters.Deposits
+		current.Deposits = cfg.blockBuilderParameters.Transactions
 		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
 		return nil
 	}
