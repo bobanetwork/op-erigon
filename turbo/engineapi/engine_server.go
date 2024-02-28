@@ -493,20 +493,19 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 
 	headHeader := s.chainRW.GetHeaderByHash(forkchoiceState.HeadHash)
 
-	if headHeader.Hash() != forkchoiceState.HeadHash {
-		// Optimism deviates slightly and allows arbitrary depth re-orgs.
-		if s.config.Optimism == nil {
-			// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
-			// Client software MAY skip an update of the forkchoice state and
-			// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
-			// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
-			// In the case of such an event, client software MUST return
-			// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
+	if headHeader.Hash() != forkchoiceState.HeadHash && s.config.Optimism == nil {
+		// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
+		// Client software MAY skip an update of the forkchoice state and
+		// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
+		// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
+		// In the case of such an event, client software MUST return
+		// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
+		// We skip this check in the Optimism case as Optimism allows arbitrary
+		// depth re-orgs
 
-			s.logger.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
-				"forkChoice.HeadBlockHash", forkchoiceState.HeadHash, "headHeader.Hash", headHeader.Hash())
-			return &engine_types.ForkChoiceUpdatedResponse{PayloadStatus: status}, nil
-		}
+		s.logger.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
+			"forkChoice.HeadBlockHash", forkchoiceState.HeadHash, "headHeader.Hash", headHeader.Hash())
+		return &engine_types.ForkChoiceUpdatedResponse{PayloadStatus: status}, nil
 	}
 	log.Debug("Continuing EngineForkChoiceUpdated", "headNumber", headHeader.Number, "headHash", headHeader.Hash(), "numDeposits", len(payloadAttributes.Transactions))
 
