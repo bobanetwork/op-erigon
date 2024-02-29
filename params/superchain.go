@@ -11,6 +11,20 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common"
 )
 
+const (
+	OPMainnetChainID        = 10
+	OPGoerliChainID         = 420
+	OPSepoliaChainID        = 11155420
+	BaseMainnetChainID      = 8453
+	BaseGoerliChainID       = 84531
+	baseSepoliaChainID      = 84532
+	baseGoerliDevnetChainID = 11763071
+	pgnSepoliaChainID       = 58008
+	devnetChainID           = 997
+	chaosnetChainID         = 888
+	BobaSepoliaChainID      = 28882
+)
+
 // OP Stack chain config
 var (
 	// March 17, 2023 @ 7:00:00 pm UTC

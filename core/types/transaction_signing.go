@@ -205,6 +205,8 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 	signChainID := sg.chainID.ToBig() // This is reset to nil if tx is unprotected
 	// recoverPlain below will subract 27 from V
 	switch t := tx.(type) {
+	case *DepositTx:
+		return t.From, nil
 	case *LegacyTx:
 		if !t.Protected() {
 			if !sg.unprotected {
@@ -268,10 +270,6 @@ func (sg Signer) SenderWithContext(context *secp256k1.Context, tx Transaction) (
 		// id, add 27 to become equivalent to unprotected Homestead signatures.
 		V.Add(&t.V, u256.Num27)
 		R, S = &t.R, &t.S
-	case *DepositTx:
-		// This type contains an explicit From: field
-		sender, _ := tx.GetSender()
-		return sender, nil
 	default:
 		return libcommon.Address{}, ErrTxTypeNotSupported
 	}
@@ -304,6 +302,8 @@ func (sg Signer) SignatureValues(tx Transaction, sig []byte) (R, S, V *uint256.I
 			return nil, nil, nil, ErrInvalidChainId
 		}
 		R, S, V = decodeSignature(sig)
+	case *DepositTx:
+		return nil, nil, nil, fmt.Errorf("deposits do not have a signature")
 	case *BlobTx:
 		// Check that chain ID of tx matches the signer. We also accept ID zero here,
 		// because it indicates that the chain ID was not specified in the tx.
@@ -311,8 +311,6 @@ func (sg Signer) SignatureValues(tx Transaction, sig []byte) (R, S, V *uint256.I
 			return nil, nil, nil, ErrInvalidChainId
 		}
 		R, S, V = decodeSignature(sig)
-	case *DepositTx:
-		return nil, nil, nil, fmt.Errorf("deposits do not have a signature")
 	default:
 		return nil, nil, nil, ErrTxTypeNotSupported
 	}

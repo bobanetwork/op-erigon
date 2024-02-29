@@ -1187,7 +1187,6 @@ func (api *TraceAPIImpl) doCallMany(ctx context.Context, dbtx kv.Tx, msgs []type
 
 		// Get a new instance of the EVM.
 		blockCtx := transactions.NewEVMBlockContext(engine, header, parentNrOrHash.RequireCanonical, dbtx, api._blockReader)
-		blockCtx.L1CostFunc = l1CostFunc
 		txCtx := core.NewEVMTxContext(msg)
 
 		if useParent {
@@ -1195,6 +1194,7 @@ func (api *TraceAPIImpl) doCallMany(ctx context.Context, dbtx kv.Tx, msgs []type
 			blockCtx.MaxGasLimit = true
 		}
 		ibs.Reset()
+		blockCtx.L1CostFunc = l1CostFunc
 		// Create initial IntraBlockState, we will compare it with ibs (IntraBlockState after the transaction)
 
 		evm := vm.NewEVM(blockCtx, txCtx, ibs, chainConfig, vmConfig)

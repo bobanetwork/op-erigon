@@ -468,19 +468,17 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	}
 
 	if payloadAttributes != nil {
-		if version < clparams.DenebVersion && payloadAttributes.ParentBeaconBlockRoot != nil {
-			return nil, &engine_helpers.InvalidPayloadAttributesErr // Unexpected Beacon Root
-		}
-		if version >= clparams.DenebVersion && payloadAttributes.ParentBeaconBlockRoot == nil {
-			return nil, &engine_helpers.InvalidPayloadAttributesErr // Beacon Root missing
-		}
-
 		timestamp := uint64(payloadAttributes.Timestamp)
-		if !s.config.IsCancun(timestamp) && version >= clparams.DenebVersion { // V3 before cancun
+		if s.config.IsCancun(timestamp) && version < clparams.DenebVersion { // Not V3 after cancun
+			if payloadAttributes.ParentBeaconBlockRoot != nil {
+				return nil, &rpc.InvalidParamsError{Message: "Unexpected Beacon Root"}
+			}
 			return nil, &rpc.UnsupportedForkError{Message: "Unsupported fork"}
 		}
-		if s.config.IsCancun(timestamp) && version < clparams.DenebVersion { // Not V3 after cancun
-			return nil, &rpc.UnsupportedForkError{Message: "Unsupported fork"}
+		if s.config.IsCancun(timestamp) && version >= clparams.DenebVersion {
+			if payloadAttributes.ParentBeaconBlockRoot == nil {
+				return nil, &rpc.InvalidParamsError{Message: "Beacon Root missing"}
+			}
 		}
 	}
 
@@ -495,20 +493,19 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 
 	headHeader := s.chainRW.GetHeaderByHash(forkchoiceState.HeadHash)
 
-	if headHeader.Hash() != forkchoiceState.HeadHash {
-		// Optimism deviates slightly and allows arbitrary depth re-orgs.
-		if s.config.Optimism == nil {
-			// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
-			// Client software MAY skip an update of the forkchoice state and
-			// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
-			// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
-			// In the case of such an event, client software MUST return
-			// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
+	if headHeader.Hash() != forkchoiceState.HeadHash && s.config.Optimism == nil {
+		// Per Item 2 of https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.9/src/engine/specification.md#specification-1:
+		// Client software MAY skip an update of the forkchoice state and
+		// MUST NOT begin a payload build process if forkchoiceState.headBlockHash doesn't reference a leaf of the block tree.
+		// That is, the block referenced by forkchoiceState.headBlockHash is neither the head of the canonical chain nor a block at the tip of any other chain.
+		// In the case of such an event, client software MUST return
+		// {payloadStatus: {status: VALID, latestValidHash: forkchoiceState.headBlockHash, validationError: null}, payloadId: null}.
+		// We skip this check in the Optimism case as Optimism allows arbitrary
+		// depth re-orgs
 
-			s.logger.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
-				"forkChoice.HeadBlockHash", forkchoiceState.HeadHash, "headHeader.Hash", headHeader.Hash())
-			return &engine_types.ForkChoiceUpdatedResponse{PayloadStatus: status}, nil
-		}
+		s.logger.Warn("Skipping payload building because forkchoiceState.headBlockHash is not the head of the canonical chain",
+			"forkChoice.HeadBlockHash", forkchoiceState.HeadHash, "headHeader.Hash", headHeader.Hash())
+		return &engine_types.ForkChoiceUpdatedResponse{PayloadStatus: status}, nil
 	}
 	log.Debug("Continuing EngineForkChoiceUpdated", "headNumber", headHeader.Number, "headHash", headHeader.Hash(), "numDeposits", len(payloadAttributes.Transactions))
 
@@ -516,7 +513,10 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	if headHeader.Time >= timestamp {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
-
+	txs := make([][]byte, len(payloadAttributes.Transactions))
+	for i, tx := range payloadAttributes.Transactions {
+		txs[i] = tx
+	}
 	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
@@ -527,14 +527,8 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		PrevRandao:            gointerfaces.ConvertHashToH256(payloadAttributes.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
 		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
-		Transactions: func() [][]byte {
-			res := make([][]byte, len(payloadAttributes.Transactions))
-			for i, tx := range payloadAttributes.Transactions {
-				res[i] = []byte(tx)
-			}
-			return res
-		}(),
-		NoTxPool: payloadAttributes.NoTxPool,
+		Transactions:          txs,
+		NoTxPool:              payloadAttributes.NoTxPool,
 	}
 
 	if version >= clparams.CapellaVersion {

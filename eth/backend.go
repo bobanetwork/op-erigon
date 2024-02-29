@@ -619,7 +619,6 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		}
 		backend.historicalRPCService = client
 	}
-	config.TxPool.Optimism = config.Genesis.Config.IsOptimism()
 	config.TxPool.NoGossip = config.DisableTxPoolGossip
 	var miningRPC txpool_proto.MiningServer
 	stateDiffClient := direct.NewStateDiffClientDirect(kvRPC)
@@ -631,6 +630,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 
 		backend.newTxs = make(chan types2.Announcements, 1024)
 		//defer close(newTxs)
+		config.TxPool.Optimism = chainConfig.Optimism != nil
 		backend.txPoolDB, backend.txPool, backend.txPoolFetch, backend.txPoolSend, backend.txPoolGrpcServer, err = txpooluitl.AllComponents(
 			ctx, config.TxPool, kvcache.NewDummy(), backend.newTxs, backend.chainDB, backend.sentriesClient.Sentries(), stateDiffClient, misc.Eip1559FeeCalculator, logger,
 		)

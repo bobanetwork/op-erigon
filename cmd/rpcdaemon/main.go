@@ -12,7 +12,6 @@ import (
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/debug"
 	"github.com/ledgerwatch/erigon/turbo/jsonrpc"
-	"github.com/ledgerwatch/log/v3"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +40,7 @@ func main() {
 			client, err := rpc.DialContext(ctx, cfg.RollupSequencerHTTP, logger)
 			cancel()
 			if err != nil {
-				log.Error(err.Error())
+				logger.Error(err.Error())
 				return nil
 			}
 			seqRPCService = client
@@ -51,7 +50,7 @@ func main() {
 			client, err := rpc.DialContext(ctx, cfg.RollupHistoricalRPC, logger)
 			cancel()
 			if err != nil {
-				log.Error(err.Error())
+				logger.Error(err.Error())
 				return nil
 			}
 			historicalRPCService = client

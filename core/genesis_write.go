@@ -107,24 +107,30 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrideCancunTime, o
 		if overrideCancunTime != nil {
 			config.CancunTime = overrideCancunTime
 		}
-		if config.IsOptimism() && overrideOptimismEcotoneTime != nil {
-			config.EcotoneTime = overrideOptimismEcotoneTime
-			// Cancun hardfork is included in Ecotone hardfork
-			config.CancunTime = overrideOptimismEcotoneTime
-			config.ShanghaiTime = overrideOptimismEcotoneTime
+		if config.IsOptimism() && overrideOptimismCanyonTime != nil {
+			config.CanyonTime = overrideOptimismCanyonTime
+			// Shanghai hardfork is included in canyon hardfork
+			config.ShanghaiTime = overrideOptimismCanyonTime
 			if config.Optimism.EIP1559DenominatorCanyon == 0 {
 				logger.Warn("EIP1559DenominatorCanyon set to 0. Overriding to 250 to avoid divide by zero.")
 				config.Optimism.EIP1559DenominatorCanyon = 250
 			}
 		}
+		if overrideShanghaiTime != nil && config.IsOptimism() && overrideOptimismCanyonTime != nil {
+			if overrideShanghaiTime.Cmp(overrideOptimismCanyonTime) != 0 {
+				logger.Warn("Shanghai hardfork time is overridden by optimism canyon time",
+					"shanghai", overrideShanghaiTime.String(), "canyon", overrideOptimismCanyonTime.String())
+			}
+		}
+		if config.IsOptimism() && overrideOptimismEcotoneTime != nil {
+			config.EcotoneTime = overrideOptimismEcotoneTime
+			// Cancun hardfork is included in Ecotone hardfork
+			config.CancunTime = overrideOptimismEcotoneTime
+		}
 		if overrideCancunTime != nil && config.IsOptimism() && overrideOptimismEcotoneTime != nil {
 			if overrideCancunTime.Cmp(overrideOptimismEcotoneTime) != 0 {
 				logger.Warn("Cancun hardfork time is overridden by optimism Ecotone time",
 					"cancun", overrideCancunTime.String(), "ecotone", overrideOptimismEcotoneTime.String())
-			}
-			if config.ShanghaiTime.Cmp(overrideOptimismCanyonTime) != 0 {
-				logger.Warn("Shanghai hardfork time is overridden by optimism Ecotone time",
-					"shanghai", config.ShanghaiTime.String(), "canyon", overrideOptimismCanyonTime.String())
 			}
 		}
 	}

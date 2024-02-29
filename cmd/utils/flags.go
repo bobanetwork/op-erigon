@@ -638,6 +638,23 @@ var (
 		Value: ethconfig.Defaults.GPO.MaxPrice.Int64(),
 	}
 
+	// Rollup Flags
+	RollupSequencerHTTPFlag = cli.StringFlag{
+		Name:    "rollup.sequencerhttp",
+		Usage:   "HTTP endpoint for the sequencer mempool",
+		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP_ENDPOINT"},
+	}
+	RollupHistoricalRPCFlag = cli.StringFlag{
+		Name:    "rollup.historicalrpc",
+		Usage:   "RPC endpoint for historical data.",
+		EnvVars: []string{"ROLLUP_HISTORICAL_RPC_ENDPOINT"},
+	}
+	RollupHistoricalRPCTimeoutFlag = cli.StringFlag{
+		Name:  "rollup.historicalrpctimeout",
+		Usage: "Timeout for historical RPC requests.",
+		Value: "5s",
+	}
+
 	// Metrics flags
 	MetricsEnabledFlag = cli.BoolFlag{
 		Name:  "metrics",
@@ -870,22 +887,6 @@ var (
 	SilkwormSentryFlag = cli.BoolFlag{
 		Name:  "silkworm.sentry",
 		Usage: "Enable embedded Silkworm Sentry service",
-	}
-	// Rollup Flags
-	RollupSequencerHTTPFlag = cli.StringFlag{
-		Name:    "rollup.sequencerhttp",
-		Usage:   "HTTP endpoint for the sequencer mempool",
-		EnvVars: []string{"ROLLUP_SEQUENCER_HTTP_ENDPOINT"},
-	}
-	RollupHistoricalRPCFlag = cli.StringFlag{
-		Name:    "rollup.historicalrpc",
-		Usage:   "RPC endpoint for historical data.",
-		EnvVars: []string{"ROLLUP_HISTORICAL_RPC_ENDPOINT"},
-	}
-	RollupHistoricalRPCTimeoutFlag = cli.StringFlag{
-		Name:  "rollup.historicalrpctimeout",
-		Usage: "Timeout for historical RPC requests.",
-		Value: "5s",
 	}
 
 	BeaconAPIFlag = cli.BoolFlag{
@@ -1733,6 +1734,14 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 			cfg.EthDiscoveryURLs = libcommon.CliString2Array(urls)
 		}
 	}
+	// Only configure sequencer http flag if we're running in verifier mode i.e. --mine is disabled.
+	if ctx.IsSet(RollupSequencerHTTPFlag.Name) && !ctx.IsSet(MiningEnabledFlag.Name) {
+		cfg.RollupSequencerHTTP = ctx.String(RollupSequencerHTTPFlag.Name)
+	}
+	if ctx.IsSet(RollupHistoricalRPCFlag.Name) {
+		cfg.RollupHistoricalRPC = ctx.String(RollupHistoricalRPCFlag.Name)
+	}
+	cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
 	// Override any default configs for hard coded networks.
 	chain := ctx.String(ChainFlag.Name)
 
@@ -1771,25 +1780,39 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 		if !ctx.IsSet(MinerGasPriceFlag.Name) {
 			cfg.Miner.GasPrice = big.NewInt(1)
 		}
+		// TODO(jky) Review whether to add OpDevnetChainName
 	}
 
 	if ctx.IsSet(OverrideCancunFlag.Name) {
 		cfg.OverrideCancunTime = flags.GlobalBig(ctx, OverrideCancunFlag.Name)
 		cfg.TxPool.OverrideCancunTime = cfg.OverrideCancunTime
 	}
+	if ctx.IsSet(OverrideShanghaiTime.Name) {
+		cfg.OverrideShanghaiTime = flags.GlobalBig(ctx, OverrideShanghaiTime.Name)
+		cfg.TxPool.OverrideShanghaiTime = cfg.OverrideShanghaiTime
+	}
 
 	if ctx.IsSet(OverrideOptimismCanyonFlag.Name) {
 		cfg.OverrideOptimismCanyonTime = flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
 		cfg.TxPool.OverrideOptimismCanyonTime = cfg.OverrideOptimismCanyonTime
+		// Shanghai hardfork is included in canyon hardfork
+		cfg.OverrideShanghaiTime = flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
+		cfg.TxPool.OverrideShanghaiTime = cfg.OverrideOptimismCanyonTime
 	}
-
+	if ctx.IsSet(OverrideShanghaiTime.Name) && ctx.IsSet(OverrideOptimismCanyonFlag.Name) {
+		overrideShanghaiTime := flags.GlobalBig(ctx, OverrideShanghaiTime.Name)
+		overrideOptimismCanyonTime := flags.GlobalBig(ctx, OverrideOptimismCanyonFlag.Name)
+		if overrideShanghaiTime.Cmp(overrideOptimismCanyonTime) != 0 {
+			logger.Warn("Shanghai hardfork time is overridden by optimism canyon hardfork time",
+				"shanghai", overrideShanghaiTime.String(), "canyon", overrideOptimismCanyonTime.String())
+		}
+	}
 	if ctx.IsSet(OverrideOptimismEcotoneFlag.Name) {
 		cfg.OverrideOptimismEcotoneTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
 		// Cancun hardfork is included in Ecotone hardfork
 		cfg.OverrideCancunTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
 		cfg.TxPool.OverrideCancunTime = flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
 	}
-
 	if ctx.IsSet(OverrideCancunFlag.Name) && ctx.IsSet(OverrideOptimismEcotoneFlag.Name) {
 		overrideCancunTime := flags.GlobalBig(ctx, OverrideCancunFlag.Name)
 		overrideOptimismEcotoneTime := flags.GlobalBig(ctx, OverrideOptimismEcotoneFlag.Name)
@@ -1798,7 +1821,6 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 				"cancun", overrideCancunTime.String(), "ecotone", overrideOptimismEcotoneTime.String())
 		}
 	}
-
 	if ctx.IsSet(InternalConsensusFlag.Name) && clparams.EmbeddedSupported(cfg.NetworkID) {
 		cfg.InternalCL = ctx.Bool(InternalConsensusFlag.Name)
 	}
@@ -1807,14 +1829,6 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 		libkzg.SetTrustedSetupFilePath(ctx.String(TrustedSetupFile.Name))
 	}
 
-	// Rollup params
-	if ctx.IsSet(RollupSequencerHTTPFlag.Name) && !ctx.IsSet(MiningEnabledFlag.Name) {
-		cfg.RollupSequencerHTTP = ctx.String(RollupSequencerHTTPFlag.Name)
-	}
-	if ctx.IsSet(RollupHistoricalRPCFlag.Name) {
-		cfg.RollupHistoricalRPC = ctx.String(RollupHistoricalRPCFlag.Name)
-	}
-	cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
 	if ctx.IsSet(TxPoolGossipDisableFlag.Name) {
 		cfg.DisableTxPoolGossip = ctx.Bool(TxPoolGossipDisableFlag.Name)
 	}

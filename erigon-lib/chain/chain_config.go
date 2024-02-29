@@ -68,8 +68,7 @@ type Config struct {
 	CancunTime   *big.Int `json:"cancunTime,omitempty"`
 	PragueTime   *big.Int `json:"pragueTime,omitempty"`
 
-	// Optimism Forks
-	BedrockBlock *big.Int `json:"bedrockBlock,omitempty"` // bedrockSwitch block (nil = no fork, 0 = already actived)
+	BedrockBlock *big.Int `json:"bedrockBlock,omitempty"` // Bedrock switch block (nil = no fork, 0 = already on optimism bedrock)
 	RegolithTime *big.Int `json:"regolithTime,omitempty"` // Regolith switch time (nil = no fork, 0 = already on optimism regolith)
 	CanyonTime   *big.Int `json:"canyonTime,omitempty"`   // Canyon switch time (nil = no fork, 0 = already on optimism canyon)
 	// Delta: the Delta upgrade does not affect the execution-layer, and is thus not configurable in the chain config.
@@ -89,10 +88,23 @@ type Config struct {
 	Clique *CliqueConfig `json:"clique,omitempty"`
 	Aura   *AuRaConfig   `json:"aura,omitempty"`
 
+	// Optimism config
 	Optimism *OptimismConfig `json:"optimism,omitempty"`
 
 	Bor     BorConfig       `json:"-"`
 	BorJSON json.RawMessage `json:"bor,omitempty"`
+}
+
+// OptimismConfig is the optimism config.
+type OptimismConfig struct {
+	EIP1559Elasticity        uint64 `json:"eip1559Elasticity"`
+	EIP1559Denominator       uint64 `json:"eip1559Denominator"`
+	EIP1559DenominatorCanyon uint64 `json:"eip1559DenominatorCanyon"`
+}
+
+// String implements the stringer interface, returning the optimism fee config details.
+func (o *OptimismConfig) String() string {
+	return "optimism"
 }
 
 type BorConfig interface {
@@ -267,13 +279,13 @@ func (c *Config) IsOptimism() bool {
 	return c.Optimism != nil
 }
 
+// IsOptimismBedrock returns true iff this is an optimism node & bedrock is active
 func (c *Config) IsOptimismBedrock(num uint64) bool {
 	return c.IsOptimism() && c.IsBedrock(num)
 }
 
 func (c *Config) IsOptimismRegolith(time uint64) bool {
-	// Optimism op-geth has additional complexity which is not yet ported here.
-	return /* c.IsOptimism() && */ c.IsRegolith(time)
+	return c.IsOptimism() && c.IsRegolith(time)
 }
 
 func (c *Config) IsOptimismCanyon(time uint64) bool {
@@ -541,18 +553,6 @@ func (c *CliqueConfig) String() string {
 	return "clique"
 }
 
-// OptimismConfig is the optimism config.
-type OptimismConfig struct {
-	EIP1559Elasticity        uint64 `json:"eip1559Elasticity"`
-	EIP1559Denominator       uint64 `json:"eip1559Denominator"`
-	EIP1559DenominatorCanyon uint64 `json:"eip1559DenominatorCanyon"`
-}
-
-// String implements the stringer interface, returning the optimism fee config details.
-func (o *OptimismConfig) String() string {
-	return "optimism"
-}
-
 func borKeyValueConfigHelper[T uint64 | common.Address](field map[string]T, number uint64) T {
 	fieldUint := make(map[uint64]T)
 	for k, v := range field {
@@ -587,7 +587,7 @@ type Rules struct {
 	IsCancun, IsNapoli                                bool
 	IsPrague                                          bool
 	IsAura                                            bool
-	IsBedrock, IsOptimismRegolith                     bool
+	IsOptimismBedrock, IsOptimismRegolith             bool
 }
 
 // Rules ensures c's ChainID is not nil and returns a new Rules instance
@@ -612,9 +612,9 @@ func (c *Config) Rules(num uint64, time uint64) *Rules {
 		IsCancun:           c.IsCancun(time),
 		IsNapoli:           c.IsNapoli(num),
 		IsPrague:           c.IsPrague(time),
-		IsBedrock:          c.IsBedrock(num),
-		IsOptimismRegolith: c.IsOptimismRegolith(time),
 		IsAura:             c.Aura != nil,
+		IsOptimismBedrock:  c.IsOptimismBedrock(num),
+		IsOptimismRegolith: c.IsOptimismRegolith(time),
 	}
 }
 

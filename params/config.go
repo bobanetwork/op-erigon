@@ -85,20 +85,6 @@ var (
 	ChiadoGenesisStateRoot = libcommon.HexToHash("0x9ec3eaf4e6188dfbdd6ade76eaa88289b57c63c9a2cde8d35291d5a29e143d31")
 )
 
-const (
-	OPMainnetChainID        = 10
-	OPGoerliChainID         = 420
-	OPSepoliaChainID        = 11155420
-	BaseMainnetChainID      = 8453
-	BaseGoerliChainID       = 84531
-	baseSepoliaChainID      = 84532
-	baseGoerliDevnetChainID = 11763071
-	pgnSepoliaChainID       = 58008
-	devnetChainID           = 997
-	chaosnetChainID         = 888
-	BobaSepoliaChainID      = 28882
-)
-
 var (
 	// MainnetChainConfig is the chain parameters to run a node on the main network.
 	MainnetChainConfig = readChainSpec("chainspecs/mainnet.json")

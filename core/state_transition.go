@@ -572,7 +572,7 @@ func (st *StateTransition) innerTransitionDb(refunds bool, gasBailout bool) (*Ex
 	}
 
 	// Check that we are post bedrock to be able to create pseudo pre-bedrock blocks (these are pre-bedrock, but don't follow l2 geth rules)
-	if rules.IsBedrock {
+	if rules.IsOptimismBedrock {
 		st.state.AddBalance(params.OptimismBaseFeeRecipient, new(uint256.Int).Mul(uint256.NewInt(st.gasUsed()), st.evm.Context.BaseFee))
 		if st.evm.Context.L1CostFunc == nil { // Erigon EVM context is used in many unexpected/hacky ways, let's panic if it's misconfigured
 			panic("missing L1 cost func in block context, please configure l1 cost when using optimism config to run EVM")

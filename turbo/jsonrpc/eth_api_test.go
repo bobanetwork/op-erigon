@@ -261,7 +261,7 @@ func TestNewRPCTransactionDepositTx(t *testing.T) {
 
 	// Should include deposit tx specific fields
 	require.Equal(t, got.SourceHash, &tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
-	require.Equal(t, got.IsSystemTx, tx.IsSystemTransaction, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTransaction)
+	require.Equal(t, got.IsSystemTx, &tx.IsSystemTransaction, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTransaction)
 	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "NewRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
 	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "NewRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
 }
@@ -289,7 +289,7 @@ func TestNewRPCTransactionDepositTxWithVersion(t *testing.T) {
 
 	// Should include versioned deposit tx specific fields
 	require.Equal(t, got.SourceHash, &tx.SourceHash, "NewRPCTransaction().SourceHash = %v, want %v", got.SourceHash, tx.SourceHash)
-	require.Equal(t, got.IsSystemTx, tx.IsSystemTransaction, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTransaction)
+	require.Equal(t, got.IsSystemTx, &tx.IsSystemTransaction, "NewRPCTransaction().IsSystemTx = %v, want %v", got.IsSystemTx, tx.IsSystemTransaction)
 	require.Equal(t, got.Mint, (*hexutil.Big)(tx.Mint.ToBig()), "NewRPCTransaction().Mint = %v, want %v", got.Mint, tx.Mint.ToBig())
 	require.Equal(t, got.Nonce, (hexutil.Uint64)(nonce), "NewRPCTransaction().Nonce = %v, want %v", got.Nonce, nonce)
 	require.Equal(t, *got.DepositReceiptVersion, (hexutil.Uint64(version)), "NewRPCTransaction().DepositReceiptVersion = %v, want %v", *got.DepositReceiptVersion, version)
@@ -311,7 +311,7 @@ func TestNewRPCTransactionOmitIsSystemTxFalse(t *testing.T) {
 	}
 	got := NewRPCTransaction(tx, common.Hash{}, uint64(12), uint64(1), big.NewInt(0), nil)
 
-	require.False(t, got.IsSystemTx, "should omit IsSystemTx when false")
+	require.Nil(t, got.IsSystemTx, "should omit IsSystemTx when false")
 }
 
 func TestUnmarshalRpcDepositTx(t *testing.T) {

@@ -408,20 +408,21 @@ type RPCTransaction struct {
 	Hash             libcommon.Hash     `json:"hash"`
 	Input            hexutility.Bytes   `json:"input"`
 	Nonce            hexutil.Uint64     `json:"nonce"`
-	To               *libcommon.Address `json:"to"`
+	To               *libcommon.Address `json:"to,omitempty"`
 	TransactionIndex *hexutil.Uint64    `json:"transactionIndex"`
 	Value            *hexutil.Big       `json:"value"`
 	Type             hexutil.Uint64     `json:"type"`
 	Accesses         *types2.AccessList `json:"accessList,omitempty"`
 	ChainID          *hexutil.Big       `json:"chainId,omitempty"`
-	V                *hexutil.Big       `json:"v"`
-	R                *hexutil.Big       `json:"r"`
-	S                *hexutil.Big       `json:"s"`
-	SourceHash       *libcommon.Hash    `json:"sourceHash,omitempty"`
-	Mint             *hexutil.Big       `json:"mint,omitempty"`
-	IsSystemTx       bool               `json:"isSystemTx,omitempty"`
+	V                *hexutil.Big       `json:"v,omitempty"`
+	R                *hexutil.Big       `json:"r,omitempty"`
+	S                *hexutil.Big       `json:"s,omitempty"`
 
 	BlobVersionedHashes []libcommon.Hash `json:"blobVersionedHashes,omitempty"`
+	// deposit-tx only
+	SourceHash *libcommon.Hash `json:"sourceHash,omitempty"`
+	Mint       *hexutil.Big    `json:"mint,omitempty"`
+	IsSystemTx *bool           `json:"isSystemTx,omitempty"`
 	// deposit-tx post-Canyon only
 	DepositReceiptVersion *hexutil.Uint64 `json:"depositReceiptVersion,omitempty"`
 }
@@ -476,6 +477,26 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		result.Accesses = &t.AccessList
 		// if the transaction has been mined, compute the effective gas price
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
+	case *types.DepositTx:
+		if t.Mint != nil {
+			result.Mint = (*hexutil.Big)(t.Mint.ToBig())
+		}
+		result.SourceHash = &t.SourceHash
+		if t.IsSystemTransaction {
+			result.IsSystemTx = &t.IsSystemTransaction
+		}
+		if receipt != nil && receipt.DepositNonce != nil {
+			result.Nonce = hexutil.Uint64(*receipt.DepositNonce)
+			if receipt.DepositReceiptVersion != nil {
+				result.DepositReceiptVersion = new(hexutil.Uint64)
+				*result.DepositReceiptVersion = hexutil.Uint64(*receipt.DepositReceiptVersion)
+			}
+		}
+		result.GasPrice = (*hexutil.Big)(libcommon.Big0)
+		// must contain v, r, s values for backwards compatibility.
+		result.V = (*hexutil.Big)(libcommon.Big0)
+		result.R = (*hexutil.Big)(libcommon.Big0)
+		result.S = (*hexutil.Big)(libcommon.Big0)
 	case *types.BlobTx:
 		chainId.Set(t.ChainID)
 		result.ChainID = (*hexutil.Big)(chainId.ToBig())
@@ -489,24 +510,6 @@ func newRPCTransaction(tx types.Transaction, blockHash libcommon.Hash, blockNumb
 		result.GasPrice = computeGasPrice(tx, blockHash, baseFee)
 		result.MaxFeePerBlobGas = (*hexutil.Big)(t.MaxFeePerBlobGas.ToBig())
 		result.BlobVersionedHashes = t.GetBlobHashes()
-	case *types.DepositTx:
-		result.SourceHash = &t.SourceHash
-		if t.IsSystemTransaction {
-			result.IsSystemTx = t.IsSystemTransaction
-		}
-		if receipt != nil && receipt.DepositNonce != nil {
-			result.Nonce = hexutil.Uint64(*receipt.DepositNonce)
-			if receipt.DepositReceiptVersion != nil {
-				result.DepositReceiptVersion = new(hexutil.Uint64)
-				*result.DepositReceiptVersion = hexutil.Uint64(*receipt.DepositReceiptVersion)
-			}
-		}
-		result.Mint = (*hexutil.Big)(t.Mint.ToBig())
-		result.GasPrice = (*hexutil.Big)(libcommon.Big0)
-		// must contain v, r, s values for backwards compatibility.
-		result.V = (*hexutil.Big)(libcommon.Big0)
-		result.R = (*hexutil.Big)(libcommon.Big0)
-		result.S = (*hexutil.Big)(libcommon.Big0)
 	}
 	signer := types.LatestSignerForChainID(chainId.ToBig())
 	var err error

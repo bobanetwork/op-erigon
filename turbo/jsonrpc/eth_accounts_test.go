@@ -75,11 +75,11 @@ func TestGetBalanceHistoricalRPC(t *testing.T) {
 			expected:  "0x1",
 		},
 		{
-			caseName:  "failuer",
+			caseName:  "failure",
 			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
 			appendAPI: true,
 			isError:   true,
-			expected:  "historical backend failed: error",
+			expected:  "historical backend error: error",
 		},
 	}
 
@@ -140,7 +140,7 @@ func TestGetTransactionCountHistoricalRPC(t *testing.T) {
 			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
 			appendAPI: true,
 			isError:   true,
-			expected:  "historical backend failed: error",
+			expected:  "historical backend error: error",
 		},
 	}
 
@@ -201,7 +201,7 @@ func TestGetCodeHistoricalRPC(t *testing.T) {
 			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
 			appendAPI: true,
 			isError:   true,
-			expected:  "historical backend failed: error",
+			expected:  "historical backend error: error",
 		},
 	}
 
@@ -262,7 +262,7 @@ func TestGetStorageAtHistoricalRPC(t *testing.T) {
 			payload:   "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"error\"}}",
 			appendAPI: true,
 			isError:   true,
-			expected:  "historical backend failed: error",
+			expected:  "historical backend error: error",
 		},
 	}
 

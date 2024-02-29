@@ -748,6 +748,7 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 			chainId = types.DeriveChainId(&t.V).ToBig()
 		}
 	case *types.DepositTx:
+		// Deposit TX does not have chain ID
 		chainId = chainConfig.ChainID
 	default:
 		chainId = txn.GetChainID().ToBig()
@@ -773,20 +774,6 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 		"logs":              receipt.Logs,
 		"logsBloom":         types.CreateBloom(types.Receipts{receipt}),
 	}
-	if chainConfig.Optimism != nil && txn.Type() != types.DepositTxType {
-		fields["l1GasPrice"] = (*hexutil.Big)(receipt.L1GasPrice)
-		fields["l1GasUsed"] = (*hexutil.Big)(receipt.L1GasUsed)
-		fields["l1Fee"] = (*hexutil.Big)(receipt.L1Fee)
-		if receipt.FeeScalar != nil { // removed in Ecotone
-			fields["l1FeeScalar"] = receipt.FeeScalar
-		}
-	}
-	if chainConfig.Optimism != nil && txn.Type() == types.DepositTxType && receipt.DepositNonce != nil {
-		fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
-	}
-	if chainConfig.Optimism != nil && txn.Type() == types.DepositTxType && receipt.DepositReceiptVersion != nil {
-		fields["depositReceiptVersion"] = hexutil.Uint64(*receipt.DepositReceiptVersion)
-	}
 	if !chainConfig.IsLondon(header.Number.Uint64()) {
 		fields["effectiveGasPrice"] = hexutil.Uint64(txn.GetPrice().Uint64())
 	} else {
@@ -802,6 +789,24 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 	// If the ContractAddress is 20 0x0 bytes, assume it is not a contract creation
 	if receipt.ContractAddress != (common.Address{}) {
 		fields["contractAddress"] = receipt.ContractAddress
+	}
+
+	if chainConfig.IsOptimism() {
+		if txn.Type() != types.DepositTxType {
+			fields["l1GasPrice"] = hexutil.Big(*receipt.L1GasPrice)
+			fields["l1GasUsed"] = hexutil.Big(*receipt.L1GasUsed)
+			fields["l1Fee"] = hexutil.Big(*receipt.L1Fee)
+			if receipt.FeeScalar != nil { // removed in Ecotone
+				fields["l1FeeScalar"] = receipt.FeeScalar
+			}
+		} else {
+			if receipt.DepositNonce != nil {
+				fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
+			}
+			if receipt.DepositReceiptVersion != nil {
+				fields["depositReceiptVersion"] = hexutil.Uint64(*receipt.DepositReceiptVersion)
+			}
+		}
 	}
 
 	// Set derived blob related fields
