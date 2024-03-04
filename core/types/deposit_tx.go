@@ -327,7 +327,7 @@ func (tx *DepositTx) WithSignature(signer Signer, sig []byte) (Transaction, erro
 }
 
 func (tx DepositTx) Time() time.Time {
-	return tx.time
+	return tx.time // TODO(jky) this is dead code and we are in the process of removing the interface req upstream
 }
 
 func (tx DepositTx) Type() byte { return DepositTxType }
@@ -350,9 +350,10 @@ func (tx *DepositTx) Hash() libcommon.Hash {
 	return hash
 }
 
-// not sure ab this one lol
+// Protected implies that the tx signature has the chainID
+// since there is no signature, this is always false
 func (tx DepositTx) Protected() bool {
-	return true
+	return false
 }
 
 func (tx DepositTx) IsContractDeploy() bool {
@@ -374,11 +375,11 @@ func (tx DepositTx) GetEffectiveGasTip(baseFee *uint256.Int) *uint256.Int {
 }
 
 func (tx DepositTx) Cost() *uint256.Int {
-	return tx.Value.Clone() // TODO(jky) evaluate correctness
+	return tx.Value.Clone() // TODO(jky) this is dead code and we are in the process of removing the interface req upstream
 }
 
 func (tx DepositTx) GetAccessList() types2.AccessList {
-	return nil // TODO(jky) evaluate correctness vs an empty List
+	return nil
 }
 
 // NewDepositTransaction creates a deposit transaction
