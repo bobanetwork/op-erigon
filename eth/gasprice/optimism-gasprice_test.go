@@ -43,19 +43,19 @@ type testTxData struct {
 }
 
 type testCache struct {
-	latestHash   libcommon.Hash
-	lastestPrice *big.Int
+	latestHash  libcommon.Hash
+	latestPrice *big.Int
 }
 
 // GetLatest implements Cache.
-func (c testCache) GetLatest() (libcommon.Hash, *big.Int) {
-	return c.latestHash, c.lastestPrice
+func (c *testCache) GetLatest() (libcommon.Hash, *big.Int) {
+	return c.latestHash, c.latestPrice
 }
 
 // SetLatest implements Cache.
-func (c testCache) SetLatest(hash libcommon.Hash, price *big.Int) {
+func (c *testCache) SetLatest(hash libcommon.Hash, price *big.Int) {
 	c.latestHash = hash
-	c.lastestPrice = price
+	c.latestPrice = price
 }
 
 type opTestBackend struct {
@@ -148,7 +148,7 @@ func TestSuggestOptimismPriorityFee(t *testing.T) {
 	}
 	for i, c := range cases {
 		backend := newOpTestBackend(t, c.txdata)
-		oracle := NewOracle(backend, gaspricecfg.Config{MinSuggestedPriorityFee: minSuggestion}, testCache{})
+		oracle := NewOracle(backend, gaspricecfg.Config{MinSuggestedPriorityFee: minSuggestion}, &testCache{})
 		got := oracle.SuggestOptimismPriorityFee(context.Background(), backend.block.Header(), backend.block.Hash())
 		if got.Cmp(c.want) != 0 {
 			t.Errorf("Gas price mismatch for test case %d: want %d, got %d", i, c.want, got)
