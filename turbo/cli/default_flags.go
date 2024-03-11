@@ -123,6 +123,8 @@ var DefaultFlags = []cli.Flag{
 	&utils.FakePoWFlag,
 	&utils.GpoBlocksFlag,
 	&utils.GpoPercentileFlag,
+	&utils.GpoIgnoreGasPriceFlag,
+	&utils.GpoMinSuggestedPriorityFeeFlag,
 	&utils.InsecureUnlockAllowedFlag,
 	&utils.HistoryV3Flag,
 	&utils.IdentityFlag,
