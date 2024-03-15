@@ -132,7 +132,7 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 	}
 
 	if opStackChainCfg.CanyonTime != nil {
-		out.ShanghaiTime = new(big.Int).SetUint64(*opStackChainCfg.CanyonTime) // Shanghai activates with Shanghai
+		out.ShanghaiTime = new(big.Int).SetUint64(*opStackChainCfg.CanyonTime) // Shanghai activates with Canyon
 		out.CanyonTime = new(big.Int).SetUint64(*opStackChainCfg.CanyonTime)
 	}
 	if opStackChainCfg.EcotoneTime != nil {
