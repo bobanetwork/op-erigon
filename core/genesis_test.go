@@ -41,7 +41,7 @@ func TestGenesisBlockHashes(t *testing.T) {
 		require.Equal(t, block.Hash().Bytes(), expect.Bytes(), network)
 	}
 	for _, network := range networkname.All {
-		if network == "optimism-mainnet" || network == "boba-sepolia" {
+		if network == "op-mainnet" || network == "boba-sepolia" {
 			t.Skip()
 		}
 		check(network)
