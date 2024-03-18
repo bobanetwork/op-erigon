@@ -46,8 +46,6 @@ var (
 func OPStackChainConfigByName(name string) *superchain.ChainConfig {
 	// Handle legacy name aliases
 	name = networkname.HandleLegacyName(name)
-	// Handle Boba superchain name
-	name = networkname.HandleBobaSuperchainName(name)
 	for _, chainCfg := range superchain.OPChains {
 		if strings.EqualFold(chainCfg.Chain+"-"+chainCfg.Superchain, name) {
 			return chainCfg
@@ -133,13 +131,13 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		},
 	}
 
-	if superchainConfig.Config.CanyonTime != nil {
-		out.ShanghaiTime = new(big.Int).SetUint64(*superchainConfig.Config.CanyonTime) // Shanghai activates with Canyon
-		out.CanyonTime = new(big.Int).SetUint64(*superchainConfig.Config.CanyonTime)
+	if opStackChainCfg.CanyonTime != nil {
+		out.ShanghaiTime = new(big.Int).SetUint64(*opStackChainCfg.CanyonTime) // Shanghai activates with Canyon
+		out.CanyonTime = new(big.Int).SetUint64(*opStackChainCfg.CanyonTime)
 	}
-	if superchainConfig.Config.EcotoneTime != nil {
-		out.CancunTime = new(big.Int).SetUint64(*superchainConfig.Config.EcotoneTime) // CancunTime activates with Ecotone
-		out.EcotoneTime = new(big.Int).SetUint64(*superchainConfig.Config.EcotoneTime)
+	if opStackChainCfg.EcotoneTime != nil {
+		out.CancunTime = new(big.Int).SetUint64(*opStackChainCfg.EcotoneTime) // CancunTime activates with Ecotone
+		out.EcotoneTime = new(big.Int).SetUint64(*opStackChainCfg.EcotoneTime)
 	}
 
 	// note: no actual parameters are being loaded, yet.
