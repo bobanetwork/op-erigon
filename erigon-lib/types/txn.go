@@ -38,7 +38,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/crypto"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/types"
 	"github.com/ledgerwatch/erigon-lib/rlp"
-	"github.com/ledgerwatch/log/v3"
 )
 
 type TxParseConfig struct {
@@ -419,87 +418,49 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 			return 0, fmt.Errorf("%w: %s, %d (expected %d)", ErrParseTxn, "invalid chainID", ctx.ChainID.Uint64(), ctx.cfg.ChainID.Uint64())
 		}
 	}
-	var dataPos, dataLen int
-	if txType == DepositTxType {
-		slot.FeeCap = uint256.Int{}
+	// Next follows the nonce, which we need to parse
+	p, slot.Nonce, err = rlp.U64(payload, p)
 
-		dataPos, dataLen, err = rlp.String(payload, p) // SourceHash
-		if err != nil {
-			log.Warn("failed to parse source hash", "err", err)
-		}
-		p = dataPos + dataLen
-		dataPos, dataLen, err = rlp.String(payload, p) // From
-		if err != nil {
-			log.Warn("failed to parse from", "err", err)
-		}
-		p = dataPos + dataLen
-		dataPos, dataLen, err = rlp.String(payload, p) // To
-		if err != nil {
-			log.Warn("failed to parse to", "err", err)
-		}
-		p = dataPos + dataLen
-		dataPos, dataLen, err = rlp.String(payload, p) // Mint
-		if err != nil {
-			log.Warn("failed to parse mint", "err", err)
-		}
-		p = dataPos + dataLen
-		dataPos, dataLen, err = rlp.String(payload, p) // Value
-		if err != nil {
-			log.Warn("failed to parse value", "err", err)
-		}
-		p = dataPos + dataLen
-
-		p, slot.Gas, err = rlp.U64(payload, p)
-		if err != nil {
-			return 0, fmt.Errorf("%w: d_gas: %s", ErrParseTxn, err) //nolint
-		}
-
-		p += 1 // SystemTx
+	if err != nil {
+		return 0, fmt.Errorf("%w: nonce: %s", ErrParseTxn, err) //nolint
+	}
+	// Next follows gas price or tip
+	// Although consensus rules specify that tip can be up to 256 bit long, we narrow it to 64 bit
+	p, err = rlp.U256(payload, p, &slot.Tip)
+	if err != nil {
+		return 0, fmt.Errorf("%w: tip: %s", ErrParseTxn, err) //nolint
+	}
+	// Next follows feeCap, but only for dynamic fee transactions, for legacy transaction, it is
+	// equal to tip
+	if slot.Type < DynamicFeeTxType {
+		slot.FeeCap = slot.Tip
 	} else {
-		// Next follows the nonce, which we need to parse
-		p, slot.Nonce, err = rlp.U64(payload, p)
-
+		// Although consensus rules specify that feeCap can be up to 256 bit long, we narrow it to 64 bit
+		p, err = rlp.U256(payload, p, &slot.FeeCap)
 		if err != nil {
-			return 0, fmt.Errorf("%w: nonce: %s", ErrParseTxn, err) //nolint
+			return 0, fmt.Errorf("%w: feeCap: %s", ErrParseTxn, err) //nolint
 		}
-		// Next follows gas price or tip
-		// Although consensus rules specify that tip can be up to 256 bit long, we narrow it to 64 bit
-		p, err = rlp.U256(payload, p, &slot.Tip)
-		if err != nil {
-			return 0, fmt.Errorf("%w: tip: %s", ErrParseTxn, err) //nolint
-		}
-		// Next follows feeCap, but only for dynamic fee transactions, for legacy transaction, it is
-		// equal to tip
-		if slot.Type < DynamicFeeTxType {
-			slot.FeeCap = slot.Tip
-		} else {
-			// Although consensus rules specify that feeCap can be up to 256 bit long, we narrow it to 64 bit
-			p, err = rlp.U256(payload, p, &slot.FeeCap)
-			if err != nil {
-				return 0, fmt.Errorf("%w: feeCap: %s", ErrParseTxn, err) //nolint
-			}
-		}
-		// Next follows gas
-		p, slot.Gas, err = rlp.U64(payload, p)
-		if err != nil {
-			return 0, fmt.Errorf("%w: gas: %s", ErrParseTxn, err) //nolint
-		}
-		// Next follows the destination address (if present)
-		dataPos, dataLen, err = rlp.String(payload, p)
-		if err != nil {
-			return 0, fmt.Errorf("%w: to len: %s", ErrParseTxn, err) //nolint
-		}
-		if dataLen != 0 && dataLen != 20 {
-			return 0, fmt.Errorf("%w: unexpected length of to field: %d", ErrParseTxn, dataLen)
-		}
-		// Only note if To field is empty or not
-		slot.Creation = dataLen == 0
-		p = dataPos + dataLen
-		// Next follows value
-		p, err = rlp.U256(payload, p, &slot.Value)
-		if err != nil {
-			return 0, fmt.Errorf("%w: value: %s", ErrParseTxn, err) //nolint
-		}
+	}
+	// Next follows gas
+	p, slot.Gas, err = rlp.U64(payload, p)
+	if err != nil {
+		return 0, fmt.Errorf("%w: gas: %s", ErrParseTxn, err) //nolint
+	}
+	// Next follows the destination address (if present)
+	dataPos, dataLen, err := rlp.String(payload, p)
+	if err != nil {
+		return 0, fmt.Errorf("%w: to len: %s", ErrParseTxn, err) //nolint
+	}
+	if dataLen != 0 && dataLen != 20 {
+		return 0, fmt.Errorf("%w: unexpected length of to field: %d", ErrParseTxn, dataLen)
+	}
+	// Only note if To field is empty or not
+	slot.Creation = dataLen == 0
+	p = dataPos + dataLen
+	// Next follows value
+	p, err = rlp.U256(payload, p, &slot.Value)
+	if err != nil {
+		return 0, fmt.Errorf("%w: value: %s", ErrParseTxn, err) //nolint
 	}
 	// Next goes data, but we are only interesting in its length
 	dataPos, dataLen, err = rlp.String(payload, p)
@@ -530,10 +491,6 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 	}
 
 	p = dataPos + dataLen
-
-	if txType == DepositTxType {
-		return p, nil
-	}
 
 	// Next follows access list for non-legacy transactions, we are only interesting in number of addresses and storage keys
 	if !legacy {
