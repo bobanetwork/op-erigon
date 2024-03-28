@@ -386,16 +386,8 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 			}
 		}
 		{
-			// full tx contents count towards rollup data gas, not just tx data
-			var zeroes, ones uint64
-			for _, byt := range payload {
-				if byt == 0 {
-					zeroes++
-				} else {
-					ones++
-				}
-			}
-			slot.RollupCostData = RollupCostData{Zeroes: zeroes, Ones: ones}
+			// Deposit transactions always have 0 rollupcost data
+			slot.RollupCostData = RollupCostData{}
 		}
 		p = dataPos + dataLen
 
