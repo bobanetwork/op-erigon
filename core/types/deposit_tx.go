@@ -359,7 +359,7 @@ func (tx DepositTx) Protected() bool {
 }
 
 func (tx DepositTx) IsContractDeploy() bool {
-	return false
+	return tx.To == nil // TODO(jky) investigate whether this path is even used anywhere
 }
 
 func (tx DepositTx) IsStarkNet() bool {
