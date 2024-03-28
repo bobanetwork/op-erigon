@@ -465,6 +465,9 @@ func (tx *DepositTx) UnmarshalJSON(input []byte) error {
 	if dec.To != nil {
 		tx.To = dec.To
 	}
+	if dec.Gas == nil {
+		return errors.New("missing required field 'gas' in transaction")
+	}
 	tx.Gas = uint64(*dec.Gas)
 	if dec.Value == nil {
 		return errors.New("missing required field 'value' in transaction")
