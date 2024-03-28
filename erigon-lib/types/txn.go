@@ -366,6 +366,11 @@ func (ctx *TxParseContext) parseTransactionBody(payload []byte, pos, p0 int, slo
 		if err != nil {
 			return 0, fmt.Errorf("%w: depositTx gas: %s", ErrParseTxn, err) //nolint
 		}
+		// IsSystemTx
+		p, _, err = rlp.SkipString(payload, p)
+		if err != nil {
+			return 0, fmt.Errorf("%w: depositTx isSystemTx: %s", ErrParseTxn, err) //nolint
+		}
 		// Data
 		dataPos, dataLen, err = rlp.String(payload, p)
 		if err != nil {
