@@ -145,7 +145,9 @@ func (tx DepositTx) payloadSize() (payloadSize int, nonceLen, gasLen, accessList
 	}
 	// size of Mint
 	payloadSize++
-	payloadSize += rlp.Uint256LenExcludingHead(tx.Mint)
+	if tx.Mint != nil {
+		payloadSize += rlp.Uint256LenExcludingHead(tx.Mint)
+	}
 	// size of Value
 	payloadSize++
 	payloadSize += rlp.Uint256LenExcludingHead(tx.Value)
@@ -357,7 +359,7 @@ func (tx DepositTx) Protected() bool {
 }
 
 func (tx DepositTx) IsContractDeploy() bool {
-	return false
+	return tx.To == nil // TODO(jky) investigate whether this path is even used anywhere
 }
 
 func (tx DepositTx) IsStarkNet() bool {
