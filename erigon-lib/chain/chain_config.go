@@ -49,6 +49,17 @@ var (
 	BobaSepoliaGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 	// Boba Sepolia genesis root
 	BobaSepoliaGenesisRoot = "0x8c57d7486ebd810dc728748553b08919c81024f024651afdbd076780c48621b0"
+
+	// Optimism Mainnet
+	OptimismMainnetChainId = big.NewInt(10)
+	// Optimism Mainnet genesis gas limit
+	OptimismMainnetGenesisGasLimit = 15000000
+	// Optimism Mainnet genesis block coinbase
+	OptimismMainnetGenesisCoinbase = "0x0000000000000000000000000000000000000000"
+	// Optimism Mainnet genesis block extra data
+	OptimismMainnetGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000027770a9694e4b4b1e130ab91bc327c36855f612e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+	// Optimism Mainnet genesis root
+	OptimismMainnetGenesisRoot = "0x9e6b478a1cd331a979c39e4bddf42c676bcf5a63382f898dc441fe3fe5eb0837"
 )
 
 // Config is the core config which determines the blockchain settings.
@@ -355,6 +366,10 @@ func (c *Config) IsBobaLegacyBlock(num uint64) bool {
 	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
 		return c.BedrockBlock.Uint64() > num
 	}
+	// Optimism Mainnet
+	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
+		return c.BedrockBlock.Uint64() > num
+	}
 	return false
 }
 
@@ -366,6 +381,10 @@ func (c *Config) GetBobaGenesisGasLimit() int {
 	// Boba Sepolia
 	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
 		return BobaSepoliaGenesisGasLimit
+	}
+	// Optimism Mainnet
+	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
+		return OptimismMainnetGenesisGasLimit
 	}
 	return 11000000
 }
@@ -379,6 +398,10 @@ func (c *Config) GetBobaGenesisCoinbase() string {
 	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
 		return BobaSepoliaGenesisCoinbase
 	}
+	// Optimism Mainnet
+	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
+		return OptimismMainnetGenesisCoinbase
+	}
 	return "0x0000000000000000000000000000000000000000"
 }
 
@@ -391,6 +414,10 @@ func (c *Config) GetBobaGenesisExtraData() string {
 	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
 		return BobaSepoliaGenesisExtraData
 	}
+	// Optimism Mainnet
+	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
+		return OptimismMainnetGenesisExtraData
+	}
 	return ""
 }
 
@@ -402,6 +429,10 @@ func (c *Config) GetBobaGenesisRoot() string {
 	// Boba Sepolia
 	if BobaSepoliaChainId.Cmp(c.ChainID) == 0 {
 		return BobaSepoliaGenesisRoot
+	}
+	// Optimism Mainnet
+	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
+		return OptimismMainnetGenesisRoot
 	}
 	return ""
 }
