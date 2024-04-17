@@ -828,6 +828,8 @@ func loadOPStackGenesisByChainName(name string) (*types.Genesis, error) {
 			expectedHash = params.OPMainnetGenesisHash
 		case params.OPGoerliChainID:
 			expectedHash = params.OPGoerliGenesisHash
+		case params.BobaMainnetChainID:
+			expectedHash = params.BobaMainnetGenesisHash
 		case params.BobaSepoliaChainID:
 			expectedHash = params.BobaSepoliaGenesisHash
 		default:

@@ -18,6 +18,7 @@ const (
 	OPGoerliChainName  = "op-goerli"
 	OPSepoliaChainName = "op-sepolia"
 
+	BobaMainnetChainName = "boba-mainnet"
 	BobaSepoliaChainName = "boba-sepolia"
 
 	LegacyOPMainnetChainName = "optimism-mainnet"
@@ -41,6 +42,7 @@ var All = []string{
 	OPSepoliaChainName,
 	OPGoerliChainName,
 
+	BobaMainnetChainName,
 	BobaSepoliaChainName,
 }
 
