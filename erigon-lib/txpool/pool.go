@@ -57,6 +57,8 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	"github.com/ledgerwatch/erigon-lib/metrics"
+	"github.com/ledgerwatch/erigon-lib/opstack"
+	"github.com/ledgerwatch/erigon-lib/rlp"
 	"github.com/ledgerwatch/erigon-lib/txpool/txpoolcfg"
 	"github.com/ledgerwatch/erigon-lib/types"
 )
@@ -226,6 +228,8 @@ type TxPool struct {
 	maxBlobsPerBlock        uint64
 	feeCalculator           FeeCalculator
 	logger                  log.Logger
+
+	l1Cost types.L1CostFn
 }
 
 type FeeCalculator interface {
@@ -257,6 +261,7 @@ func New(newTxs chan types.Announcements, coreDB kv.RoDB, cfg txpoolcfg.Config, 
 	}
 
 	lock := &sync.Mutex{}
+	logger.Info("Starting TxPool", "Optimism", cfg.Optimism)
 
 	res := &TxPool{
 		lock:                    lock,
@@ -344,6 +349,56 @@ func (p *TxPool) Start(ctx context.Context, db kv.RwDB) error {
 	})
 }
 
+func RawRLPTxToOptimismL1CostFn(payload []byte) (types.L1CostFn, error) {
+	// skip prefix byte
+	if len(payload) == 0 {
+		return nil, fmt.Errorf("empty tx payload")
+	}
+	offset, _, err := rlp.String(payload, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse rlp string: %w", err)
+	}
+	if payload[offset] != 0x7E {
+		return nil, fmt.Errorf("expected deposit tx type, but got %d", payload[offset])
+	}
+	pos := offset + 1
+	_, _, isList, err := rlp.Prefix(payload, pos)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse rlp prefix: %w", err)
+	}
+	if !isList {
+		return nil, fmt.Errorf("expected list")
+	}
+	dataPos, _, err := rlp.List(payload, pos)
+	if err != nil {
+		return nil, fmt.Errorf("bad tx rlp list start: %w", err)
+	}
+	pos = dataPos
+
+	// skip 7 fields:
+	// source hash
+	// from
+	// to
+	// mint
+	// value
+	// gas
+	// isSystemTx
+	for i := 0; i < 7; i++ {
+		dataPos, dataLen, _, err := rlp.Prefix(payload, pos)
+		if err != nil {
+			return nil, fmt.Errorf("failed to skip rlp element of tx: %w", err)
+		}
+		pos = dataPos + dataLen
+	}
+	// data
+	dataPos, dataLen, _, err := rlp.Prefix(payload, pos)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tx data entry rlp prefix: %w", err)
+	}
+	txCalldata := payload[dataPos : dataPos+dataLen]
+	return opstack.L1CostFnForTxPool(txCalldata)
+}
+
 func (p *TxPool) OnNewBlock(ctx context.Context, stateChanges *remote.StateChangeBatch, unwindTxs, unwindBlobTxs, minedTxs types.TxSlots, tx kv.Tx) error {
 	defer newBlockTimer.ObserveDuration(time.Now())
 	//t := time.Now()
@@ -389,6 +444,18 @@ func (p *TxPool) OnNewBlock(ctx context.Context, stateChanges *remote.StateChang
 	if assert.Enable {
 		if _, err := kvcache.AssertCheckValues(ctx, coreTx, cache); err != nil {
 			p.logger.Error("AssertCheckValues", "err", err, "stack", stack.Trace().String())
+		}
+	}
+
+	if p.cfg.Optimism {
+		lastChangeBatch := stateChanges.ChangeBatch[len(stateChanges.ChangeBatch)-1]
+		if len(lastChangeBatch.Txs) > 0 {
+			l1CostFn, err := RawRLPTxToOptimismL1CostFn(lastChangeBatch.Txs[0])
+			if err == nil {
+				p.l1Cost = l1CostFn
+			} else {
+				log.Error("Tx pool failed to prepare Optimism L1 cost function", "err", err, "block_number", lastChangeBatch.BlockHeight)
+			}
 		}
 	}
 
@@ -453,7 +520,7 @@ func (p *TxPool) OnNewBlock(ctx context.Context, stateChanges *remote.StateChang
 	var announcements types.Announcements
 
 	announcements, err = p.addTxsOnNewBlock(block, cacheView, stateChanges, p.senders, unwindTxs, /* newTxs */
-		pendingBaseFee, stateChanges.BlockGasLimit, p.logger)
+		pendingBaseFee, stateChanges.BlockGasLimit, p.l1Cost, p.logger)
 
 	if err != nil {
 		return err
@@ -1253,7 +1320,7 @@ func (p *TxPool) addTxs(blockNum uint64, cacheView kvcache.CacheView, senders *s
 		if err != nil {
 			return announcements, discardReasons, err
 		}
-		p.onSenderStateChange(senderID, nonce, balance, blockGasLimit, logger)
+		p.onSenderStateChange(senderID, nonce, balance, blockGasLimit, p.l1Cost, logger)
 	}
 
 	p.promote(pendingBaseFee, pendingBlobFee, &announcements, logger)
@@ -1264,7 +1331,7 @@ func (p *TxPool) addTxs(blockNum uint64, cacheView kvcache.CacheView, senders *s
 
 // TODO: Looks like a copy of the above
 func (p *TxPool) addTxsOnNewBlock(blockNum uint64, cacheView kvcache.CacheView, stateChanges *remote.StateChangeBatch,
-	senders *sendersBatch, newTxs types.TxSlots, pendingBaseFee uint64, blockGasLimit uint64, logger log.Logger) (types.Announcements, error) {
+	senders *sendersBatch, newTxs types.TxSlots, pendingBaseFee uint64, blockGasLimit uint64, l1CostFn types.L1CostFn, logger log.Logger) (types.Announcements, error) {
 	if assert.Enable {
 		for _, txn := range newTxs.Txs {
 			if txn.SenderID == 0 {
@@ -1317,7 +1384,7 @@ func (p *TxPool) addTxsOnNewBlock(blockNum uint64, cacheView kvcache.CacheView, 
 		if err != nil {
 			return announcements, err
 		}
-		p.onSenderStateChange(senderID, nonce, balance, blockGasLimit, logger)
+		p.onSenderStateChange(senderID, nonce, balance, blockGasLimit, l1CostFn, logger)
 	}
 
 	return announcements, nil
@@ -1557,7 +1624,7 @@ func (p *TxPool) removeMined(byNonce *BySenderAndNonce, minedTxs []*types.TxSlot
 // which sub pool they will need to go to. Since this depends on other transactions from the same sender by with lower
 // nonces, and also affect other transactions from the same sender with higher nonce, it loops through all transactions
 // for a given senderID
-func (p *TxPool) onSenderStateChange(senderID uint64, senderNonce uint64, senderBalance uint256.Int, blockGasLimit uint64, logger log.Logger) {
+func (p *TxPool) onSenderStateChange(senderID uint64, senderNonce uint64, senderBalance uint256.Int, blockGasLimit uint64, l1CostFn types.L1CostFn, logger log.Logger) {
 	noGapsNonce := senderNonce
 	cumulativeRequiredBalance := uint256.NewInt(0)
 	minFeeCap := uint256.NewInt(0).SetAllOne()
@@ -1605,6 +1672,12 @@ func (p *TxPool) onSenderStateChange(senderID uint64, senderNonce uint64, sender
 		}
 
 		needBalance := requiredBalance(mt.Tx)
+
+		if l1CostFn != nil {
+			if l1Cost := l1CostFn(mt.Tx); l1Cost != nil {
+				needBalance.Add(needBalance, l1Cost)
+			}
+		}
 
 		// 2. Absence of nonce gaps. Set to 1 for transactions whose nonce is N, state nonce for
 		// the sender is M, and there are transactions for all nonces between M and N from the same
