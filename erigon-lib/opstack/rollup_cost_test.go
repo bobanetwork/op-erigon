@@ -55,7 +55,7 @@ func TestBedrockL1CostFunc(t *testing.T) {
 }
 
 func TestEcotoneL1CostFunc(t *testing.T) {
-	costFunc := newL1CostFuncEcotone(basefee, blobBasefee, basefeeScalar, blobBasefeeScalar)
+	costFunc := newL1CostFuncEcotone(0, basefee, blobBasefee, basefeeScalar, blobBasefeeScalar)
 	c, g := costFunc(emptyTxRollupCostData)
 	require.Equal(t, ecotoneGas, g)
 	require.Equal(t, ecotoneFee, c)
@@ -115,7 +115,7 @@ func TestExtractEcotoneGasParams(t *testing.T) {
 
 	// make sure wrong amont of data results in error
 	data = append(data, 0x00) // tack on garbage byte
-	_, _, err = extractL1GasParamsEcotone(data)
+	_, _, err = extractL1GasParamsEcotone(0, data)
 	require.Error(t, err)
 }
 
