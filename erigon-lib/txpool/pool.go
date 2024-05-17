@@ -349,7 +349,7 @@ func (p *TxPool) Start(ctx context.Context, db kv.RwDB) error {
 	})
 }
 
-func RawRLPTxToOptimismL1CostFn(payload []byte) (types.L1CostFn, error) {
+func RawRLPTxToOptimismL1CostFn(blockTime uint64, payload []byte) (types.L1CostFn, error) {
 	// skip prefix byte
 	if len(payload) == 0 {
 		return nil, fmt.Errorf("empty tx payload")
@@ -396,7 +396,7 @@ func RawRLPTxToOptimismL1CostFn(payload []byte) (types.L1CostFn, error) {
 		return nil, fmt.Errorf("failed to read tx data entry rlp prefix: %w", err)
 	}
 	txCalldata := payload[dataPos : dataPos+dataLen]
-	return opstack.L1CostFnForTxPool(txCalldata)
+	return opstack.L1CostFnForTxPool(blockTime, txCalldata)
 }
 
 func (p *TxPool) OnNewBlock(ctx context.Context, stateChanges *remote.StateChangeBatch, unwindTxs, unwindBlobTxs, minedTxs types.TxSlots, tx kv.Tx) error {
@@ -450,7 +450,7 @@ func (p *TxPool) OnNewBlock(ctx context.Context, stateChanges *remote.StateChang
 	if p.cfg.Optimism {
 		lastChangeBatch := stateChanges.ChangeBatch[len(stateChanges.ChangeBatch)-1]
 		if len(lastChangeBatch.Txs) > 0 {
-			l1CostFn, err := RawRLPTxToOptimismL1CostFn(lastChangeBatch.Txs[0])
+			l1CostFn, err := RawRLPTxToOptimismL1CostFn(uint64(time.Now().Unix()), lastChangeBatch.Txs[0])
 			if err == nil {
 				p.l1Cost = l1CostFn
 			} else {

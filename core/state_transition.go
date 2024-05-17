@@ -255,7 +255,11 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 		}
 	}
 	var subBalance = false
-	if have, want := st.state.GetBalance(st.msg.From()), balanceCheck; have.Cmp(want) < 0 {
+	have, want := st.state.GetBalance(st.msg.From()), balanceCheck
+	if !gasBailout {
+		log.Info("Validating balance requirements in buyGas", "from", st.msg.From(), "nonce", st.msg.Nonce(), "have", have, "want", want)
+	}
+	if have.Cmp(want) < 0 {
 		if !gasBailout {
 			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
 		}
@@ -296,9 +300,14 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 		// buyGas method originally handled balance check, but deposit tx does not use it
 		// Therefore explicit check required for separating consensus error and evm internal error.
 		// If not check it here, it will trigger evm internal error and break consensus.
-		if have, want := st.state.GetBalance(st.msg.From()), st.msg.Value(); have.Cmp(want) < 0 {
+
+		have, want := st.state.GetBalance(st.msg.From()), st.msg.Value()
+		if !want.IsZero() {
+			log.Info("Validating balance requirements for depositTx in preCheck", "from", st.msg.From(), "nonce", st.msg.Nonce(), "have", have, "want", want)
+		}
+		if have.Cmp(want) < 0 {
 			if !gasBailout {
-				return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
+				return fmt.Errorf("%w: precheck address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
 			}
 		}
 
