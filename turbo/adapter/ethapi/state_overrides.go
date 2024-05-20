@@ -8,6 +8,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
 	"github.com/ledgerwatch/erigon/core/state"
+	"github.com/ledgerwatch/log/v3"
 )
 
 type StateOverrides map[libcommon.Address]Account
@@ -41,6 +42,7 @@ func (overrides *StateOverrides) Override(state *state.IntraBlockState) error {
 		// Apply state diff into specified accounts.
 		if account.StateDiff != nil {
 			for key, value := range *account.StateDiff {
+				log.Info("StateDiff override at", "addr", addr, "key", key, "value", value);
 				key := key
 				intValue := new(uint256.Int).SetBytes32(value.Bytes())
 				state.SetState(addr, &key, *intValue)
