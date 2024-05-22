@@ -170,6 +170,7 @@ func newL1CostFuncBedrock(config *chain.Config, statedb StateGetter, blockTime u
 	statedb.GetState(L1BlockAddr, &OverheadSlot, &overhead)
 	statedb.GetState(L1BlockAddr, &ScalarSlot, &scalar)
 	isRegolith := config.IsRegolith(blockTime)
+	log.Info("Caching l1cost parameters for bedrock", "isRegolith", isRegolith, "blockTime", blockTime, "l1BaseFee", l1BaseFee, "overhead", overhead, "l1BaseFeeScalar", scalar)
 	return newL1CostFuncBedrockHelper(&l1BaseFee, &overhead, &scalar, isRegolith)
 }
 
@@ -195,7 +196,8 @@ func newL1CostFuncBedrockHelper(l1BaseFee, overhead, scalar *uint256.Int, isRego
 
 // newL1CostFuncEcotone returns an l1 cost function suitable for the Ecotone upgrade except for the
 // very first block of the upgrade.
-func newL1CostFuncEcotone(l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
+func newL1CostFuncEcotone(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
+	log.Info("Caching l1cost parameters for ecotone", "blockTime", blockTime, "l1BaseFee", l1BaseFee, "l1BlobBaseFee", l1BlobBaseFee, "l1BaseFeeScalar", l1BaseFeeScalar, "l1BlobBaseFeeScalar", l1BlobBaseFeeScalar)
 	return func(costData types.RollupCostData) (fee, calldataGasUsed *uint256.Int) {
 		calldataGas := (costData.Zeroes * fixedgas.TxDataZeroGas) + (costData.Ones * fixedgas.TxDataNonZeroGasEIP2028)
 		calldataGasUsed = new(uint256.Int).SetUint64(calldataGas)
@@ -266,7 +268,7 @@ func ExtractL1GasParams(config *chain.Config, time uint64, data []byte) (l1BaseF
 		// edge case: for the very first Ecotone block we still need to use the Bedrock
 		// function. We detect this edge case by seeing if the function selector is the old one
 		if len(data) >= 4 && !bytes.Equal(data[0:4], BedrockL1AttributesSelector) {
-			l1BaseFee, costFunc, err = extractL1GasParamsEcotone(data)
+			l1BaseFee, costFunc, err = extractL1GasParamsEcotone(time, data)
 			return
 		}
 	}
@@ -291,7 +293,7 @@ func extractL1GasParamsLegacy(isRegolith bool, data []byte) (l1BaseFee *uint256.
 
 // extractEcotoneL1GasParams extracts the gas parameters necessary to compute gas from L1 attribute
 // info calldata after the Ecotone upgrade, but not for the very first Ecotone block.
-func extractL1GasParamsEcotone(data []byte) (l1BaseFee *uint256.Int, costFunc l1CostFunc, err error) {
+func extractL1GasParamsEcotone(time uint64, data []byte) (l1BaseFee *uint256.Int, costFunc l1CostFunc, err error) {
 	if len(data) != EcotoneL1InfoBytes {
 		return nil, nil, fmt.Errorf("expected 164 L1 info bytes, got %d", len(data))
 	}
@@ -311,7 +313,7 @@ func extractL1GasParamsEcotone(data []byte) (l1BaseFee *uint256.Int, costFunc l1
 	l1BlobBaseFee := new(uint256.Int).SetBytes(data[68:100])
 	l1BaseFeeScalar := new(uint256.Int).SetBytes(data[4:8])
 	l1BlobBaseFeeScalar := new(uint256.Int).SetBytes(data[8:12])
-	costFunc = newL1CostFuncEcotone(l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+	costFunc = newL1CostFuncEcotone(time, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
 	return
 }
 
@@ -329,11 +331,11 @@ func l1CostHelper(gasWithOverhead, l1BaseFee, scalar *uint256.Int) *uint256.Int 
 	return fee
 }
 
-func L1CostFnForTxPool(data []byte) (types.L1CostFn, error) {
+func L1CostFnForTxPool(time uint64, data []byte) (types.L1CostFn, error) {
 	var costFunc l1CostFunc
 	var err error
 	if len(data) == EcotoneL1InfoBytes {
-		_, costFunc, err = extractL1GasParamsEcotone(data)
+		_, costFunc, err = extractL1GasParamsEcotone(time, data)
 		if err != nil {
 			return nil, err
 		}
