@@ -123,6 +123,7 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		RegolithTime:                  big.NewInt(0),
 		CanyonTime:                    nil,
 		EcotoneTime:                   nil,
+		FjordTime:                     nil,
 		TerminalTotalDifficulty:       common.Big0,
 		TerminalTotalDifficultyPassed: true,
 		Ethash:                        nil,

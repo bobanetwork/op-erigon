@@ -29,15 +29,18 @@ var (
 	bedrockFee  = uint256.NewInt(11326000000000)
 	regolithFee = uint256.NewInt(3710000000000)
 	ecotoneFee  = uint256.NewInt(960900) // (480/16)*(2*16*1000 + 3*10) == 960900
+	// the emptyTx is out of bounds for the linear regression so it uses the minimum size
+	fjordFee = uint256.NewInt(3203000) // 100_000_000 * (2 * 1000 * 1e6 * 16 + 3 * 10 * 1e6) / 1e12
 
-	bedrockGas  = uint256.NewInt(1618)
-	regolithGas = uint256.NewInt(530) // 530  = 1618 - (16*68)
-	ecotoneGas  = uint256.NewInt(480)
+	bedrockGas      = uint256.NewInt(1618)
+	regolithGas     = uint256.NewInt(530) // 530  = 1618 - (16*68)
+	ecotoneGas      = uint256.NewInt(480)
+	minimumFjordGas = uint256.NewInt(1600) // fastlz size of minimum txn, 100_000_000 * 16 / 1e6
 
 	OptimismTestConfig = &chain.OptimismConfig{EIP1559Elasticity: 50, EIP1559Denominator: 10}
 
 	// RollupCostData of emptyTx
-	emptyTxRollupCostData = types.RollupCostData{Zeroes: 0, Ones: 30}
+	emptyTxRollupCostData = types.RollupCostData{Zeroes: 0, Ones: 30, FastLzSize: 0}
 )
 
 func TestBedrockL1CostFunc(t *testing.T) {
@@ -59,6 +62,59 @@ func TestEcotoneL1CostFunc(t *testing.T) {
 	c, g := costFunc(emptyTxRollupCostData)
 	require.Equal(t, ecotoneGas, g)
 	require.Equal(t, ecotoneFee, c)
+}
+
+func TestFjordL1CostFuncMinimumBounds(t *testing.T) {
+	costFunc := newL1CostFuncFjord(
+		basefee,
+		blobBasefee,
+		basefeeScalar,
+		blobBasefeeScalar,
+	)
+
+	// Minimum size transactions:
+	// -42.5856 + 0.8365*110 = 49.4294
+	// -42.5856 + 0.8365*150 = 82.8894
+	// -42.5856 + 0.8365*170 = 99.6194
+	for _, fastLzsize := range []uint64{100, 150, 170} {
+		c, g := costFunc(types.RollupCostData{
+			FastLzSize: fastLzsize,
+		})
+
+		require.Equal(t, minimumFjordGas, g)
+		require.Equal(t, fjordFee, c)
+	}
+
+	// Larger size transactions:
+	// -42.5856 + 0.8365*171 = 100.4559
+	// -42.5856 + 0.8365*175 = 108.8019
+	// -42.5856 + 0.8365*200 = 124.7144
+	for _, fastLzsize := range []uint64{171, 175, 200} {
+		c, g := costFunc(types.RollupCostData{
+			FastLzSize: fastLzsize,
+		})
+
+		require.Greater(t, g.Uint64(), minimumFjordGas.Uint64())
+		require.Greater(t, c.Uint64(), fjordFee.Uint64())
+	}
+}
+
+// TestFjordL1CostSolidityParity tests that the cost function for the fjord upgrade matches a Solidity
+// test to ensure the outputs are the same.
+func TestFjordL1CostSolidityParity(t *testing.T) {
+	costFunc := newL1CostFuncFjord(
+		uint256.NewInt(2*1e6),
+		uint256.NewInt(3*1e6),
+		uint256.NewInt(20),
+		uint256.NewInt(15),
+	)
+
+	c0, g0 := costFunc(types.RollupCostData{
+		FastLzSize: 235,
+	})
+
+	require.Equal(t, uint256.NewInt(2463), g0)
+	require.Equal(t, uint256.NewInt(105484), c0)
 }
 
 func TestExtractBedrockGasParams(t *testing.T) {
