@@ -256,6 +256,17 @@ func getNextTransactions(
 
 		var sender libcommon.Address
 		copy(sender[:], txSlots.Senders.At(i))
+		if sender == (libcommon.Address{}) {
+			v, r, s := transaction.RawSignatureValues()
+			signer := types.MakeSigner(&cfg.chainConfig, header.Number.Uint64(), header.Time)
+			address, err := transaction.Sender(*signer)
+			if err != nil {
+				logger.Error("Recovered sender from txpool as empty but could not recover sender", "txHash", transaction.Hash(), "txType", transaction.Type(), "nonce", transaction.GetNonce(), "v", v, "r", r, "s", s, "err", err)
+				continue
+			}
+			logger.Warn("Recovered sender from txpool as empty", "txHash", transaction.Hash(), "txType", transaction.Type(), "nonce", transaction.GetNonce(), "v", v, "r", r, "s", s, "address", address)
+			sender = address
+		}
 
 		// Check if tx nonce is too low
 		txs = append(txs, transaction)
