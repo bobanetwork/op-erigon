@@ -1,7 +1,9 @@
 package opstack
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"math/big"
 	"testing"
 
@@ -308,4 +310,42 @@ func TestNewL1CostFunc(t *testing.T) {
 	fee = costFunc(emptyTxRollupCostData, time)
 	require.NotNil(t, fee)
 	require.Equal(t, regolithFee, fee)
+}
+
+func TestFlzCompressLen(t *testing.T) {
+	var (
+		contractCallTxStr = "02f901550a758302df1483be21b88304743f94f8" +
+			"0e51afb613d764fa61751affd3313c190a86bb870151bd62fd12adb8" +
+			"e41ef24f3f0000000000000000000000000000000000000000000000" +
+			"00000000000000006e000000000000000000000000af88d065e77c8c" +
+			"c2239327c5edb3a432268e5831000000000000000000000000000000" +
+			"000000000000000000000000000003c1e50000000000000000000000" +
+			"00000000000000000000000000000000000000000000000000000000" +
+			"000000000000000000000000000000000000000000000000a0000000" +
+			"00000000000000000000000000000000000000000000000000000000" +
+			"148c89ed219d02f1a5be012c689b4f5b731827bebe00000000000000" +
+			"0000000000c001a033fd89cb37c31b2cba46b6466e040c61fc9b2a36" +
+			"75a7f5f493ebd5ad77c497f8a07cdf65680e238392693019b4092f61" +
+			"0222e71b7cec06449cb922b93b6a12744e"
+		contractCallTx, _ = hex.DecodeString(contractCallTxStr)
+	)
+
+	testCases := []struct {
+		input       []byte
+		expectedLen uint32
+	}{
+		// empty input
+		{[]byte{}, 0},
+		// all 1 inputs
+		{bytes.Repeat([]byte{1}, 1000), 21},
+		// all 0 inputs
+		{make([]byte, 1000), 21},
+		// contract call tx: https://optimistic.etherscan.io/tx/0x8eb9dd4eb6d33f4dc25fb015919e4b1e9f7542f9b0322bf6622e268cd116b594
+		{contractCallTx, 202},
+	}
+
+	for _, tc := range testCases {
+		output := types.FlzCompressLen(tc.input)
+		require.Equal(t, tc.expectedLen, output)
+	}
 }
