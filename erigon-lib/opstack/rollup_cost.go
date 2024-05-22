@@ -150,9 +150,9 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 					l1BlobBaseFeeScalar := new(uint256.Int).SetBytes(l1FeeScalars[offset+4 : offset+8])
 
 					if config.IsFjord(blockTime) {
-						cachedFunc = newL1CostFuncFjord(&l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+						cachedFunc = newL1CostFuncFjord(blockTime, &l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
 					} else {
-						cachedFunc = newL1CostFuncEcotone(&l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+						cachedFunc = newL1CostFuncEcotone(blockTime, &l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
 					}
 				}
 			}
@@ -228,7 +228,8 @@ func newL1CostFuncEcotone(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeS
 	}
 }
 
-func newL1CostFuncFjord(l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
+func newL1CostFuncFjord(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
+	log.Info("Caching l1cost parameters for fjord", "blockTime", blockTime, "l1BaseFee", l1BaseFee, "l1BlobBaseFee", l1BlobBaseFee, "l1BaseFeeScalar", l1BaseFeeScalar, "l1BlobBaseFeeScalar", l1BlobBaseFeeScalar)
 	return func(costData types.RollupCostData) (fee, calldataGasUsed *uint256.Int) {
 		// Fjord L1 cost function:
 		//l1FeeScaled = baseFeeScalar*l1BaseFee*16 + blobFeeScalar*l1BlobBaseFee

@@ -68,6 +68,7 @@ func TestEcotoneL1CostFunc(t *testing.T) {
 
 func TestFjordL1CostFuncMinimumBounds(t *testing.T) {
 	costFunc := newL1CostFuncFjord(
+		0,
 		basefee,
 		blobBasefee,
 		basefeeScalar,
@@ -105,6 +106,7 @@ func TestFjordL1CostFuncMinimumBounds(t *testing.T) {
 // test to ensure the outputs are the same.
 func TestFjordL1CostSolidityParity(t *testing.T) {
 	costFunc := newL1CostFuncFjord(
+		0,
 		uint256.NewInt(2*1e6),
 		uint256.NewInt(3*1e6),
 		uint256.NewInt(20),
