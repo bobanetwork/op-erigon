@@ -73,6 +73,7 @@ type Config struct {
 	CanyonTime   *big.Int `json:"canyonTime,omitempty"`   // Canyon switch time (nil = no fork, 0 = already on optimism canyon)
 	// Delta: the Delta upgrade does not affect the execution-layer, and is thus not configurable in the chain config.
 	EcotoneTime *big.Int `json:"ecotoneTime,omitempty"` // Ecotone switch time (nil = no fork, 0 = already on optimism ecotone)
+	FjordTime   *big.Int `json:"fjordTime,omitempty"`   // Fjord switch time (nil = no fork, 0 = already on optimism fjord)
 
 	// Optional EIP-4844 parameters
 	MinBlobGasPrice            *uint64 `json:"minBlobGasPrice,omitempty"`
@@ -274,6 +275,10 @@ func (c *Config) IsEcotone(time uint64) bool {
 	return isForked(c.EcotoneTime, time)
 }
 
+func (c *Config) IsFjord(time uint64) bool {
+	return isForked(c.FjordTime, time)
+}
+
 // IsOptimism returns whether the node is an optimism node or not.
 func (c *Config) IsOptimism() bool {
 	return c.Optimism != nil
@@ -294,6 +299,10 @@ func (c *Config) IsOptimismCanyon(time uint64) bool {
 
 func (c *Config) IsOptimismEcotone(time uint64) bool {
 	return c.IsOptimism() && c.IsEcotone(time)
+}
+
+func (c *Config) IsOptimismFjord(time uint64) bool {
+	return c.IsOptimism() && c.IsFjord(time)
 }
 
 // IsOptimismPreBedrock returns true iff this is an optimism node & bedrock is not yet active
@@ -588,6 +597,7 @@ type Rules struct {
 	IsPrague                                          bool
 	IsAura                                            bool
 	IsOptimismBedrock, IsOptimismRegolith             bool
+	IsOptimismCanyon, IsOptimismFjord                 bool
 }
 
 // Rules ensures c's ChainID is not nil and returns a new Rules instance
@@ -615,6 +625,8 @@ func (c *Config) Rules(num uint64, time uint64) *Rules {
 		IsAura:             c.Aura != nil,
 		IsOptimismBedrock:  c.IsOptimismBedrock(num),
 		IsOptimismRegolith: c.IsOptimismRegolith(time),
+		IsOptimismCanyon:   c.IsOptimismCanyon(time),
+		IsOptimismFjord:    c.IsOptimismFjord(time),
 	}
 }
 

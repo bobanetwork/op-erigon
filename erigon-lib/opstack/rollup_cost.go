@@ -80,7 +80,14 @@ var (
 
 	oneMillion     = uint256.NewInt(1_000_000)
 	ecotoneDivisor = uint256.NewInt(1_000_000 * 16)
+	fjordDivisor   = big.NewInt(1_000_000_000_000)
 	sixteen        = uint256.NewInt(16)
+
+	L1CostIntercept  = big.NewInt(-42_585_600)
+	L1CostFastlzCoef = big.NewInt(836_500)
+
+	MinTransactionSize       = big.NewInt(100)
+	MinTransactionSizeScaled = new(big.Int).Mul(MinTransactionSize, big.NewInt(1e6))
 
 	emptyScalars = make([]byte, 8)
 )
@@ -141,7 +148,12 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 					offset := scalarSectionStart
 					l1BaseFeeScalar := new(uint256.Int).SetBytes(l1FeeScalars[offset : offset+4])
 					l1BlobBaseFeeScalar := new(uint256.Int).SetBytes(l1FeeScalars[offset+4 : offset+8])
-					cachedFunc = newL1CostFuncEcotone(blockTime, &l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+
+					if config.IsFjord(blockTime) {
+						cachedFunc = newL1CostFuncFjord(blockTime, &l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+					} else {
+						cachedFunc = newL1CostFuncEcotone(blockTime, &l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+					}
 				}
 			}
 		}
@@ -213,6 +225,40 @@ func newL1CostFuncEcotone(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeS
 		fee = fee.Div(fee, ecotoneDivisor)
 
 		return fee, calldataGasUsed
+	}
+}
+
+func newL1CostFuncFjord(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
+	log.Info("Caching l1cost parameters for fjord", "blockTime", blockTime, "l1BaseFee", l1BaseFee, "l1BlobBaseFee", l1BlobBaseFee, "l1BaseFeeScalar", l1BaseFeeScalar, "l1BlobBaseFeeScalar", l1BlobBaseFeeScalar)
+	return func(costData types.RollupCostData) (fee, calldataGasUsed *uint256.Int) {
+		// Fjord L1 cost function:
+		//l1FeeScaled = baseFeeScalar*l1BaseFee*16 + blobFeeScalar*l1BlobBaseFee
+		//estimatedSize = max(minTransactionSize, intercept + fastlzCoef*fastlzSize)
+		//l1Cost = estimatedSize * l1FeeScaled / 1e12
+
+		calldataCostPerByte := new(uint256.Int).Set(l1BaseFee)
+		calldataCostPerByte = calldataCostPerByte.Mul(calldataCostPerByte, l1BaseFeeScalar)
+		calldataCostPerByte = calldataCostPerByte.Mul(calldataCostPerByte, sixteen)
+
+		blobCostPerByte := new(uint256.Int).Set(l1BlobBaseFee)
+		blobCostPerByte = blobCostPerByte.Mul(blobCostPerByte, l1BlobBaseFeeScalar)
+
+		l1FeeScaled := new(uint256.Int).Add(calldataCostPerByte, blobCostPerByte)
+
+		fastLzSize := new(big.Int).SetUint64(costData.FastLzSize)
+		estimatedSize := new(big.Int).Add(L1CostIntercept, new(big.Int).Mul(L1CostFastlzCoef, fastLzSize))
+
+		if estimatedSize.Cmp(MinTransactionSizeScaled) < 0 {
+			estimatedSize.Set(MinTransactionSizeScaled)
+		}
+
+		l1CostScaled := l1FeeScaled.Mul(l1FeeScaled, uint256.MustFromBig(estimatedSize))
+		l1Cost := new(uint256.Int).Div(l1CostScaled, uint256.MustFromBig(fjordDivisor))
+
+		calldataGasUsed = new(uint256.Int).Mul(uint256.MustFromBig(estimatedSize), new(uint256.Int).SetUint64(fixedgas.TxDataNonZeroGasEIP2028))
+		calldataGasUsed = calldataGasUsed.Div(calldataGasUsed, uint256.NewInt(1e6))
+
+		return l1Cost, calldataGasUsed
 	}
 }
 

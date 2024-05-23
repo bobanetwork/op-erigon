@@ -112,6 +112,22 @@ var PrecompiledContractsCancun = map[libcommon.Address]PrecompiledContract{
 	libcommon.BytesToAddress([]byte{0x0a}): &pointEvaluation{},
 }
 
+// PrecompiledContractsFjord contains the default set of pre-compiled Ethereum
+// contracts used in the Fjord release.
+var PrecompiledContractsFjord = map[libcommon.Address]PrecompiledContract{
+	libcommon.BytesToAddress([]byte{1}):          &ecrecover{},
+	libcommon.BytesToAddress([]byte{2}):          &sha256hash{},
+	libcommon.BytesToAddress([]byte{3}):          &ripemd160hash{},
+	libcommon.BytesToAddress([]byte{4}):          &dataCopy{},
+	libcommon.BytesToAddress([]byte{5}):          &bigModExp{eip2565: true},
+	libcommon.BytesToAddress([]byte{6}):          &bn256AddIstanbul{},
+	libcommon.BytesToAddress([]byte{7}):          &bn256ScalarMulIstanbul{},
+	libcommon.BytesToAddress([]byte{8}):          &bn256PairingIstanbul{},
+	libcommon.BytesToAddress([]byte{9}):          &blake2F{},
+	libcommon.BytesToAddress([]byte{0x0a}):       &pointEvaluation{},
+	libcommon.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{},
+}
+
 var PrecompiledContractsNapoli = map[libcommon.Address]PrecompiledContract{
 	libcommon.BytesToAddress([]byte{0x01}):       &ecrecover{},
 	libcommon.BytesToAddress([]byte{0x02}):       &sha256hash{},
@@ -140,6 +156,7 @@ var PrecompiledContractsBLS = map[libcommon.Address]PrecompiledContract{
 }
 
 var (
+	PrecompiledAddressesFjord     []libcommon.Address
 	PrecompiledAddressesNapoli    []libcommon.Address
 	PrecompiledAddressesCancun    []libcommon.Address
 	PrecompiledAddressesBerlin    []libcommon.Address
@@ -164,6 +181,9 @@ func init() {
 	for k := range PrecompiledContractsCancun {
 		PrecompiledAddressesCancun = append(PrecompiledAddressesCancun, k)
 	}
+	for k := range PrecompiledContractsFjord {
+		PrecompiledAddressesFjord = append(PrecompiledAddressesFjord, k)
+	}
 	for k := range PrecompiledContractsNapoli {
 		PrecompiledAddressesNapoli = append(PrecompiledAddressesNapoli, k)
 	}
@@ -172,6 +192,8 @@ func init() {
 // ActivePrecompiles returns the precompiles enabled with the current configuration.
 func ActivePrecompiles(rules *chain.Rules) []libcommon.Address {
 	switch {
+	case rules.IsOptimismFjord:
+		return PrecompiledAddressesFjord
 	case rules.IsNapoli:
 		return PrecompiledAddressesNapoli
 	case rules.IsCancun:

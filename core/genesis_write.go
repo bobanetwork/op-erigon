@@ -54,6 +54,16 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/trie"
 )
 
+// ChainOverrides contains the changes to chain config.
+type ChainOverrides struct {
+	OverrideShanghaiTime *big.Int
+	OverrideCancunTime   *big.Int
+	// optimism
+	OverrideOptimismCanyonTime  *big.Int
+	OverrideOptimismEcotoneTime *big.Int
+	OverrideOptimismFjordTime   *big.Int
+}
+
 // CommitGenesisBlock writes or updates the genesis block in db.
 // The block that will be used is:
 //
@@ -68,16 +78,16 @@ import (
 //
 // The returned chain configuration is never nil.
 func CommitGenesisBlock(db kv.RwDB, genesis *types.Genesis, tmpDir string, logger log.Logger) (*chain.Config, *types.Block, error) {
-	return CommitGenesisBlockWithOverride(db, genesis, nil, nil, nil, nil, tmpDir, logger)
+	return CommitGenesisBlockWithOverride(db, genesis, nil, tmpDir, logger)
 }
 
-func CommitGenesisBlockWithOverride(db kv.RwDB, genesis *types.Genesis, overrideCancunTime, overrideShanghaiTime, overrideOptimismCanyonTime, overrideOptimismEcotoneTime *big.Int, tmpDir string, logger log.Logger) (*chain.Config, *types.Block, error) {
+func CommitGenesisBlockWithOverride(db kv.RwDB, genesis *types.Genesis, overrides *ChainOverrides, tmpDir string, logger log.Logger) (*chain.Config, *types.Block, error) {
 	tx, err := db.BeginRw(context.Background())
 	if err != nil {
 		return nil, nil, err
 	}
 	defer tx.Rollback()
-	c, b, err := WriteGenesisBlock(tx, genesis, overrideCancunTime, overrideShanghaiTime, overrideOptimismCanyonTime, overrideOptimismEcotoneTime, tmpDir, logger)
+	c, b, err := WriteGenesisBlock(tx, genesis, overrides, tmpDir, logger)
 	if err != nil {
 		return c, b, err
 	}
@@ -88,8 +98,7 @@ func CommitGenesisBlockWithOverride(db kv.RwDB, genesis *types.Genesis, override
 	return c, b, nil
 }
 
-func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrideCancunTime, overrideShanghaiTime, overrideOptimismCanyonTime, overrideOptimismEcotoneTime *big.Int,
-	tmpDir string, logger log.Logger) (*chain.Config, *types.Block, error) {
+func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrides *ChainOverrides, tmpDir string, logger log.Logger) (*chain.Config, *types.Block, error) {
 	var storedBlock *types.Block
 	if genesis != nil && genesis.Config == nil {
 		return params.AllProtocolChanges, nil, types.ErrGenesisNoConfig
@@ -101,37 +110,43 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrideCancunTime, o
 	}
 
 	applyOverrides := func(config *chain.Config) {
-		if overrideShanghaiTime != nil {
-			config.ShanghaiTime = overrideShanghaiTime
+		if overrides == nil {
+			return
 		}
-		if overrideCancunTime != nil {
-			config.CancunTime = overrideCancunTime
+		if overrides.OverrideShanghaiTime != nil {
+			config.ShanghaiTime = overrides.OverrideShanghaiTime
 		}
-		if config.IsOptimism() && overrideOptimismCanyonTime != nil {
-			config.CanyonTime = overrideOptimismCanyonTime
+		if overrides.OverrideCancunTime != nil {
+			config.CancunTime = overrides.OverrideCancunTime
+		}
+		if config.IsOptimism() && overrides.OverrideOptimismCanyonTime != nil {
+			config.CanyonTime = overrides.OverrideOptimismCanyonTime
 			// Shanghai hardfork is included in canyon hardfork
-			config.ShanghaiTime = overrideOptimismCanyonTime
+			config.ShanghaiTime = overrides.OverrideOptimismCanyonTime
 			if config.Optimism.EIP1559DenominatorCanyon == 0 {
 				logger.Warn("EIP1559DenominatorCanyon set to 0. Overriding to 250 to avoid divide by zero.")
 				config.Optimism.EIP1559DenominatorCanyon = 250
 			}
 		}
-		if overrideShanghaiTime != nil && config.IsOptimism() && overrideOptimismCanyonTime != nil {
-			if overrideShanghaiTime.Cmp(overrideOptimismCanyonTime) != 0 {
+		if overrides.OverrideShanghaiTime != nil && config.IsOptimism() && overrides.OverrideOptimismCanyonTime != nil {
+			if overrides.OverrideShanghaiTime.Cmp(overrides.OverrideOptimismCanyonTime) != 0 {
 				logger.Warn("Shanghai hardfork time is overridden by optimism canyon time",
-					"shanghai", overrideShanghaiTime.String(), "canyon", overrideOptimismCanyonTime.String())
+					"shanghai", overrides.OverrideShanghaiTime.String(), "canyon", overrides.OverrideOptimismCanyonTime.String())
 			}
 		}
-		if config.IsOptimism() && overrideOptimismEcotoneTime != nil {
-			config.EcotoneTime = overrideOptimismEcotoneTime
+		if config.IsOptimism() && overrides.OverrideOptimismEcotoneTime != nil {
+			config.EcotoneTime = overrides.OverrideOptimismEcotoneTime
 			// Cancun hardfork is included in Ecotone hardfork
-			config.CancunTime = overrideOptimismEcotoneTime
+			config.CancunTime = overrides.OverrideOptimismEcotoneTime
 		}
-		if overrideCancunTime != nil && config.IsOptimism() && overrideOptimismEcotoneTime != nil {
-			if overrideCancunTime.Cmp(overrideOptimismEcotoneTime) != 0 {
+		if overrides.OverrideCancunTime != nil && config.IsOptimism() && overrides.OverrideOptimismEcotoneTime != nil {
+			if overrides.OverrideCancunTime.Cmp(overrides.OverrideOptimismEcotoneTime) != 0 {
 				logger.Warn("Cancun hardfork time is overridden by optimism Ecotone time",
-					"cancun", overrideCancunTime.String(), "ecotone", overrideOptimismEcotoneTime.String())
+					"cancun", overrides.OverrideCancunTime.String(), "ecotone", overrides.OverrideOptimismEcotoneTime.String())
 			}
+		}
+		if overrides.OverrideOptimismFjordTime != nil {
+			config.FjordTime = overrides.OverrideOptimismFjordTime
 		}
 	}
 
