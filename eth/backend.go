@@ -305,7 +305,15 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			genesisSpec = nil
 		}
 		var genesisErr error
-		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, config.OverrideCancunTime, config.OverrideShanghaiTime, config.OverrideOptimismCanyonTime, config.OverrideOptimismEcotoneTime, tmpdir, logger)
+		overrides := &core.ChainOverrides{
+			OverrideCancunTime:   config.OverrideCancunTime,
+			OverrideShanghaiTime: config.OverrideShanghaiTime,
+			// Optimism
+			OverrideOptimismCanyonTime:  config.OverrideOptimismCanyonTime,
+			OverrideOptimismEcotoneTime: config.OverrideOptimismEcotoneTime,
+			OverrideOptimismFjordTime:   config.OverrideOptimismFjordTime,
+		}
+		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, overrides, tmpdir, logger)
 		if _, ok := genesisErr.(*chain.ConfigCompatError); genesisErr != nil && !ok {
 			return genesisErr
 		}

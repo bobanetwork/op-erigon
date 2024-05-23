@@ -254,6 +254,7 @@ type Config struct {
 
 	OverrideOptimismCanyonTime  *big.Int `toml:",omitempty"`
 	OverrideOptimismEcotoneTime *big.Int `toml:",omitempty"`
+	OverrideOptimismFjordTime   *big.Int `toml:",omitempty"`
 
 	// Embedded Silkworm support
 	SilkwormExecution bool
