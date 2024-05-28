@@ -143,6 +143,9 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.CancunTime = new(big.Int).SetUint64(*opStackChainCfg.EcotoneTime) // CancunTime activates with Ecotone
 		out.EcotoneTime = new(big.Int).SetUint64(*opStackChainCfg.EcotoneTime)
 	}
+	if opStackChainCfg.FjordTime != nil {
+		out.FjordTime = new(big.Int).SetUint64(*opStackChainCfg.FjordTime)
+	}
 
 	// note: no actual parameters are being loaded, yet.
 	// Future superchain upgrades are loaded from the superchain chConfig and applied to the geth ChainConfig here.
@@ -194,6 +197,7 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.Optimism.EIP1559Elasticity = 6
 		out.Optimism.EIP1559Denominator = 50
 		out.Optimism.EIP1559DenominatorCanyon = 250
+		out.FjordTime = nil
 	case BobaMainnetChainID:
 		out.BerlinBlock = big.NewInt(1149019)
 		out.LondonBlock = big.NewInt(1149019)
@@ -207,6 +211,7 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.Optimism.EIP1559Elasticity = 6
 		out.Optimism.EIP1559Denominator = 50
 		out.Optimism.EIP1559DenominatorCanyon = 250
+		out.FjordTime = nil
 	}
 
 	return out

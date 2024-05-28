@@ -1803,6 +1803,13 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 		// TODO(jky) Review whether to add OpDevnetChainName
 	}
 
+	// Set Optimism Fjord hardfork time
+	if cfg.Genesis != nil && cfg.Genesis.Config != nil {
+		if cfg.Genesis.Config.IsOptimism() {
+			cfg.TxPool.OptimismFjordTime = cfg.Genesis.Config.FjordTime
+		}
+	}
+
 	if ctx.IsSet(OverrideCancunFlag.Name) {
 		cfg.OverrideCancunTime = flags.GlobalBig(ctx, OverrideCancunFlag.Name)
 		cfg.TxPool.OverrideCancunTime = cfg.OverrideCancunTime
@@ -1843,6 +1850,7 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 	}
 	if ctx.IsSet(OverrideOptimismFjordFlag.Name) {
 		cfg.OverrideOptimismFjordTime = flags.GlobalBig(ctx, OverrideOptimismFjordFlag.Name)
+		cfg.TxPool.OptimismFjordTime = cfg.OverrideOptimismFjordTime
 	}
 	if ctx.IsSet(InternalConsensusFlag.Name) && clparams.EmbeddedSupported(cfg.NetworkID) {
 		cfg.InternalCL = ctx.Bool(InternalConsensusFlag.Name)

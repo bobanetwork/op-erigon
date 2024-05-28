@@ -625,7 +625,7 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 		}
 	}
 	if config.IsOptimismBedrock(number) && len(txs) >= 2 { // need at least an info tx and a non-info tx
-		l1Basefee, costFunc, feeScalar, err := opstack.ExtractL1GasParams(config, time, txs[0].GetData())
+		gasParams, err := opstack.ExtractL1GasParams(config, time, txs[0].GetData())
 		if err != nil {
 			return err
 		}
@@ -633,12 +633,12 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 			if txs[i].Type() == DepositTxType {
 				continue
 			}
-			r[i].L1GasPrice = l1Basefee.ToBig()
-			l1Fee, l1GasUsed := costFunc(txs[i].RollupCostData())
+			r[i].L1GasPrice = gasParams.L1BaseFee.ToBig()
+			l1Fee, l1GasUsed := gasParams.CostFunc(txs[i].RollupCostData())
 			r[i].L1Fee = l1Fee.ToBig()
 			r[i].L1GasUsed = l1GasUsed.ToBig()
-			if feeScalar != nil {
-				r[i].FeeScalar = feeScalar
+			if gasParams.FeeScalar != nil {
+				r[i].FeeScalar = gasParams.FeeScalar
 			}
 		}
 	}
