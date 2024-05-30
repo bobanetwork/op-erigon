@@ -130,7 +130,7 @@ func TestExtractBedrockGasParams(t *testing.T) {
 
 	data := getBedrockL1Attributes(basefee, overhead, scalar)
 
-	_, costFuncPreRegolith, _, err := ExtractL1GasParams(config, regolithTime-1, data)
+	gasParamsPreRegolith, err := ExtractL1GasParams(config, regolithTime-1, data)
 	require.NoError(t, err)
 
 	// Function should continue to succeed even with extra data (that just gets ignored) since we
@@ -138,18 +138,18 @@ func TestExtractBedrockGasParams(t *testing.T) {
 	// the expected number of bytes. It's unclear if this flexibility was intentional, but since
 	// it's been in production we shouldn't change this behavior.
 	data = append(data, []byte{0xBE, 0xEE, 0xEE, 0xFF}...) // tack on garbage data
-	_, costFuncRegolith, _, err := ExtractL1GasParams(config, regolithTime, data)
+	gasParamsRegolith, err := ExtractL1GasParams(config, regolithTime, data)
 	require.NoError(t, err)
 
-	c, _ := costFuncPreRegolith(emptyTxRollupCostData)
+	c, _ := gasParamsPreRegolith.CostFunc(emptyTxRollupCostData)
 	require.Equal(t, bedrockFee, c)
 
-	c, _ = costFuncRegolith(emptyTxRollupCostData)
+	c, _ = gasParamsRegolith.CostFunc(emptyTxRollupCostData)
 	require.Equal(t, regolithFee, c)
 
 	// try to extract from data which has not enough params, should get error.
 	data = data[:len(data)-4-32]
-	_, _, _, err = ExtractL1GasParams(config, regolithTime, data)
+	_, err = ExtractL1GasParams(config, regolithTime, data)
 	require.Error(t, err)
 }
 
@@ -165,17 +165,17 @@ func TestExtractEcotoneGasParams(t *testing.T) {
 
 	data := getEcotoneL1Attributes(basefee, blobBasefee, basefeeScalar, blobBasefeeScalar)
 
-	_, costFunc, _, err := ExtractL1GasParams(config, 0, data)
+	gasParams, err := ExtractL1GasParams(config, 0, data)
 	require.NoError(t, err)
 
-	c, g := costFunc(emptyTxRollupCostData)
+	c, g := gasParams.CostFunc(emptyTxRollupCostData)
 
 	require.Equal(t, ecotoneGas, g)
 	require.Equal(t, ecotoneFee, c)
 
 	// make sure wrong amont of data results in error
 	data = append(data, 0x00) // tack on garbage byte
-	_, _, err = extractL1GasParamsEcotone(0, data)
+	_, err = extractL1GasParamsPostEcotone(data)
 	require.Error(t, err)
 }
 
@@ -193,9 +193,9 @@ func TestFirstBlockEcotoneGasParams(t *testing.T) {
 
 	data := getBedrockL1Attributes(basefee, overhead, scalar)
 
-	_, oldCostFunc, _, err := ExtractL1GasParams(config, 0, data)
+	gasParams, err := ExtractL1GasParams(config, 0, data)
 	require.NoError(t, err)
-	c, _ := oldCostFunc(emptyTxRollupCostData)
+	c, _ := gasParams.CostFunc(emptyTxRollupCostData)
 	require.Equal(t, regolithFee, c)
 }
 
@@ -258,6 +258,33 @@ func (sg *testStateGetter) GetState(addr common.Address, key *common.Hash, value
 	default:
 		panic("unknown slot")
 	}
+}
+
+func TestExtractFjordGasParams(t *testing.T) {
+	zeroTime := big.NewInt(0)
+	// create a config where fjord is active
+	config := &chain.Config{
+		Optimism:     OptimismTestConfig,
+		RegolithTime: zeroTime,
+		EcotoneTime:  zeroTime,
+		FjordTime:    zeroTime,
+	}
+	require.True(t, config.IsOptimismFjord(zeroTime.Uint64()))
+
+	data := getEcotoneL1Attributes(
+		basefee,
+		blobBasefee,
+		basefeeScalar,
+		blobBasefeeScalar,
+	)
+
+	gasParams, err := ExtractL1GasParams(config, zeroTime.Uint64(), data)
+	require.NoError(t, err)
+
+	c, g := gasParams.CostFunc(emptyTxRollupCostData)
+
+	require.Equal(t, minimumFjordGas, g)
+	require.Equal(t, fjordFee, c)
 }
 
 // TestNewL1CostFunc tests that the appropriate cost function is selected based on the
@@ -350,4 +377,21 @@ func TestFlzCompressLen(t *testing.T) {
 		output := types.FlzCompressLen(tc.input)
 		require.Equal(t, tc.expectedLen, output)
 	}
+}
+
+func TestL1CostFnForTxPool(t *testing.T) {
+	tx := types.TxSlot{
+		RollupCostData: emptyTxRollupCostData,
+	}
+	data := getEcotoneL1Attributes(basefee, blobBasefee, basefeeScalar, blobBasefeeScalar)
+
+	l1CostFunc, err := L1CostFnForTxPool(0, data, false)
+	require.NoError(t, err)
+	f := l1CostFunc(&tx)
+	require.Equal(t, ecotoneFee, f)
+
+	l1CostFunc, err = L1CostFnForTxPool(0, data, true)
+	require.NoError(t, err)
+	f = l1CostFunc(&tx)
+	require.Equal(t, fjordFee, f)
 }

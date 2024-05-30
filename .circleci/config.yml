@@ -113,20 +113,20 @@ jobs:
                 name: Tag
                 command: |
                   ./.circleci/ci-docker-tag-op-erigon-release.sh <<parameters.registry>>/${GCP_PROJECT_ID}/<<parameters.repo>> $CIRCLE_TAG $CIRCLE_SHA1
-  v3-achorage-checkout:
+  boba-checkout:
     machine:
-      image: ubuntu-2204:2022.07.1
+      image: ubuntu-2204:edge
       resource_class: medium
     steps:
       #modifying the usual checkout step so that we can clone two projects into a directory ~/project/<>
-      - run: git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL" v3-erigon/
-      - run: git clone https://github.com/bobanetwork/v3-anchorage v3-anchorage/
-      - run: git -C v3-anchorage rev-parse HEAD
+      - run: git clone -b "$CIRCLE_BRANCH" "$CIRCLE_REPOSITORY_URL" op-erigon/
+      - run: git clone https://github.com/bobanetwork/boba boba/
+      - run: git -C boba rev-parse HEAD
       - persist_to_workspace:
           root: "."
           paths:
-            - "v3-erigon/"
-            - "v3-anchorage/"
+            - "op-erigon/"
+            - "boba/"
   go-e2e-test:
     parameters:
       module:
@@ -136,47 +136,47 @@ jobs:
         description: The make target to execute
         type: string
     docker:
-      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.2.0
+      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.3.0
     resource_class: xlarge
     steps:
       - attach_workspace: { at: "." }
       - run:
           name: Modify target Erigon
           command: |
-            cp ~/project/v3-erigon/go.mod ~/project/v3-anchorage/op-erigon/go.mod
-            cd ~/project/v3-anchorage/op-erigon 
+            cp ~/project/op-erigon/go.mod ~/project/boba/op-erigon/go.mod
+            cd ~/project/boba/op-erigon
             go mod edit -module="github.com/ethereum-optimism/optimism/op-erigon"
             go mod edit \
-            -replace "github.com/ledgerwatch/erigon=github.com/bobanetwork/v3-erigon@$CIRCLE_SHA1" \
-            -replace "github.com/ledgerwatch/erigon-lib=github.com/bobanetwork/v3-erigon/erigon-lib@$CIRCLE_SHA1" 
+            -replace "github.com/ledgerwatch/erigon=github.com/bobanetwork/op-erigon@$CIRCLE_SHA1" \
+            -replace "github.com/ledgerwatch/erigon-lib=github.com/bobanetwork/op-erigon/erigon-lib@$CIRCLE_SHA1"
             go mod tidy
       - run:
           name: prep results dir
           command: mkdir -p /tmp/test-results
-          working_directory: ~/project/v3-anchorage
+          working_directory: ~/project/boba
       - run:
           name: Initial build
           command: make
-          working_directory: ~/project/v3-anchorage
+          working_directory: ~/project/boba
       - run:
           name: Devnet-allocs
           command: make devnet-allocs
-          working_directory: ~/project/v3-anchorage
+          working_directory: ~/project/boba
       - run:
           name: Cannon-prestate
           command: make cannon-prestate
-          working_directory: ~/project/v3-anchorage
+          working_directory: ~/project/boba
       - run:
           name: print go's available MIPS targets
           command: go tool dist list | grep mips
-          working_directory: ~/project/v3-anchorage
+          working_directory: ~/project/boba
       - run:
           name: run tests
           command:
             # Note: We don't use circle CI test splits because we need to split by test name, not by package. There is an additional
             # constraint that gotestsum does not currently (nor likely will) accept files from different pacakges when building.
             JUNIT_FILE=/tmp/test-results/<<parameters.module>>_<<parameters.target>>.xml make <<parameters.target>>
-          working_directory: ~/project/v3-anchorage/<<parameters.module>>
+          working_directory: ~/project/boba/<<parameters.module>>
       - store_test_results:
           path: /tmp/test-results
 
@@ -205,10 +205,10 @@ workflows:
             - hold
   main:
     jobs:
-      - v3-achorage-checkout           
+      - boba-checkout
       - go-e2e-test:
           name: op-e2e-ext-erigon-tests
           module: op-e2e
           target: test-external-erigon
           requires:
-            - v3-achorage-checkout    
+            - boba-checkout

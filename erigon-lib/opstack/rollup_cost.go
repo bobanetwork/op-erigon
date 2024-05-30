@@ -228,6 +228,15 @@ func newL1CostFuncEcotone(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeS
 	}
 }
 
+type gasParams struct {
+	L1BaseFee           *uint256.Int
+	L1BlobBaseFee       *uint256.Int
+	CostFunc            l1CostFunc
+	FeeScalar           *big.Float   // pre-ecotone
+	L1BaseFeeScalar     *uint256.Int // post-ecotone
+	L1BlobBaseFeeScalar *uint256.Int // post-ecotone
+}
+
 func newL1CostFuncFjord(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
 	log.Info("Caching l1cost parameters for fjord", "blockTime", blockTime, "l1BaseFee", l1BaseFee, "l1BlobBaseFee", l1BlobBaseFee, "l1BaseFeeScalar", l1BaseFeeScalar, "l1BlobBaseFeeScalar", l1BlobBaseFeeScalar)
 	return func(costData types.RollupCostData) (fee, calldataGasUsed *uint256.Int) {
@@ -264,42 +273,67 @@ func newL1CostFuncFjord(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeSca
 
 // ExtractL1GasParams extracts the gas parameters necessary to compute gas costs from L1 block info
 // calldata.
-func ExtractL1GasParams(config *chain.Config, time uint64, data []byte) (l1BaseFee *uint256.Int, costFunc l1CostFunc, feeScalar *big.Float, err error) {
+func ExtractL1GasParams(config *chain.Config, time uint64, data []byte) (gasParams, error) {
 	if config.IsEcotone(time) {
 		// edge case: for the very first Ecotone block we still need to use the Bedrock
 		// function. We detect this edge case by seeing if the function selector is the old one
-		if len(data) >= 4 && !bytes.Equal(data[0:4], BedrockL1AttributesSelector) {
-			l1BaseFee, costFunc, err = extractL1GasParamsEcotone(time, data)
-			if config.IsFjord(time) {
-				l1BaseFee, costFunc, err = extractL1GasParamsFjord(time, data)
+		// If so, fall through to the pre-ecotone format
+		// Both Ecotone and Fjord use the same function selector
+		if config.IsEcotone(time) && len(data) >= 4 && !bytes.Equal(data[0:4], BedrockL1AttributesSelector) {
+			p, err := extractL1GasParamsPostEcotone(data)
+			if err != nil {
+				return gasParams{}, err
 			}
-			return
+
+			if config.IsFjord(time) {
+				p.CostFunc = newL1CostFuncFjord(
+					time,
+					p.L1BaseFee,
+					p.L1BlobBaseFee,
+					p.L1BaseFeeScalar,
+					p.L1BlobBaseFeeScalar,
+				)
+			} else {
+				p.CostFunc = newL1CostFuncEcotone(
+					time,
+					p.L1BaseFee,
+					p.L1BlobBaseFee,
+					p.L1BaseFeeScalar,
+					p.L1BlobBaseFeeScalar,
+				)
+			}
+
+			return p, nil
 		}
 	}
-	return extractL1GasParamsLegacy(config.IsRegolith(time), data)
+	return extractL1GasParamsPreEcotone(config.IsRegolith(time), data)
 }
 
-func extractL1GasParamsLegacy(isRegolith bool, data []byte) (l1BaseFee *uint256.Int, costFunc l1CostFunc, feeScalar *big.Float, err error) {
+func extractL1GasParamsPreEcotone(isRegolith bool, data []byte) (gasParams, error) {
 	// data consists of func selector followed by 7 ABI-encoded parameters (32 bytes each)
 	if len(data) < LegacyL1InfoBytes {
-		return nil, nil, nil, fmt.Errorf("expected at least %d L1 info bytes, got %d", LegacyL1InfoBytes, len(data))
+		return gasParams{}, fmt.Errorf("expected at least %d L1 info bytes, got %d", LegacyL1InfoBytes, len(data))
 	}
-	data = data[4:]                                          // trim function selector
-	l1BaseFee = new(uint256.Int).SetBytes(data[32*2 : 32*3]) // arg index 2
-	overhead := new(uint256.Int).SetBytes(data[32*6 : 32*7]) // arg index 6
-	scalar := new(uint256.Int).SetBytes(data[32*7 : 32*8])   // arg index 7
-	fscalar := new(big.Float).SetInt(scalar.ToBig())         // legacy: format fee scalar as big Float
-	fdivisor := new(big.Float).SetUint64(1_000_000)          // 10**6, i.e. 6 decimals
-	feeScalar = new(big.Float).Quo(fscalar, fdivisor)
-	costFunc = newL1CostFuncBedrockHelper(l1BaseFee, overhead, scalar, isRegolith)
-	return l1BaseFee, costFunc, feeScalar, nil
+	data = data[4:]                                           // trim function selector
+	l1BaseFee := new(uint256.Int).SetBytes(data[32*2 : 32*3]) // arg index 2
+	overhead := new(uint256.Int).SetBytes(data[32*6 : 32*7])  // arg index 6
+	scalar := new(uint256.Int).SetBytes(data[32*7 : 32*8])    // arg index 7
+	fscalar := new(big.Float).SetInt(scalar.ToBig())          // legacy: format fee scalar as big Float
+	fdivisor := new(big.Float).SetUint64(1_000_000)           // 10**6, i.e. 6 decimals
+	feeScalar := new(big.Float).Quo(fscalar, fdivisor)
+	costFunc := newL1CostFuncBedrockHelper(l1BaseFee, overhead, scalar, isRegolith)
+	return gasParams{
+		L1BaseFee: l1BaseFee,
+		CostFunc:  costFunc,
+		FeeScalar: feeScalar,
+	}, nil
 }
 
-// extractEcotoneL1GasParams extracts the gas parameters necessary to compute gas from L1 attribute
+// extractL1GasParamsPostEcotone extracts the gas parameters necessary to compute gas from L1 attribute
 // info calldata after the Ecotone upgrade, but not for the very first Ecotone block.
-func extractL1GasParamsEcotone(time uint64, data []byte) (l1BaseFee *uint256.Int, costFunc l1CostFunc, err error) {
+func extractL1GasParamsPostEcotone(data []byte) (gasParams, error) {
 	if len(data) != EcotoneL1InfoBytes {
-		return nil, nil, fmt.Errorf("expected 164 L1 info bytes, got %d", len(data))
+		return gasParams{}, fmt.Errorf("expected 164 L1 info bytes, got %d", len(data))
 	}
 	// data layout assumed for Ecotone:
 	// offset type varname
@@ -313,38 +347,16 @@ func extractL1GasParamsEcotone(time uint64, data []byte) (l1BaseFee *uint256.Int
 	// 68    uint256 _blobBaseFee,
 	// 100    bytes32 _hash,
 	// 132   bytes32 _batcherHash,
-	l1BaseFee = new(uint256.Int).SetBytes(data[36:68])
+	l1BaseFee := new(uint256.Int).SetBytes(data[36:68])
 	l1BlobBaseFee := new(uint256.Int).SetBytes(data[68:100])
 	l1BaseFeeScalar := new(uint256.Int).SetBytes(data[4:8])
 	l1BlobBaseFeeScalar := new(uint256.Int).SetBytes(data[8:12])
-	costFunc = newL1CostFuncEcotone(time, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
-	return
-}
-
-// extractFjordL1GasParams extracts the gas parameters necessary to compute gas from L1 attribute
-// info calldata after the Ecotone upgrade, but not for the very first Ecotone block.
-func extractL1GasParamsFjord(time uint64, data []byte) (l1BaseFee *uint256.Int, costFunc l1CostFunc, err error) {
-	if len(data) != EcotoneL1InfoBytes {
-		return nil, nil, fmt.Errorf("expected 164 L1 info bytes, got %d", len(data))
-	}
-	// data layout assumed for Ecotone:
-	// offset type varname
-	// 0      <selector>
-	// 4     uint32 _baseFeeScalar
-	// 8     uint32 _blobBaseFeeScalar
-	// 12    uint64 _sequenceNumber,
-	// 20    uint64 _timestamp,
-	// 28    uint64 _l1BlockNumber
-	// 36    uint256 _baseFee,
-	// 68    uint256 _blobBaseFee,
-	// 100    bytes32 _hash,
-	// 132   bytes32 _batcherHash,
-	l1BaseFee = new(uint256.Int).SetBytes(data[36:68])
-	l1BlobBaseFee := new(uint256.Int).SetBytes(data[68:100])
-	l1BaseFeeScalar := new(uint256.Int).SetBytes(data[4:8])
-	l1BlobBaseFeeScalar := new(uint256.Int).SetBytes(data[8:12])
-	costFunc = newL1CostFuncFjord(time, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
-	return
+	return gasParams{
+		L1BaseFee:           l1BaseFee,
+		L1BlobBaseFee:       l1BlobBaseFee,
+		L1BaseFeeScalar:     l1BaseFeeScalar,
+		L1BlobBaseFeeScalar: l1BlobBaseFeeScalar,
+	}, nil
 }
 
 // L1Cost computes the the data availability fee for transactions in blocks prior to the Ecotone
@@ -361,24 +373,40 @@ func l1CostHelper(gasWithOverhead, l1BaseFee, scalar *uint256.Int) *uint256.Int 
 	return fee
 }
 
-func L1CostFnForTxPool(time uint64, data []byte) (types.L1CostFn, error) {
-	var costFunc l1CostFunc
+func L1CostFnForTxPool(time uint64, data []byte, isFjord bool) (types.L1CostFn, error) {
+	var p gasParams
 	var err error
 	if len(data) == EcotoneL1InfoBytes {
-		_, costFunc, err = extractL1GasParamsEcotone(time, data)
+		p, err = extractL1GasParamsPostEcotone(data)
 		if err != nil {
 			return nil, err
+		}
+		p.CostFunc = newL1CostFuncEcotone(
+			time,
+			p.L1BaseFee,
+			p.L1BlobBaseFee,
+			p.L1BaseFeeScalar,
+			p.L1BlobBaseFeeScalar,
+		)
+		if isFjord {
+			p.CostFunc = newL1CostFuncFjord(
+				time,
+				p.L1BaseFee,
+				p.L1BlobBaseFee,
+				p.L1BaseFeeScalar,
+				p.L1BlobBaseFeeScalar,
+			)
 		}
 	} else {
 		// This method is used for txpool that is needed for OP sequencer.
 		// Assume that isRegolith will be always true for new block.
-		_, costFunc, _, err = extractL1GasParamsLegacy(true, data)
+		p, err = extractL1GasParamsPreEcotone(true, data)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return func(tx *types.TxSlot) *uint256.Int {
-		fee, _ := costFunc(tx.RollupCostData)
+		fee, _ := p.CostFunc(tx.RollupCostData)
 		return fee
 	}, nil
 }

@@ -42,8 +42,6 @@ type Config struct {
 	OverrideShanghaiTime *big.Int
 	OverrideCancunTime   *big.Int
 
-	OverrideOptimismCanyonTime *big.Int
-
 	// regular batch tasks processing
 	SyncToNewPeersEvery   time.Duration
 	ProcessRemoteTxsEvery time.Duration
@@ -55,7 +53,10 @@ type Config struct {
 	MdbxDBSizeLimit datasize.ByteSize
 	MdbxGrowthStep  datasize.ByteSize
 
-	Optimism bool
+	Optimism                   bool
+	OverrideOptimismCanyonTime *big.Int
+	OptimismFjordTime          *big.Int
+
 	NoGossip bool // this mode doesn't broadcast any txs, and if receive remote-txn - skip it
 }
 
