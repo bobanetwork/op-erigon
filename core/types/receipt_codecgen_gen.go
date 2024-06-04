@@ -181,22 +181,16 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 				r.EncodeNil()
 			} else {
 				z.EncWriteArrayElem()
-				if !z.EncBinary() && z.IsJSONHandle() {
-					z.EncJSONMarshal(x.L1BaseFeeScalar)
-				} else {
-					z.EncFallback(x.L1BaseFeeScalar)
-				}
+				yy27 := *x.L1BaseFeeScalar
+				r.EncodeUint(uint64(yy27))
 			}
 			if yyn14 {
 				z.EncWriteArrayElem()
 				r.EncodeNil()
 			} else {
 				z.EncWriteArrayElem()
-				if !z.EncBinary() && z.IsJSONHandle() {
-					z.EncJSONMarshal(x.L1BlobBaseFeeScalar)
-				} else {
-					z.EncFallback(x.L1BlobBaseFeeScalar)
-				}
+				yy29 := *x.L1BlobBaseFeeScalar
+				r.EncodeUint(uint64(yy29))
 			}
 			z.EncWriteArrayEnd()
 		}
@@ -339,13 +333,9 @@ func (x *Receipt) codecDecodeSelfFromMap(l int, d *codec1978.Decoder) {
 				}
 			} else {
 				if x.L1BaseFeeScalar == nil {
-					x.L1BaseFeeScalar = new(pkg2_big.Int)
+					x.L1BaseFeeScalar = new(uint64)
 				}
-				if !z.DecBinary() && z.IsJSONHandle() {
-					z.DecJSONUnmarshal(x.L1BaseFeeScalar)
-				} else {
-					z.DecFallback(x.L1BaseFeeScalar, false)
-				}
+				*x.L1BaseFeeScalar = (uint64)(r.DecodeUint64())
 			}
 		case "L1BlobBaseFeeScalar":
 			if r.TryNil() {
@@ -354,13 +344,9 @@ func (x *Receipt) codecDecodeSelfFromMap(l int, d *codec1978.Decoder) {
 				}
 			} else {
 				if x.L1BlobBaseFeeScalar == nil {
-					x.L1BlobBaseFeeScalar = new(pkg2_big.Int)
+					x.L1BlobBaseFeeScalar = new(uint64)
 				}
-				if !z.DecBinary() && z.IsJSONHandle() {
-					z.DecJSONUnmarshal(x.L1BlobBaseFeeScalar)
-				} else {
-					z.DecFallback(x.L1BlobBaseFeeScalar, false)
-				}
+				*x.L1BlobBaseFeeScalar = (uint64)(r.DecodeUint64())
 			}
 		default:
 			z.DecStructFieldNotFound(-1, string(yys3))
@@ -537,13 +523,9 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 		}
 	} else {
 		if x.L1BaseFeeScalar == nil {
-			x.L1BaseFeeScalar = new(pkg2_big.Int)
+			x.L1BaseFeeScalar = new(uint64)
 		}
-		if !z.DecBinary() && z.IsJSONHandle() {
-			z.DecJSONUnmarshal(x.L1BaseFeeScalar)
-		} else {
-			z.DecFallback(x.L1BaseFeeScalar, false)
-		}
+		*x.L1BaseFeeScalar = (uint64)(r.DecodeUint64())
 	}
 	yyj25++
 	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
@@ -558,13 +540,9 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 		}
 	} else {
 		if x.L1BlobBaseFeeScalar == nil {
-			x.L1BlobBaseFeeScalar = new(pkg2_big.Int)
+			x.L1BlobBaseFeeScalar = new(uint64)
 		}
-		if !z.DecBinary() && z.IsJSONHandle() {
-			z.DecJSONUnmarshal(x.L1BlobBaseFeeScalar)
-		} else {
-			z.DecFallback(x.L1BlobBaseFeeScalar, false)
-		}
+		*x.L1BlobBaseFeeScalar = (uint64)(r.DecodeUint64())
 	}
 	yyj25++
 	for ; z.DecContainerNext(yyj25, l, yyhl25); yyj25++ {

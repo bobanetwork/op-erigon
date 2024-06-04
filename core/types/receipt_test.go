@@ -817,7 +817,7 @@ func getOptimismTxReceipts(
 // https://github.com/ethereum-optimism/op-geth/commit/3fbae78d638d1b903e702a14f98644c1103ae1b3
 func getOptimismEcotoneTxReceipts(
 	t *testing.T, l1AttributesPayload []byte,
-	l1GasPrice, l1GasUsed *uint256.Int, l1Fee *uint256.Int, baseFeeScalar, blobBaseFeeScalar *uint256.Int) (Transactions, Receipts) {
+	l1GasPrice, l1GasUsed *uint256.Int, l1Fee *uint256.Int, baseFeeScalar, blobBaseFeeScalar *uint64) (Transactions, Receipts) {
 	//to4 := common.HexToAddress("0x4")
 	// Create a few transactions to have receipts for
 	txs := Transactions{
@@ -878,8 +878,8 @@ func getOptimismEcotoneTxReceipts(
 			L1GasPrice:          l1GasPrice.ToBig(),
 			L1GasUsed:           l1GasUsed.ToBig(),
 			L1Fee:               l1Fee.ToBig(),
-			L1BaseFeeScalar:     baseFeeScalar.ToBig(),
-			L1BlobBaseFeeScalar: blobBaseFeeScalar.ToBig(),
+			L1BaseFeeScalar:     baseFeeScalar,
+			L1BlobBaseFeeScalar: blobBaseFeeScalar,
 		},
 	}
 	return txs, receipts
@@ -936,9 +936,9 @@ func TestDeriveOptimismEcotoneTxReceipts(t *testing.T) {
 	l1GasPrice := basefee
 	l1GasUsed := ecotoneGas
 	l1Fee := ecotoneFee
-	baseFeeScalarUint64 := uint256.MustFromBig(baseFeeScalar)
-	blobBaseFeeScalarUint64 := uint256.MustFromBig(blobBaseFeeScalar)
-	txs, receipts := getOptimismEcotoneTxReceipts(t, payload, l1GasPrice, l1GasUsed, l1Fee, baseFeeScalarUint64, blobBaseFeeScalarUint64)
+	baseFeeScalarUint64 := baseFeeScalar.Uint64()
+	blobBaseFeeScalarUint64 := blobBaseFeeScalar.Uint64()
+	txs, receipts := getOptimismEcotoneTxReceipts(t, payload, l1GasPrice, l1GasUsed, l1Fee, &baseFeeScalarUint64, &blobBaseFeeScalarUint64)
 	senders := []libcommon.Address{libcommon.HexToAddress("0x0"), libcommon.HexToAddress("0x0")}
 
 	// Re-derive receipts.

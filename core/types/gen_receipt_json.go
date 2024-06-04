@@ -35,8 +35,8 @@ func (r Receipt) MarshalJSON() ([]byte, error) {
 		L1Fee                 *hexutil.Big     `json:"l1Fee,omitempty"`
 		FeeScalar             *big.Float       `json:"l1FeeScalar,omitempty"`
 		DepositReceiptVersion *hexutil.Uint64  `json:"depositReceiptVersion,omitempty"`
-		L1BaseFeeScalar       *hexutil.Big     `json:"l1BaseFeeScalar,omitempty"`
-		L1BlobBaseFeeScalar   *hexutil.Big     `json:"l1BlobBaseFeeScalar,omitempty"`
+		L1BaseFeeScalar       *hexutil.Uint64  `json:"l1BaseFeeScalar,omitempty"`
+		L1BlobBaseFeeScalar   *hexutil.Uint64  `json:"l1BlobBaseFeeScalar,omitempty"`
 	}
 	var enc Receipt
 	enc.Type = hexutil.Uint64(r.Type)
@@ -57,8 +57,8 @@ func (r Receipt) MarshalJSON() ([]byte, error) {
 	enc.L1Fee = (*hexutil.Big)(r.L1Fee)
 	enc.FeeScalar = r.FeeScalar
 	enc.DepositReceiptVersion = (*hexutil.Uint64)(r.DepositReceiptVersion)
-	enc.L1BaseFeeScalar = (*hexutil.Big)(r.L1BaseFeeScalar)
-	enc.L1BlobBaseFeeScalar = (*hexutil.Big)(r.L1BlobBaseFeeScalar)
+	enc.L1BaseFeeScalar = (*hexutil.Uint64)(r.L1BaseFeeScalar)
+	enc.L1BlobBaseFeeScalar = (*hexutil.Uint64)(r.L1BlobBaseFeeScalar)
 	return json.Marshal(&enc)
 }
 
@@ -83,8 +83,8 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 		L1Fee                 *hexutil.Big      `json:"l1Fee,omitempty"`
 		FeeScalar             *big.Float        `json:"l1FeeScalar,omitempty"`
 		DepositReceiptVersion *hexutil.Uint64   `json:"depositReceiptVersion,omitempty"`
-		L1BaseFeeScalar       *hexutil.Big      `json:"l1BaseFeeScalar,omitempty"`
-		L1BlobBaseFeeScalar   *hexutil.Big      `json:"l1BlobBaseFeeScalar,omitempty"`
+		L1BaseFeeScalar       *hexutil.Uint64   `json:"l1BaseFeeScalar,omitempty"`
+		L1BlobBaseFeeScalar   *hexutil.Uint64   `json:"l1BlobBaseFeeScalar,omitempty"`
 	}
 	var dec Receipt
 	if err := json.Unmarshal(input, &dec); err != nil {
@@ -150,10 +150,10 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 		r.DepositReceiptVersion = (*uint64)(dec.DepositReceiptVersion)
 	}
 	if dec.L1BaseFeeScalar != nil {
-		r.L1BaseFeeScalar = (*big.Int)(dec.L1BaseFeeScalar)
+		r.L1BaseFeeScalar = (*uint64)(dec.L1BaseFeeScalar)
 	}
 	if dec.L1BlobBaseFeeScalar != nil {
-		r.L1BlobBaseFeeScalar = (*big.Int)(dec.L1BlobBaseFeeScalar)
+		r.L1BlobBaseFeeScalar = (*uint64)(dec.L1BlobBaseFeeScalar)
 	}
 	return nil
 }

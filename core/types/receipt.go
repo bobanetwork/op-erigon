@@ -95,8 +95,8 @@ type Receipt struct {
 	DepositReceiptVersion *uint64 `json:"depositReceiptVersion,omitempty"`
 
 	// Fee scalars were introduced after the Ecotone hardfork
-	L1BaseFeeScalar     *big.Int `json:"l1BaseFeeScalar,omitempty"`     // Always nil prior to the Ecotone hardfork
-	L1BlobBaseFeeScalar *big.Int `json:"l1BlobBaseFeeScalar,omitempty"` // Always nil prior to the Ecotone hardfork
+	L1BaseFeeScalar     *uint64 `json:"l1BaseFeeScalar,omitempty"`     // Always nil prior to the Ecotone hardfork
+	L1BlobBaseFeeScalar *uint64 `json:"l1BlobBaseFeeScalar,omitempty"` // Always nil prior to the Ecotone hardfork
 }
 
 type receiptMarshaling struct {
@@ -115,8 +115,8 @@ type receiptMarshaling struct {
 	FeeScalar             *big.Float
 	DepositNonce          *hexutil.Uint64
 	DepositReceiptVersion *hexutil.Uint64
-	L1BaseFeeScalar       *hexutil.Big
-	L1BlobBaseFeeScalar   *hexutil.Big
+	L1BaseFeeScalar       *hexutil.Uint64
+	L1BlobBaseFeeScalar   *hexutil.Uint64
 }
 
 // receiptRLP is the consensus encoding of a receipt.
@@ -647,10 +647,12 @@ func (r Receipts) DeriveFields(config *chain.Config, hash libcommon.Hash, number
 				r[i].FeeScalar = gasParams.FeeScalar
 			}
 			if gasParams.L1BaseFeeScalar != nil {
-				r[i].L1BaseFeeScalar = gasParams.L1BaseFeeScalar.ToBig()
+				l1BaseFeeScalar := gasParams.L1BaseFeeScalar.Uint64()
+				r[i].L1BaseFeeScalar = &l1BaseFeeScalar
 			}
 			if gasParams.L1BlobBaseFeeScalar != nil {
-				r[i].L1BlobBaseFeeScalar = gasParams.L1BlobBaseFeeScalar.ToBig()
+				l1BlobBaseFeeScalar := gasParams.L1BlobBaseFeeScalar.Uint64()
+				r[i].L1BlobBaseFeeScalar = &l1BlobBaseFeeScalar
 			}
 		}
 	}
