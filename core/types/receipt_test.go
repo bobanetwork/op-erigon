@@ -159,6 +159,10 @@ var (
 	basefee = uint256.NewInt(1000 * 1e6)
 	scalar  = uint256.NewInt(7 * 1e6)
 
+	blobBaseFee       = big.NewInt(10 * 1e6)
+	baseFeeScalar     = big.NewInt(2)
+	blobBaseFeeScalar = big.NewInt(3)
+
 	// below are the expected cost func outcomes for the above parameter settings on the emptyTx
 	// which is defined in transaction_test.go
 	bedrockFee = uint256.NewInt(11326000000000)
@@ -810,6 +814,78 @@ func getOptimismTxReceipts(
 }
 
 // This method is based on op-geth
+// https://github.com/ethereum-optimism/op-geth/commit/3fbae78d638d1b903e702a14f98644c1103ae1b3
+func getOptimismEcotoneTxReceipts(
+	t *testing.T, l1AttributesPayload []byte,
+	l1GasPrice, l1GasUsed *uint256.Int, l1Fee *uint256.Int, baseFeeScalar, blobBaseFeeScalar *uint64) (Transactions, Receipts) {
+	//to4 := common.HexToAddress("0x4")
+	// Create a few transactions to have receipts for
+	txs := Transactions{
+		&DepositTx{
+			To:    nil, // contract creation
+			Value: uint256.NewInt(6),
+			Gas:   50,
+			Data:  l1AttributesPayload,
+		},
+		emptyTx,
+	}
+
+	// Create the corresponding receipts
+	receipts := Receipts{
+		&Receipt{
+			Type:              DepositTxType,
+			PostState:         libcommon.Hash{5}.Bytes(),
+			CumulativeGasUsed: 50,
+			Logs: []*Log{
+				{
+					Address: libcommon.BytesToAddress([]byte{0x33}),
+					// derived fields:
+					BlockNumber: blockNumber.Uint64(),
+					TxHash:      txs[0].Hash(),
+					TxIndex:     0,
+					BlockHash:   blockHash,
+					Index:       0,
+				},
+				{
+					Address: libcommon.BytesToAddress([]byte{0x03, 0x33}),
+					// derived fields:
+					BlockNumber: blockNumber.Uint64(),
+					TxHash:      txs[0].Hash(),
+					TxIndex:     0,
+					BlockHash:   blockHash,
+					Index:       1,
+				},
+			},
+			TxHash:           txs[0].Hash(),
+			ContractAddress:  libcommon.HexToAddress("0x3bb898b4bbe24f68a4e9be46cfe72d1787fd74f4"),
+			GasUsed:          50,
+			BlockHash:        blockHash,
+			BlockNumber:      blockNumber,
+			TransactionIndex: 0,
+			DepositNonce:     &depNonce1,
+		},
+		&Receipt{
+			Type:              LegacyTxType,
+			PostState:         libcommon.Hash{4}.Bytes(),
+			CumulativeGasUsed: 50,
+			Logs:              []*Log{},
+			// derived fields:
+			TxHash:              txs[1].Hash(),
+			GasUsed:             0,
+			BlockHash:           blockHash,
+			BlockNumber:         blockNumber,
+			TransactionIndex:    1,
+			L1GasPrice:          l1GasPrice.ToBig(),
+			L1GasUsed:           l1GasUsed.ToBig(),
+			L1Fee:               l1Fee.ToBig(),
+			L1BaseFeeScalar:     baseFeeScalar,
+			L1BlobBaseFeeScalar: blobBaseFeeScalar,
+		},
+	}
+	return txs, receipts
+}
+
+// This method is based on op-geth
 // https://github.com/ethereum-optimism/op-geth/commit/a290ca164a36c80a8d106d88bd482b6f82220bef
 func checkBedrockReceipts(t *testing.T, receipts Receipts, txs Transactions, blockHash libcommon.Hash, blockNumber *big.Int) {
 	diffDerivedFields(t, receipts, txs, blockHash, blockNumber)
@@ -853,14 +929,16 @@ func TestDeriveOptimismBedrockTxReceipts(t *testing.T) {
 }
 
 // This test is based on op-geth
-// https://github.com/ethereum-optimism/op-geth/commit/a290ca164a36c80a8d106d88bd482b6f82220bef
+// https://github.com/ethereum-optimism/op-geth/commit/3fbae78d638d1b903e702a14f98644c1103ae1b3
 func TestDeriveOptimismEcotoneTxReceipts(t *testing.T) {
 	// Ecotone style l1 attributes with baseFeeScalar=2, blobBaseFeeScalar=3, baseFee=1000*1e6, blobBaseFee=10*1e6
 	payload := libcommon.Hex2Bytes("440a5e20000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2")
 	l1GasPrice := basefee
 	l1GasUsed := ecotoneGas
 	l1Fee := ecotoneFee
-	txs, receipts := getOptimismTxReceipts(t, payload, l1GasPrice, l1GasUsed, nil /*feeScalar*/, l1Fee)
+	baseFeeScalarUint64 := baseFeeScalar.Uint64()
+	blobBaseFeeScalarUint64 := blobBaseFeeScalar.Uint64()
+	txs, receipts := getOptimismEcotoneTxReceipts(t, payload, l1GasPrice, l1GasUsed, l1Fee, &baseFeeScalarUint64, &blobBaseFeeScalarUint64)
 	senders := []libcommon.Address{libcommon.HexToAddress("0x0"), libcommon.HexToAddress("0x0")}
 
 	// Re-derive receipts.

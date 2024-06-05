@@ -101,7 +101,9 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 			var yyn10 bool = x.L1Fee == nil
 			var yyn11 bool = x.FeeScalar == nil
 			var yyn12 bool = x.DepositReceiptVersion == nil
-			z.EncWriteArrayStart(10)
+			var yyn13 bool = x.L1BaseFeeScalar == nil
+			var yyn14 bool = x.L1BlobBaseFeeScalar == nil
+			z.EncWriteArrayStart(12)
 			z.EncWriteArrayElem()
 			r.EncodeUint(uint64(x.Type))
 			z.EncWriteArrayElem()
@@ -119,8 +121,8 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 				r.EncodeNil()
 			} else {
 				z.EncWriteArrayElem()
-				yy17 := *x.DepositNonce
-				r.EncodeUint(uint64(yy17))
+				yy19 := *x.DepositNonce
+				r.EncodeUint(uint64(yy19))
 			}
 			if yyn8 {
 				z.EncWriteArrayElem()
@@ -171,8 +173,24 @@ func (x *Receipt) CodecEncodeSelf(e *codec1978.Encoder) {
 				r.EncodeNil()
 			} else {
 				z.EncWriteArrayElem()
-				yy23 := *x.DepositReceiptVersion
-				r.EncodeUint(uint64(yy23))
+				yy25 := *x.DepositReceiptVersion
+				r.EncodeUint(uint64(yy25))
+			}
+			if yyn13 {
+				z.EncWriteArrayElem()
+				r.EncodeNil()
+			} else {
+				z.EncWriteArrayElem()
+				yy27 := *x.L1BaseFeeScalar
+				r.EncodeUint(uint64(yy27))
+			}
+			if yyn14 {
+				z.EncWriteArrayElem()
+				r.EncodeNil()
+			} else {
+				z.EncWriteArrayElem()
+				yy29 := *x.L1BlobBaseFeeScalar
+				r.EncodeUint(uint64(yy29))
 			}
 			z.EncWriteArrayEnd()
 		}
@@ -308,6 +326,28 @@ func (x *Receipt) codecDecodeSelfFromMap(l int, d *codec1978.Decoder) {
 				}
 				*x.DepositReceiptVersion = (uint64)(r.DecodeUint64())
 			}
+		case "L1BaseFeeScalar":
+			if r.TryNil() {
+				if x.L1BaseFeeScalar != nil { // remove the if-true
+					x.L1BaseFeeScalar = nil
+				}
+			} else {
+				if x.L1BaseFeeScalar == nil {
+					x.L1BaseFeeScalar = new(uint64)
+				}
+				*x.L1BaseFeeScalar = (uint64)(r.DecodeUint64())
+			}
+		case "L1BlobBaseFeeScalar":
+			if r.TryNil() {
+				if x.L1BlobBaseFeeScalar != nil { // remove the if-true
+					x.L1BlobBaseFeeScalar = nil
+				}
+			} else {
+				if x.L1BlobBaseFeeScalar == nil {
+					x.L1BlobBaseFeeScalar = new(uint64)
+				}
+				*x.L1BlobBaseFeeScalar = (uint64)(r.DecodeUint64())
+			}
 		default:
 			z.DecStructFieldNotFound(-1, string(yys3))
 		} // end switch yys3
@@ -318,43 +358,43 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 	var h codecSelfer2
 	z, r := codec1978.GenHelper().Decoder(d)
 	_, _, _ = h, z, r
-	var yyj21 int
-	var yyb21 bool
-	var yyhl21 bool = l >= 0
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	var yyj25 int
+	var yyb25 bool
+	var yyhl25 bool = l >= 0
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.Type = (uint8)(z.C.UintV(r.DecodeUint64(), 8))
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.PostState = z.DecodeBytesInto(([]byte)(x.PostState))
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.Status = (uint64)(r.DecodeUint64())
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
 	z.DecReadArrayElem()
 	x.CumulativeGasUsed = (uint64)(r.DecodeUint64())
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -369,9 +409,9 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 		}
 		*x.DepositNonce = (uint64)(r.DecodeUint64())
 	}
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -390,9 +430,9 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.L1GasPrice, false)
 		}
 	}
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -411,9 +451,9 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.L1GasUsed, false)
 		}
 	}
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -432,9 +472,9 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.L1Fee, false)
 		}
 	}
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -453,9 +493,9 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 			z.DecFallback(x.FeeScalar, false)
 		}
 	}
-	yyj21++
-	yyb21 = !z.DecContainerNext(yyj21, l, yyhl21)
-	if yyb21 {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
 		z.DecReadArrayEnd()
 		return
 	}
@@ -470,10 +510,44 @@ func (x *Receipt) codecDecodeSelfFromArray(l int, d *codec1978.Decoder) {
 		}
 		*x.DepositReceiptVersion = (uint64)(r.DecodeUint64())
 	}
-	yyj21++
-	for ; z.DecContainerNext(yyj21, l, yyhl21); yyj21++ {
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
+		z.DecReadArrayEnd()
+		return
+	}
+	z.DecReadArrayElem()
+	if r.TryNil() {
+		if x.L1BaseFeeScalar != nil { // remove the if-true
+			x.L1BaseFeeScalar = nil
+		}
+	} else {
+		if x.L1BaseFeeScalar == nil {
+			x.L1BaseFeeScalar = new(uint64)
+		}
+		*x.L1BaseFeeScalar = (uint64)(r.DecodeUint64())
+	}
+	yyj25++
+	yyb25 = !z.DecContainerNext(yyj25, l, yyhl25)
+	if yyb25 {
+		z.DecReadArrayEnd()
+		return
+	}
+	z.DecReadArrayElem()
+	if r.TryNil() {
+		if x.L1BlobBaseFeeScalar != nil { // remove the if-true
+			x.L1BlobBaseFeeScalar = nil
+		}
+	} else {
+		if x.L1BlobBaseFeeScalar == nil {
+			x.L1BlobBaseFeeScalar = new(uint64)
+		}
+		*x.L1BlobBaseFeeScalar = (uint64)(r.DecodeUint64())
+	}
+	yyj25++
+	for ; z.DecContainerNext(yyj25, l, yyhl25); yyj25++ {
 		z.DecReadArrayElem()
-		z.DecStructFieldNotFound(yyj21-1, "")
+		z.DecStructFieldNotFound(yyj25-1, "")
 	}
 }
 
