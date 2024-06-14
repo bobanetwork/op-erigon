@@ -60,6 +60,17 @@ var (
 	OptimismMainnetGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 	// Optimism Mainnet genesis root
 	OptimismMainnetGenesisRoot = "0xeddb4c1786789419153a27c4c80ff44a2226b6eda04f7e22ce5bae892ea568eb"
+
+	// Bnb Testnet
+	BnbTestnetChainId = big.NewInt(9728)
+	// Bnb Testnet genesis gas limit
+	BnbTestnetGenesisGasLimit = 11000000
+	// Bnb Testnet genesis block coinbase
+	BnbTestnetGenesisCoinbase = "0x0000000000000000000000000000000000000000"
+	// Bnb Testnet genesis block extra data
+	BnbTestnetGenesisExtraData = "000000000000000000000000000000000000000000000000000000000000000000000398232e2064f896018496b4b44b3d62751f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+	// Bnb Testnet genesis root
+	BnbTestnetGenesisRoot = "0xdd0a18054de6e995f2c66f3e3aae590df9cbee1c7e5f602b8bcf5a0c3b1a2f46"
 )
 
 // Config is the core config which determines the blockchain settings.
@@ -370,6 +381,10 @@ func (c *Config) IsBobaLegacyBlock(num uint64) bool {
 	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
 		return c.BedrockBlock.Uint64() > num
 	}
+	// Bnb Testnet
+	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
+		return c.BedrockBlock.Uint64() > num
+	}
 	return false
 }
 
@@ -385,6 +400,10 @@ func (c *Config) GetBobaGenesisGasLimit() int {
 	// Optimism Mainnet
 	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
 		return OptimismMainnetGenesisGasLimit
+	}
+	// Bnb Testnet
+	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbTestnetGenesisGasLimit
 	}
 	return 11000000
 }
@@ -402,6 +421,10 @@ func (c *Config) GetBobaGenesisCoinbase() string {
 	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
 		return OptimismMainnetGenesisCoinbase
 	}
+	// Bnb Testnet
+	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbTestnetGenesisCoinbase
+	}
 	return "0x0000000000000000000000000000000000000000"
 }
 
@@ -418,6 +441,10 @@ func (c *Config) GetBobaGenesisExtraData() string {
 	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
 		return OptimismMainnetGenesisExtraData
 	}
+	// Bnb Testnet
+	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbTestnetGenesisExtraData
+	}
 	return ""
 }
 
@@ -433,6 +460,10 @@ func (c *Config) GetBobaGenesisRoot() string {
 	// Optimism Mainnet
 	if OptimismMainnetChainId.Cmp(c.ChainID) == 0 {
 		return OptimismMainnetGenesisRoot
+	}
+	// Bnb Testnet
+	if BnbTestnetChainId.Cmp(c.ChainID) == 0 {
+		return BnbTestnetGenesisRoot
 	}
 	return ""
 }
