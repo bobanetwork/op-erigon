@@ -113,8 +113,9 @@ type TransactionMisc struct {
 }
 
 type rollupGasCounter struct {
-	zeroes uint64
-	ones   uint64
+	zeroes     uint64
+	ones       uint64
+	fastLzSize uint64
 }
 
 func (r *rollupGasCounter) Write(p []byte) (int, error) {
@@ -125,6 +126,7 @@ func (r *rollupGasCounter) Write(p []byte) (int, error) {
 			r.ones++
 		}
 	}
+	r.fastLzSize = uint64(types2.FlzCompressLen(p))
 	return len(p), nil
 }
 
@@ -144,7 +146,7 @@ func (tm *TransactionMisc) computeRollupGas(tx interface {
 	if err != nil { // Silent error, invalid txs will not be marshalled/unmarshalled for batch submission anyway.
 		log.Error("failed to encode tx for L1 cost computation", "err", err)
 	}
-	total := types2.RollupCostData{Zeroes: c.zeroes, Ones: c.ones}
+	total := types2.RollupCostData{Zeroes: c.zeroes, Ones: c.ones, FastLzSize: c.fastLzSize}
 	tm.rollupGas.Store(total)
 	return total
 }
