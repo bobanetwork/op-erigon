@@ -343,6 +343,7 @@ func TestNewL1CostFunc(t *testing.T) {
 
 func TestFlzCompressLen(t *testing.T) {
 	var (
+		emptyTxBytes, _   = hex.DecodeString("dd80808094095e7baea6a6c7c4c2dfeb977efac326af552d878080808080")
 		contractCallTxStr = "02f901550a758302df1483be21b88304743f94f8" +
 			"0e51afb613d764fa61751affd3313c190a86bb870151bd62fd12adb8" +
 			"e41ef24f3f0000000000000000000000000000000000000000000000" +
@@ -369,6 +370,8 @@ func TestFlzCompressLen(t *testing.T) {
 		{bytes.Repeat([]byte{1}, 1000), 21},
 		// all 0 inputs
 		{make([]byte, 1000), 21},
+		// empty tx input
+		{emptyTxBytes, 31},
 		// contract call tx: https://optimistic.etherscan.io/tx/0x8eb9dd4eb6d33f4dc25fb015919e4b1e9f7542f9b0322bf6622e268cd116b594
 		{contractCallTx, 202},
 	}
