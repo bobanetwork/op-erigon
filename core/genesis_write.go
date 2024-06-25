@@ -847,6 +847,8 @@ func loadOPStackGenesisByChainName(name string) (*types.Genesis, error) {
 			expectedHash = params.BobaMainnetGenesisHash
 		case params.BobaSepoliaChainID:
 			expectedHash = params.BobaSepoliaGenesisHash
+		case params.BobaBnbTestnetChainID:
+			expectedHash = params.BobaBnbTestnetGenesisHash
 		default:
 			return nil, fmt.Errorf("unknown stateless genesis definition for chain %d", opStackChainCfg.ChainID)
 		}

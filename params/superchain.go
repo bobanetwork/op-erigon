@@ -24,6 +24,7 @@ const (
 	chaosnetChainID         = 888
 	BobaMainnetChainID      = 288
 	BobaSepoliaChainID      = 28882
+	BobaBnbTestnetChainID   = 9728
 )
 
 // OP Stack chain config
@@ -42,6 +43,8 @@ var (
 	BobaMainnetRegolithTime = big.NewInt(1713302879)
 	// January 18, 2024 @ 5:59:48 pm UTC
 	BobaSepoliaRegolithTime = big.NewInt(1705600788)
+	// Thu Jun 20 2024 21:49:27 pm UTC
+	BobaBnbTestnetRegoTime = big.NewInt(1718920167)
 )
 
 // OPStackChainConfigByName loads chain config corresponding to the chain name from superchain registry.
@@ -208,6 +211,20 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.RegolithTime = BobaMainnetRegolithTime
 		out.ShanghaiTime = BobaMainnetRegolithTime
 		out.CanyonTime = BobaMainnetRegolithTime
+		out.Optimism.EIP1559Elasticity = 6
+		out.Optimism.EIP1559Denominator = 50
+		out.Optimism.EIP1559DenominatorCanyon = 250
+		out.FjordTime = nil
+	case BobaBnbTestnetChainID:
+		out.BerlinBlock = big.NewInt(675077)
+		out.LondonBlock = big.NewInt(675077)
+		out.ArrowGlacierBlock = big.NewInt(675077)
+		out.GrayGlacierBlock = big.NewInt(675077)
+		out.MergeNetsplitBlock = big.NewInt(675077)
+		out.BedrockBlock = big.NewInt(675077)
+		out.RegolithTime = BobaBnbTestnetRegoTime
+		out.ShanghaiTime = BobaBnbTestnetRegoTime
+		out.CanyonTime = BobaBnbTestnetRegoTime
 		out.Optimism.EIP1559Elasticity = 6
 		out.Optimism.EIP1559Denominator = 50
 		out.Optimism.EIP1559DenominatorCanyon = 250
