@@ -73,6 +73,30 @@ func MarshalReceipt(
 		fields["contractAddress"] = receipt.ContractAddress
 	}
 
+	if chainConfig.IsOptimism() {
+		if txn.Type() != types.DepositTxType {
+			fields["l1GasPrice"] = hexutil.Big(*receipt.L1GasPrice)
+			fields["l1GasUsed"] = hexutil.Big(*receipt.L1GasUsed)
+			fields["l1Fee"] = hexutil.Big(*receipt.L1Fee)
+			if receipt.FeeScalar != nil { // removed in Ecotone
+				fields["l1FeeScalar"] = receipt.FeeScalar
+			}
+			if receipt.L1BaseFeeScalar != nil { // added in Ecotone
+				fields["l1BaseFeeScalar"] = hexutil.Uint64(*receipt.L1BaseFeeScalar)
+			}
+			if receipt.L1BlobBaseFeeScalar != nil { // added in Ecotone
+				fields["l1BlobBaseFeeScalar"] = hexutil.Uint64(*receipt.L1BlobBaseFeeScalar)
+			}
+		} else {
+			if receipt.DepositNonce != nil {
+				fields["depositNonce"] = hexutil.Uint64(*receipt.DepositNonce)
+			}
+			if receipt.DepositReceiptVersion != nil {
+				fields["depositReceiptVersion"] = hexutil.Uint64(*receipt.DepositReceiptVersion)
+			}
+		}
+	}
+
 	// Set derived blob related fields
 	numBlobs := len(txn.GetBlobHashes())
 	if numBlobs > 0 {
