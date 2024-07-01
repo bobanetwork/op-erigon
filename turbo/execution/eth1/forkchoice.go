@@ -2,6 +2,7 @@ package eth1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -79,6 +80,11 @@ func (e *EthereumExecutionModule) UpdateForkChoice(ctx context.Context, req *exe
 
 	select {
 	case <-fcuTimer.C:
+		if e.config.IsOptimism() {
+			// op-node does not handle SYNCING as asynchronous forkChoiceUpdated.
+			// return an error and make op-node retry
+			return nil, errors.New("forkChoiceUpdated timeout")
+		}
 		e.logger.Debug("treating forkChoiceUpdated as asynchronous as it is taking too long")
 		return &execution.ForkChoiceReceipt{
 			LatestValidHash: gointerfaces.ConvertHashToH256(libcommon.Hash{}),
@@ -103,7 +109,12 @@ func writeForkChoiceHashes(tx kv.RwTx, blockHash, safeHash, finalizedHash libcom
 
 func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHash, safeHash, finalizedHash libcommon.Hash, outcomeCh chan forkchoiceOutcome) {
 	if !e.semaphore.TryAcquire(1) {
-		e.logger.Trace("ethereumExecutionModule.updateForkChoice: ExecutionStatus_Busy")
+		if e.config.IsOptimism() {
+			// op-node does not handle SYNCING as asynchronous forkChoiceUpdated.
+			// return an error and make op-node retry
+			sendForkchoiceErrorWithoutWaiting(outcomeCh, errors.New("cannot update forkchoice. execution service is busy"))
+			return
+		}
 		sendForkchoiceReceiptWithoutWaiting(outcomeCh, &execution.ForkChoiceReceipt{
 			LatestValidHash: gointerfaces.ConvertHashToH256(libcommon.Hash{}),
 			Status:          execution.ExecutionStatus_Busy,
@@ -140,6 +151,16 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 		return
 	}
 
+	// Only Optimism allows unwinding to previously canonical hashes
+	unwindingToCanonical := false
+	if e.config.IsOptimism() {
+		headHash := rawdb.ReadHeadBlockHash(tx)
+		unwindingToCanonical = (blockHash != headHash) && (canonicalHash == blockHash)
+		if unwindingToCanonical {
+			e.logger.Info("Optimism ForkChoice is choosing to unwind to a previously canonical block", "blockHash", blockHash, "blockNumber", fcuHeader.Number.Uint64(), "headHash", headHash)
+		}
+	}
+
 	if canonicalHash == blockHash {
 		// if block hash is part of the canonical chain treat it as no-op.
 		writeForkChoiceHashes(tx, blockHash, safeHash, finalizedHash)
@@ -155,11 +176,14 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 			})
 			return
 		}
-		sendForkchoiceReceiptWithoutWaiting(outcomeCh, &execution.ForkChoiceReceipt{
-			LatestValidHash: gointerfaces.ConvertHashToH256(blockHash),
-			Status:          execution.ExecutionStatus_Success,
-		})
-		return
+
+		if !unwindingToCanonical {
+			sendForkchoiceReceiptWithoutWaiting(outcomeCh, &execution.ForkChoiceReceipt{
+				LatestValidHash: gointerfaces.ConvertHashToH256(blockHash),
+				Status:          execution.ExecutionStatus_Success,
+			})
+			return
+		}
 	}
 
 	// If we don't have it, too bad
@@ -179,11 +203,13 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 	}
 	// Find such point, and collect all hashes
 	newCanonicals := make([]*canonicalEntry, 0, 64)
-	newCanonicals = append(newCanonicals, &canonicalEntry{
-		hash:   fcuHeader.Hash(),
-		number: fcuHeader.Number.Uint64(),
-	})
-	for !isCanonicalHash {
+	if !unwindingToCanonical {
+		newCanonicals = append(newCanonicals, &canonicalEntry{
+			hash:   fcuHeader.Hash(),
+			number: fcuHeader.Number.Uint64(),
+		})
+	}
+	for !isCanonicalHash && !unwindingToCanonical {
 		newCanonicals = append(newCanonicals, &canonicalEntry{
 			hash:   currentParentHash,
 			number: currentParentNumber,
@@ -208,10 +234,14 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 			return
 		}
 	}
+	unwindToNumber := currentParentNumber
+	if unwindingToCanonical {
+		unwindToNumber = fcuHeader.Number.Uint64()
+	}
 
-	e.executionPipeline.UnwindTo(currentParentNumber, stagedsync.ForkChoice)
+	e.executionPipeline.UnwindTo(unwindToNumber, stagedsync.ForkChoice)
 	if e.historyV3 {
-		if err := rawdbv3.TxNums.Truncate(tx, currentParentNumber); err != nil {
+		if err := rawdbv3.TxNums.Truncate(tx, unwindToNumber); err != nil {
 			sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
 			return
 		}
@@ -244,7 +274,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 
 	// Truncate tx nums
 	if e.historyV3 {
-		if err := rawdbv3.TxNums.Truncate(tx, currentParentNumber); err != nil {
+		if err := rawdbv3.TxNums.Truncate(tx, unwindToNumber); err != nil {
 			sendForkchoiceErrorWithoutWaiting(outcomeCh, err)
 			return
 		}
