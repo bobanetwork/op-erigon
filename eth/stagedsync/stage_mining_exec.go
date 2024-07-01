@@ -114,7 +114,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 		if len(current.Deposits) > 0 {
 			var txs []types.Transaction
 			for i := range current.Deposits {
-				transaction, err := types.UnmarshalTransactionFromBinary(current.Deposits[i])
+				transaction, err := types.UnmarshalTransactionFromBinary(current.Deposits[i], false)
 				log.Debug("Decoded Deposit transaction", "i", i, "err", err, "tx", transaction)
 				if err == io.EOF {
 					continue

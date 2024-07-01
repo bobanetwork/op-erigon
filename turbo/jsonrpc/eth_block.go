@@ -13,7 +13,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/opstack"
-	"github.com/ledgerwatch/erigon/polygon/bor/borcfg"
 
 	"github.com/ledgerwatch/erigon/cl/clparams"
 	"github.com/ledgerwatch/erigon/common/math"
@@ -241,7 +240,7 @@ func (api *APIImpl) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber
 
 	// Optimism Deposit transactions need to access DepositNonce from their receipt.
 	// A possible optimization would be to filter by Tx type and only populate the entries for the Deposits
-	receipts, err := api.getReceipts(ctx, tx, chainConfig, b, b.Body().SendersFromTxs())
+	receipts, err := api.getReceipts(ctx, tx, b, b.Body().SendersFromTxs())
 	if err != nil {
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}
@@ -307,7 +306,7 @@ func (api *APIImpl) GetBlockByHash(ctx context.Context, numberOrHash rpc.BlockNu
 
 	// Optimism Deposit transactions need to access DepositNonce from their receipt.
 	// A possible optimization would be to filter by Tx type and only populate the entries for the Deposits
-	receipts, err := api.getReceipts(ctx, tx, chainConfig, block, block.Body().SendersFromTxs())
+	receipts, err := api.getReceipts(ctx, tx, block, block.Body().SendersFromTxs())
 	if err != nil {
 		return nil, fmt.Errorf("getReceipts error: %w", err)
 	}

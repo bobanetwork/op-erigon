@@ -121,7 +121,7 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrides *ChainOverr
 			config.CancunTime = overrides.OverrideCancunTime
 		}
 		if overrides.OverridePragueTime != nil {
-			config.PragueTime = overridePragueTime
+			config.PragueTime = overrides.OverridePragueTime
 		}
 		if config.IsOptimism() && overrides.OverrideOptimismCanyonTime != nil {
 			config.CanyonTime = overrides.OverrideOptimismCanyonTime

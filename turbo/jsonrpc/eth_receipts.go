@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon-lib/opstack"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/iter"
 	"github.com/ledgerwatch/erigon-lib/kv/order"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
+	"github.com/ledgerwatch/erigon/consensus/misc"
 	"github.com/ledgerwatch/erigon/eth/ethutils"
 	bortypes "github.com/ledgerwatch/erigon/polygon/bor/types"
 
@@ -45,16 +47,17 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, block *types.Bloc
 		return receipts, nil
 	}
 
-	if receipts := rawdb.ReadReceipts(tx, block, senders); receipts != nil {
+	chainConfig, err := api.chainConfig(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if receipts := rawdb.ReadReceipts(chainConfig, tx, block, senders); receipts != nil {
 		api.receiptsCache.Add(block.Hash(), receipts)
 		return receipts, nil
 	}
 
 	engine := api.engine()
-	chainConfig, err := api.chainConfig(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
 
 	_, _, _, ibs, _, err := transactions.ComputeTxEnv(ctx, engine, block, chainConfig, api._blockReader, tx, 0, api.historyV3(tx))
 	if err != nil {

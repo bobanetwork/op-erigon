@@ -130,7 +130,7 @@ func (api *APIImpl) GetCode(ctx context.Context, address libcommon.Address, bloc
 	if err != nil {
 		return nil, err
 	}
-	chainConfig, err := api.chainConfig(tx, tx)
+	chainConfig, err := api.chainConfig(ctx, tx)
 	if err != nil {
 		return nil, fmt.Errorf("read chain config: %v", err)
 	}

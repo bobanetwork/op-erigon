@@ -1890,8 +1890,6 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 		cfg.RollupHistoricalRPC = ctx.String(RollupHistoricalRPCFlag.Name)
 	}
 	cfg.RollupHistoricalRPCTimeout = ctx.Duration(RollupHistoricalRPCTimeoutFlag.Name)
-	// Override any default configs for hard coded networks.
-	chain := ctx.String(ChainFlag.Name)
 
 	// Override any default configs for hard coded networks.
 	switch chain {
