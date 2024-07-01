@@ -27,6 +27,8 @@ func MarshalReceipt(
 		if t.Protected() {
 			chainId = types.DeriveChainId(&t.V).ToBig()
 		}
+	case *types.DepositTx:
+		// Deposit TX does not have chain ID
 	default:
 		chainId = txn.GetChainID().ToBig()
 	}
