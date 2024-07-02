@@ -31,6 +31,7 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
+
 	"github.com/ledgerwatch/log/v3"
 )
 
@@ -92,7 +93,6 @@ type Message interface {
 	Mint() *uint256.Int
 	IsSystemTx() bool
 	IsDepositTx() bool
-	IsFree() bool
 	RollupCostData() types2.RollupCostData
 
 	Nonce() uint64
@@ -100,6 +100,8 @@ type Message interface {
 	Data() []byte
 	AccessList() types2.AccessList
 	BlobHashes() []libcommon.Hash
+
+	IsFree() bool
 }
 
 // ExecutionResult includes all output after executing given evm
@@ -258,10 +260,6 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 			if overflow {
 				return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 			}
-		}
-		balanceCheck, overflow = balanceCheck.AddOverflow(balanceCheck, blobGasVal)
-		if overflow {
-			return fmt.Errorf("%w: address %v", ErrInsufficientFunds, st.msg.From().Hex())
 		}
 	}
 	var subBalance = false
