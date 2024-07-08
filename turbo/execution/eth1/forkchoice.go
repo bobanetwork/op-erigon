@@ -76,10 +76,19 @@ func (e *EthereumExecutionModule) UpdateForkChoice(ctx context.Context, req *exe
 
 	// So we wait at most the amount specified by req.Timeout before just sending out
 	go e.updateForkChoice(ctx, blockHash, safeHash, finalizedHash, outcomeCh)
-	fcuTimer := time.NewTimer(time.Duration(req.Timeout) * time.Millisecond)
+
+	var fcuTimer *time.Timer
+	if e.config.IsOptimism() {
+		// op-node does not handle SYNCING as asynchronous forkChoiceUpdated.
+		// we set a large timeout to make sure op-node retries
+		fcuTimer = time.NewTimer(time.Duration(time.Second * 5))
+	} else {
+		fcuTimer = time.NewTimer(time.Duration(req.Timeout) * time.Millisecond)
+	}
 
 	select {
 	case <-fcuTimer.C:
+		e.logger.Debug("treating forkChoiceUpdated as asynchronous as it is taking too long")
 		if e.config.IsOptimism() {
 			// op-node does not handle SYNCING as asynchronous forkChoiceUpdated.
 			// return an error and make op-node retry
