@@ -81,7 +81,7 @@ func (e *EthereumExecutionModule) UpdateForkChoice(ctx context.Context, req *exe
 	if e.config.IsOptimism() {
 		// op-node does not handle SYNCING as asynchronous forkChoiceUpdated.
 		// we set a large timeout to make sure op-node retries
-		fcuTimer = time.NewTimer(time.Duration(time.Second * 5))
+		fcuTimer = time.NewTimer(time.Second * 5)
 	} else {
 		fcuTimer = time.NewTimer(time.Duration(req.Timeout) * time.Millisecond)
 	}
