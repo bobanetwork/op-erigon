@@ -150,9 +150,9 @@ func NewL1CostFunc(config *chain.Config, statedb StateGetter) L1CostFunc {
 					l1BlobBaseFeeScalar := new(uint256.Int).SetBytes(l1FeeScalars[offset+4 : offset+8])
 
 					if config.IsFjord(blockTime) {
-						cachedFunc = newL1CostFuncFjord(blockTime, &l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+						cachedFunc = newL1CostFuncFjord(&l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
 					} else {
-						cachedFunc = newL1CostFuncEcotone(blockTime, &l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
+						cachedFunc = newL1CostFuncEcotone(&l1BaseFee, &l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar)
 					}
 				}
 			}
@@ -170,7 +170,6 @@ func newL1CostFuncBedrock(config *chain.Config, statedb StateGetter, blockTime u
 	statedb.GetState(L1BlockAddr, &OverheadSlot, &overhead)
 	statedb.GetState(L1BlockAddr, &ScalarSlot, &scalar)
 	isRegolith := config.IsRegolith(blockTime)
-	log.Info("Caching l1cost parameters for bedrock", "isRegolith", isRegolith, "blockTime", blockTime, "l1BaseFee", l1BaseFee, "overhead", overhead, "l1BaseFeeScalar", scalar)
 	return newL1CostFuncBedrockHelper(&l1BaseFee, &overhead, &scalar, isRegolith)
 }
 
@@ -196,8 +195,7 @@ func newL1CostFuncBedrockHelper(l1BaseFee, overhead, scalar *uint256.Int, isRego
 
 // newL1CostFuncEcotone returns an l1 cost function suitable for the Ecotone upgrade except for the
 // very first block of the upgrade.
-func newL1CostFuncEcotone(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
-	log.Info("Caching l1cost parameters for ecotone", "blockTime", blockTime, "l1BaseFee", l1BaseFee, "l1BlobBaseFee", l1BlobBaseFee, "l1BaseFeeScalar", l1BaseFeeScalar, "l1BlobBaseFeeScalar", l1BlobBaseFeeScalar)
+func newL1CostFuncEcotone(l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
 	return func(costData types.RollupCostData) (fee, calldataGasUsed *uint256.Int) {
 		calldataGas := (costData.Zeroes * fixedgas.TxDataZeroGas) + (costData.Ones * fixedgas.TxDataNonZeroGasEIP2028)
 		calldataGasUsed = new(uint256.Int).SetUint64(calldataGas)
@@ -237,8 +235,7 @@ type gasParams struct {
 	L1BlobBaseFeeScalar *uint256.Int // post-ecotone
 }
 
-func newL1CostFuncFjord(blockTime uint64, l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
-	log.Info("Caching l1cost parameters for fjord", "blockTime", blockTime, "l1BaseFee", l1BaseFee, "l1BlobBaseFee", l1BlobBaseFee, "l1BaseFeeScalar", l1BaseFeeScalar, "l1BlobBaseFeeScalar", l1BlobBaseFeeScalar)
+func newL1CostFuncFjord(l1BaseFee, l1BlobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar *uint256.Int) l1CostFunc {
 	return func(costData types.RollupCostData) (fee, calldataGasUsed *uint256.Int) {
 		// Fjord L1 cost function:
 		//l1FeeScaled = baseFeeScalar*l1BaseFee*16 + blobFeeScalar*l1BlobBaseFee
@@ -287,7 +284,6 @@ func ExtractL1GasParams(config *chain.Config, time uint64, data []byte) (gasPara
 
 			if config.IsFjord(time) {
 				p.CostFunc = newL1CostFuncFjord(
-					time,
 					p.L1BaseFee,
 					p.L1BlobBaseFee,
 					p.L1BaseFeeScalar,
@@ -295,7 +291,6 @@ func ExtractL1GasParams(config *chain.Config, time uint64, data []byte) (gasPara
 				)
 			} else {
 				p.CostFunc = newL1CostFuncEcotone(
-					time,
 					p.L1BaseFee,
 					p.L1BlobBaseFee,
 					p.L1BaseFeeScalar,
@@ -382,7 +377,6 @@ func L1CostFnForTxPool(time uint64, data []byte, isFjord bool) (types.L1CostFn, 
 			return nil, err
 		}
 		p.CostFunc = newL1CostFuncEcotone(
-			time,
 			p.L1BaseFee,
 			p.L1BlobBaseFee,
 			p.L1BaseFeeScalar,
@@ -390,7 +384,6 @@ func L1CostFnForTxPool(time uint64, data []byte, isFjord bool) (types.L1CostFn, 
 		)
 		if isFjord {
 			p.CostFunc = newL1CostFuncFjord(
-				time,
 				p.L1BaseFee,
 				p.L1BlobBaseFee,
 				p.L1BaseFeeScalar,
