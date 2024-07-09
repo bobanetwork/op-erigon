@@ -198,7 +198,6 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		return err
 	}
 
-	log.Info("cfg.blockBuilderParamters", "params", cfg.blockBuilderParameters)
 	if cfg.blockBuilderParameters != nil {
 		header.MixDigest = cfg.blockBuilderParameters.PrevRandao
 		header.ParentBeaconBlockRoot = cfg.blockBuilderParameters.ParentBeaconBlockRoot

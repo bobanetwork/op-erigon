@@ -31,7 +31,6 @@ import (
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
-	"github.com/ledgerwatch/log/v3"
 )
 
 var emptyCodeHash = crypto.Keccak256Hash(nil)
@@ -256,9 +255,6 @@ func (st *StateTransition) buyGas(gasBailout bool) error {
 	}
 	var subBalance = false
 	have, want := st.state.GetBalance(st.msg.From()), balanceCheck
-	if !gasBailout {
-		log.Info("Validating balance requirements in buyGas", "from", st.msg.From(), "nonce", st.msg.Nonce(), "have", have, "want", want)
-	}
 	if have.Cmp(want) < 0 {
 		if !gasBailout {
 			return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
@@ -302,16 +298,11 @@ func (st *StateTransition) preCheck(gasBailout bool) error {
 		// If not check it here, it will trigger evm internal error and break consensus.
 
 		have, want := st.state.GetBalance(st.msg.From()), st.msg.Value()
-		if !want.IsZero() {
-			log.Info("Validating balance requirements for depositTx in preCheck", "from", st.msg.From(), "nonce", st.msg.Nonce(), "have", have, "want", want)
-		}
 		if have.Cmp(want) < 0 {
 			if !gasBailout {
 				return fmt.Errorf("%w: precheck address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
 			}
 		}
-
-		log.Debug("preCheck for Deposit txn", "from", st.msg.From(), "to", st.msg.To(), "mint", st.msg.Mint(), "value", st.msg.Mint())
 
 		// Following section copied from Optimism patchset
 
