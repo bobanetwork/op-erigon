@@ -12,29 +12,22 @@ import (
 )
 
 const (
-	OPMainnetChainID        = 10
-	OPGoerliChainID         = 420
-	OPSepoliaChainID        = 11155420
-	BaseMainnetChainID      = 8453
-	BaseGoerliChainID       = 84531
-	baseSepoliaChainID      = 84532
-	baseGoerliDevnetChainID = 11763071
-	pgnSepoliaChainID       = 58008
-	devnetChainID           = 997
-	chaosnetChainID         = 888
-	BobaMainnetChainID      = 288
-	BobaSepoliaChainID      = 28882
-	BobaBnbTestnetChainID   = 9728
+	OPMainnetChainID      = 10
+	OPSepoliaChainID      = 11155420
+	BaseMainnetChainID    = 8453
+	baseSepoliaChainID    = 84532
+	pgnSepoliaChainID     = 58008
+	devnetChainID         = 997
+	chaosnetChainID       = 888
+	BobaMainnetChainID    = 288
+	BobaSepoliaChainID    = 28882
+	BobaBnbTestnetChainID = 9728
 )
 
 // OP Stack chain config
 var (
 	// March 17, 2023 @ 7:00:00 pm UTC
 	OptimismGoerliRegolithTime = big.NewInt(1679079600)
-	// May 4, 2023 @ 5:00:00 pm UTC
-	BaseGoerliRegolithTime = big.NewInt(1683219600)
-	// Apr 21, 2023 @ 6:30:00 pm UTC
-	baseGoerliDevnetRegolithTime = big.NewInt(1682101800)
 	// March 5, 2023 @ 2:48:00 am UTC
 	devnetRegolithTime = big.NewInt(1677984480)
 	// August 16, 2023 @ 3:34:22 am UTC
@@ -68,6 +61,10 @@ func OPStackChainConfigByGenesisHash(genesisHash common.Hash) *superchain.ChainC
 		return superchain.OPChains[OPSepoliaChainID]
 	} else if bytes.Equal(genesisHash.Bytes(), BobaSepoliaGenesisHash.Bytes()) {
 		return superchain.OPChains[BobaSepoliaChainID]
+	} else if bytes.Equal(genesisHash.Bytes(), BobaMainnetGenesisHash.Bytes()) {
+		return superchain.OPChains[BobaMainnetChainID]
+	} else if bytes.Equal(genesisHash.Bytes(), BobaBnbTestnetGenesisHash.Bytes()) {
+		return superchain.OPChains[BobaBnbTestnetChainID]
 	}
 	for _, chainCfg := range superchain.OPChains {
 		if bytes.Equal(chainCfg.Genesis.L2.Hash[:], genesisHash.Bytes()) {
@@ -156,14 +153,6 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 
 	// special overrides for OP-Stack chains with pre-Regolith upgrade history
 	switch opStackChainCfg.ChainID {
-	case OPGoerliChainID:
-		out.LondonBlock = big.NewInt(4061224)
-		out.ArrowGlacierBlock = big.NewInt(4061224)
-		out.GrayGlacierBlock = big.NewInt(4061224)
-		out.MergeNetsplitBlock = big.NewInt(4061224)
-		out.BedrockBlock = big.NewInt(4061224)
-		out.RegolithTime = OptimismGoerliRegolithTime
-		out.Optimism.EIP1559Elasticity = 10
 	case OPMainnetChainID:
 		out.BerlinBlock = big.NewInt(3950000)
 		out.LondonBlock = big.NewInt(105235063)
@@ -171,13 +160,8 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.GrayGlacierBlock = big.NewInt(105235063)
 		out.MergeNetsplitBlock = big.NewInt(105235063)
 		out.BedrockBlock = big.NewInt(105235063)
-	case BaseGoerliChainID:
-		out.RegolithTime = BaseGoerliRegolithTime
-		out.Optimism.EIP1559Elasticity = 10
 	case baseSepoliaChainID:
 		out.Optimism.EIP1559Elasticity = 10
-	case baseGoerliDevnetChainID:
-		out.RegolithTime = baseGoerliDevnetRegolithTime
 	case pgnSepoliaChainID:
 		out.Optimism.EIP1559Elasticity = 2
 		out.Optimism.EIP1559Denominator = 8
@@ -195,12 +179,6 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.MergeNetsplitBlock = big.NewInt(511)
 		out.BedrockBlock = big.NewInt(511)
 		out.RegolithTime = BobaSepoliaRegolithTime
-		out.ShanghaiTime = BobaSepoliaRegolithTime
-		out.CanyonTime = BobaSepoliaRegolithTime
-		out.Optimism.EIP1559Elasticity = 6
-		out.Optimism.EIP1559Denominator = 50
-		out.Optimism.EIP1559DenominatorCanyon = 250
-		out.FjordTime = nil
 	case BobaMainnetChainID:
 		out.BerlinBlock = big.NewInt(1149019)
 		out.LondonBlock = big.NewInt(1149019)
@@ -209,12 +187,6 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.MergeNetsplitBlock = big.NewInt(1149019)
 		out.BedrockBlock = big.NewInt(1149019)
 		out.RegolithTime = BobaMainnetRegolithTime
-		out.ShanghaiTime = BobaMainnetRegolithTime
-		out.CanyonTime = BobaMainnetRegolithTime
-		out.Optimism.EIP1559Elasticity = 6
-		out.Optimism.EIP1559Denominator = 50
-		out.Optimism.EIP1559DenominatorCanyon = 250
-		out.FjordTime = nil
 	case BobaBnbTestnetChainID:
 		out.BerlinBlock = big.NewInt(675077)
 		out.LondonBlock = big.NewInt(675077)
@@ -223,12 +195,6 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		out.MergeNetsplitBlock = big.NewInt(675077)
 		out.BedrockBlock = big.NewInt(675077)
 		out.RegolithTime = BobaBnbTestnetRegoTime
-		out.ShanghaiTime = BobaBnbTestnetRegoTime
-		out.CanyonTime = BobaBnbTestnetRegoTime
-		out.Optimism.EIP1559Elasticity = 6
-		out.Optimism.EIP1559Denominator = 50
-		out.Optimism.EIP1559DenominatorCanyon = 250
-		out.FjordTime = nil
 	}
 
 	return out
