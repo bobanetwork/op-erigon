@@ -15,14 +15,12 @@ const (
 	ChiadoChainName         = "chiado"
 
 	OPMainnetChainName = "op-mainnet"
-	OPGoerliChainName  = "op-goerli"
 	OPSepoliaChainName = "op-sepolia"
 
 	BobaMainnetChainName = "boba-mainnet"
 	BobaSepoliaChainName = "boba-sepolia"
 
 	LegacyOPMainnetChainName = "optimism-mainnet"
-	LegacyOPGoerliChainName  = "optimism-goerli"
 	LegacyOPSepoliaChainName = "optimism-sepolia"
 )
 
@@ -40,7 +38,6 @@ var All = []string{
 
 	OPMainnetChainName,
 	OPSepoliaChainName,
-	OPGoerliChainName,
 
 	BobaMainnetChainName,
 	BobaSepoliaChainName,
@@ -48,8 +45,6 @@ var All = []string{
 
 func HandleLegacyName(name string) string {
 	switch name {
-	case LegacyOPGoerliChainName:
-		return OPGoerliChainName
 	case LegacyOPSepoliaChainName:
 		return OPSepoliaChainName
 	case LegacyOPMainnetChainName:

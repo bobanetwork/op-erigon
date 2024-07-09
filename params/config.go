@@ -74,7 +74,6 @@ var (
 	ChiadoGenesisHash     = libcommon.HexToHash("0xada44fd8d2ecab8b08f256af07ad3e777f17fb434f8f8e678b312f576212ba9a")
 
 	OPMainnetGenesisHash = libcommon.HexToHash("0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b")
-	OPGoerliGenesisHash  = libcommon.HexToHash("0xc1fc15cd51159b1f1e5cbc4b82e85c1447ddfa33c52cf1d98d14fba0d6354be1")
 	OPSepoliaGenesisHash = libcommon.HexToHash("0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d")
 
 	BobaMainnetGenesisHash = libcommon.HexToHash("0xdcd9e6a8f9973eaa62da2874959cb152faeb4fd6929177bd6335a1a16074ef9c")
@@ -299,9 +298,6 @@ func GenesisHashByChainName(chain string) *libcommon.Hash {
 	case networkname.OPMainnetChainName:
 		// cannot use genesis hash from superchain registry because of pre-bedrock blocks
 		return &OPMainnetGenesisHash
-	case networkname.OPGoerliChainName:
-		// cannot use genesis has from superchain registry because of pre-bedrock blocks
-		return &OPGoerliGenesisHash
 	case networkname.OPSepoliaChainName:
 		return &OPSepoliaGenesisHash
 	case networkname.BobaMainnetChainName:
