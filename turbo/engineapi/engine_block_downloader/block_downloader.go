@@ -30,15 +30,17 @@ import (
 )
 
 const (
-	logInterval           = 30 * time.Second
-	requestLoopCutOff int = 1
+	logInterval                 = 30 * time.Second
+	requestLoopCutOff       int = 1
+	forkchoiceTimeoutMillis     = 5000
 )
 
 type RequestBodyFunction func(context.Context, *bodydownload.BodyRequest) ([64]byte, bool)
 
 // EngineBlockDownloader is responsible to download blocks in reverse, and then insert them in the database.
 type EngineBlockDownloader struct {
-	ctx context.Context
+	bacgroundCtx context.Context
+
 	// downloaders
 	hd          *headerdownload.HeaderDownload
 	bd          *bodydownload.BodyDownload
@@ -74,7 +76,7 @@ func NewEngineBlockDownloader(ctx context.Context, logger log.Logger, hd *header
 	var s atomic.Value
 	s.Store(headerdownload.Idle)
 	return &EngineBlockDownloader{
-		ctx:             ctx,
+		bacgroundCtx:    ctx,
 		hd:              hd,
 		bd:              bd,
 		db:              db,
@@ -86,7 +88,7 @@ func NewEngineBlockDownloader(ctx context.Context, logger log.Logger, hd *header
 		blockPropagator: blockPropagator,
 		timeout:         timeout,
 		bodyReqSend:     bodyReqSend,
-		chainRW:         eth1_chain_reader.NewChainReaderEth1(ctx, config, executionClient, 1000),
+		chainRW:         eth1_chain_reader.NewChainReaderEth1(config, executionClient, forkchoiceTimeoutMillis),
 	}
 }
 
@@ -94,7 +96,6 @@ func (e *EngineBlockDownloader) scheduleHeadersDownload(
 	requestId int,
 	hashToDownload libcommon.Hash,
 	heightToDownload uint64,
-	downloaderTip libcommon.Hash,
 ) bool {
 	if e.hd.PosStatus() != headerdownload.Idle {
 		e.logger.Info("[EngineBlockDownloader] Postponing PoS download since another one is in progress", "height", heightToDownload, "hash", hashToDownload)
@@ -108,7 +109,6 @@ func (e *EngineBlockDownloader) scheduleHeadersDownload(
 	}
 
 	e.hd.SetRequestId(requestId)
-	e.hd.SetPoSDownloaderTip(downloaderTip)
 	e.hd.SetHeaderToDownloadPoS(hashToDownload, heightToDownload)
 	e.hd.SetPOSSync(true) // This needs to be called after SetHeaderToDownloadPOS because SetHeaderToDownloadPOS sets `posAnchor` member field which is used by ProcessHeadersPOS
 
@@ -205,7 +205,7 @@ func saveHeader(db kv.RwTx, header *types.Header, hash libcommon.Hash) error {
 	return nil
 }
 
-func (e *EngineBlockDownloader) insertHeadersAndBodies(tx kv.Tx, fromBlock uint64, fromHash libcommon.Hash, toBlock uint64) error {
+func (e *EngineBlockDownloader) insertHeadersAndBodies(ctx context.Context, tx kv.Tx, fromBlock uint64, fromHash libcommon.Hash, toBlock uint64) error {
 	blockBatchSize := 500
 	blockWrittenLogSize := 20_000
 	// We divide them in batches
@@ -223,7 +223,7 @@ func (e *EngineBlockDownloader) insertHeadersAndBodies(tx kv.Tx, fromBlock uint6
 			return err
 		}
 		if len(blocksBatch) == blockBatchSize {
-			if err := e.chainRW.InsertBlocksAndWait(blocksBatch); err != nil {
+			if err := e.chainRW.InsertBlocksAndWait(ctx, blocksBatch); err != nil {
 				return err
 			}
 			blocksBatch = blocksBatch[:0]
@@ -235,7 +235,7 @@ func (e *EngineBlockDownloader) insertHeadersAndBodies(tx kv.Tx, fromBlock uint6
 		}
 		number := header.Number.Uint64()
 		if number > toBlock {
-			return e.chainRW.InsertBlocksAndWait(blocksBatch)
+			return e.chainRW.InsertBlocksAndWait(ctx, blocksBatch)
 		}
 		hash := header.Hash()
 		body, err := rawdb.ReadBodyWithTransactions(tx, hash, number)
@@ -245,11 +245,11 @@ func (e *EngineBlockDownloader) insertHeadersAndBodies(tx kv.Tx, fromBlock uint6
 		if body == nil {
 			return fmt.Errorf("missing body at block=%d", number)
 		}
-		blocksBatch = append(blocksBatch, types.NewBlockFromStorage(hash, header, body.Transactions, nil, body.Withdrawals))
+		blocksBatch = append(blocksBatch, types.NewBlockFromStorage(hash, header, body.Transactions, body.Uncles, body.Withdrawals))
 		if number%uint64(blockWrittenLogSize) == 0 {
 			e.logger.Info("[insertHeadersAndBodies] Written blocks", "progress", number, "to", toBlock)
 		}
 	}
-	return e.chainRW.InsertBlocksAndWait(blocksBatch)
+	return e.chainRW.InsertBlocksAndWait(ctx, blocksBatch)
 
 }

@@ -14,12 +14,7 @@ import (
 
 func hasRClone() bool {
 	rclone, _ := exec.LookPath("rclone")
-
-	if len(rclone) == 0 {
-		return false
-	}
-
-	return true
+	return len(rclone) != 0
 }
 
 func TestDownload(t *testing.T) {
@@ -39,7 +34,7 @@ func TestDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rcc, err := cli.NewSession(ctx, tmpDir, remoteDir)
+	rcc, err := cli.NewSession(ctx, tmpDir, remoteDir, nil)
 
 	if err != nil {
 		t.Fatal(err)

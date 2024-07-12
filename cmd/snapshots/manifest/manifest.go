@@ -12,12 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/ledgerwatch/erigon-lib/downloader"
 	"github.com/ledgerwatch/erigon-lib/downloader/snaptype"
 	"github.com/ledgerwatch/erigon/cmd/snapshots/sync"
 	"github.com/ledgerwatch/erigon/cmd/utils"
 	"github.com/ledgerwatch/erigon/turbo/logging"
-	"github.com/urfave/cli/v2"
 )
 
 var (
@@ -118,7 +119,7 @@ func manifest(cliCtx *cli.Context, command string) error {
 
 	if rcCli != nil {
 		if src != nil && src.LType == sync.RemoteFs {
-			srcSession, err = rcCli.NewSession(cliCtx.Context, tempDir, src.Src+":"+src.Root)
+			srcSession, err = rcCli.NewSession(cliCtx.Context, tempDir, src.Src+":"+src.Root, nil)
 
 			if err != nil {
 				return err
@@ -132,10 +133,10 @@ func manifest(cliCtx *cli.Context, command string) error {
 
 	logger.Debug("Starting manifest " + command)
 
-	var version *uint8
+	var version *snaptype.Version
 
 	if val := cliCtx.Int(VersionFlag.Name); val != 0 {
-		v := uint8(val)
+		v := snaptype.Version(val)
 		version = &v
 	}
 
@@ -163,7 +164,7 @@ func listManifest(ctx context.Context, srcSession *downloader.RCloneSession, out
 	return nil
 }
 
-func updateManifest(ctx context.Context, tmpDir string, srcSession *downloader.RCloneSession, version *uint8) error {
+func updateManifest(ctx context.Context, tmpDir string, srcSession *downloader.RCloneSession, version *snaptype.Version) error {
 	entities, err := srcSession.ReadRemoteDir(ctx, true)
 
 	if err != nil {
@@ -187,9 +188,11 @@ func updateManifest(ctx context.Context, tmpDir string, srcSession *downloader.R
 			files = fileMap
 		}
 
-		info, ok := snaptype.ParseFileName("", file)
-
-		if !ok || (version != nil && *version != info.Version) {
+		info, isStateFile, ok := snaptype.ParseFileName("", file)
+		if !ok {
+			continue
+		}
+		if !isStateFile && version != nil && *version != info.Version {
 			continue
 		}
 
@@ -218,7 +221,7 @@ func updateManifest(ctx context.Context, tmpDir string, srcSession *downloader.R
 	return srcSession.Upload(ctx, manifestFile)
 }
 
-func verifyManifest(ctx context.Context, srcSession *downloader.RCloneSession, version *uint8, out *os.File) error {
+func verifyManifest(ctx context.Context, srcSession *downloader.RCloneSession, version *snaptype.Version, out *os.File) error {
 	manifestEntries, err := DownloadManifest(ctx, srcSession)
 
 	if err != nil {
@@ -236,9 +239,11 @@ func verifyManifest(ctx context.Context, srcSession *downloader.RCloneSession, v
 			file = fi.Name()
 		}
 
-		info, ok := snaptype.ParseFileName("", file)
-
-		if !ok || (version != nil && *version != info.Version) {
+		info, isStateFile, ok := snaptype.ParseFileName("", file)
+		if !ok {
+			continue
+		}
+		if !isStateFile && version != nil && *version != info.Version {
 			continue
 		}
 
@@ -263,9 +268,11 @@ func verifyManifest(ctx context.Context, srcSession *downloader.RCloneSession, v
 			file = fi.Name()
 		}
 
-		info, ok := snaptype.ParseFileName("", file)
-
-		if !ok || (version != nil && *version != info.Version) {
+		info, isStateFile, ok := snaptype.ParseFileName("", file)
+		if !ok {
+			continue
+		}
+		if !isStateFile && version != nil && *version != info.Version {
 			continue
 		}
 
@@ -280,7 +287,7 @@ func verifyManifest(ctx context.Context, srcSession *downloader.RCloneSession, v
 	var extra string
 
 	if len(manifestFiles) != 0 {
-		files := make([]string, len(manifestFiles))
+		files := make([]string, 0, len(manifestFiles))
 
 		for file := range manifestFiles {
 			files = append(files, file)
@@ -290,7 +297,7 @@ func verifyManifest(ctx context.Context, srcSession *downloader.RCloneSession, v
 	}
 
 	if len(dirFiles) != 0 {
-		files := make([]string, len(dirFiles))
+		files := make([]string, 0, len(dirFiles))
 
 		for file := range dirFiles {
 			files = append(files, file)

@@ -22,6 +22,15 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 		return common.Hash{}, err
 	}
 
+	// If the transaction fee cap is already specified, ensure the
+	// fee of the given transaction is _reasonable_.
+	if err := checkTxFee(txn.GetPrice().ToBig(), txn.GetGas(), api.FeeCap); err != nil {
+		return common.Hash{}, err
+	}
+	if !txn.Protected() && !api.AllowUnprotectedTxs {
+		return common.Hash{}, errors.New("only replay-protected (EIP-155) transactions allowed over RPC")
+	}
+
 	// this has been moved to prior to adding of transactions to capture the
 	// pre state of the db - which is used for logging in the messages below
 	tx, err := api.db.BeginRo(ctx)
@@ -31,7 +40,7 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 
 	defer tx.Rollback()
 
-	cc, err := api.chainConfig(tx)
+	cc, err := api.chainConfig(ctx, tx)
 	if err != nil {
 		return common.Hash{}, err
 	}

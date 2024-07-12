@@ -7,9 +7,11 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	datadir2 "github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcfg"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -20,7 +22,7 @@ import (
 	"github.com/ledgerwatch/log/v3"
 )
 
-func blocksIO(db kv.RoDB, snapshotVersion uint8) (services.FullBlockReader, *blockio.BlockWriter) {
+func blocksIO(db kv.RoDB) (services.FullBlockReader, *blockio.BlockWriter) {
 	var histV3 bool
 	if err := db.View(context.Background(), func(tx kv.Tx) error {
 		histV3, _ = kvcfg.HistoryV3.Enabled(tx)
@@ -28,14 +30,15 @@ func blocksIO(db kv.RoDB, snapshotVersion uint8) (services.FullBlockReader, *blo
 	}); err != nil {
 		panic(err)
 	}
-	br := freezeblocks.NewBlockReader(freezeblocks.NewRoSnapshots(ethconfig.BlocksFreezing{Enabled: false}, "", snapshotVersion, log.New()), nil /* BorSnapshots */)
+	dirs := datadir2.New(filepath.Dir(db.(*mdbx.MdbxKV).Path()))
+	br := freezeblocks.NewBlockReader(freezeblocks.NewRoSnapshots(ethconfig.BlocksFreezing{Enabled: false}, dirs.Snap, 0, log.New()), nil /* BorSnapshots */)
 	bw := blockio.NewBlockWriter(histV3)
 	return br, bw
 }
 
-func ValidateTxLookups(chaindata string, snapshotVersion uint8, logger log.Logger) error {
+func ValidateTxLookups(chaindata string, logger log.Logger) error {
 	db := mdbx.MustOpen(chaindata)
-	br, _ := blocksIO(db, snapshotVersion)
+	br, _ := blocksIO(db)
 	tx, err := db.BeginRo(context.Background())
 	if err != nil {
 		return err

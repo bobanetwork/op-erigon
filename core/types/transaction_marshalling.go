@@ -54,7 +54,7 @@ type txJSON struct {
 	Hash libcommon.Hash `json:"hash"`
 }
 
-func (tx LegacyTx) MarshalJSON() ([]byte, error) {
+func (tx *LegacyTx) MarshalJSON() ([]byte, error) {
 	var enc txJSON
 	// These are set for all tx types.
 	enc.Hash = tx.Hash()
@@ -74,7 +74,7 @@ func (tx LegacyTx) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&enc)
 }
 
-func (tx AccessListTx) MarshalJSON() ([]byte, error) {
+func (tx *AccessListTx) MarshalJSON() ([]byte, error) {
 	var enc txJSON
 	// These are set for all tx types.
 	enc.Hash = tx.Hash()
@@ -93,7 +93,7 @@ func (tx AccessListTx) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&enc)
 }
 
-func (tx DynamicFeeTransaction) MarshalJSON() ([]byte, error) {
+func (tx *DynamicFeeTransaction) MarshalJSON() ([]byte, error) {
 	var enc txJSON
 	// These are set for all tx types.
 	enc.Hash = tx.Hash()
@@ -155,11 +155,11 @@ func toBlobTxJSON(tx *BlobTx) *txJSON {
 	return &enc
 }
 
-func (tx BlobTx) MarshalJSON() ([]byte, error) {
-	return json.Marshal(toBlobTxJSON(&tx))
+func (tx *BlobTx) MarshalJSON() ([]byte, error) {
+	return json.Marshal(toBlobTxJSON(tx))
 }
 
-func (tx BlobTxWrapper) MarshalJSON() ([]byte, error) {
+func (tx *BlobTxWrapper) MarshalJSON() ([]byte, error) {
 	enc := toBlobTxJSON(&tx.Tx)
 
 	enc.Blobs = tx.Blobs

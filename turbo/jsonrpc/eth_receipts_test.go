@@ -7,10 +7,8 @@ import (
 
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/erigon-lib/common"
-	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/gointerfaces/txpool"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcache"
-	"github.com/ledgerwatch/erigon-lib/kv/memdb"
 	"github.com/ledgerwatch/erigon-lib/opstack"
 	"github.com/ledgerwatch/erigon/cmd/rpcdaemon/rpcdaemontest"
 	"github.com/ledgerwatch/erigon/common/u256"
@@ -30,9 +28,9 @@ func TestGetReceipts(t *testing.T) {
 	ctx, conn := rpcdaemontest.CreateTestGrpcConn(t, mock.Mock(t))
 	mining := txpool.NewMiningClient(conn)
 	ff := rpchelper.New(ctx, nil, nil, mining, func() {}, m.Log)
-	api := NewEthAPI(NewBaseApi(ff, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), m.DB, nil, nil, nil, 5000000, 100_000, false, 100_000, log.New())
+	api := NewEthAPI(NewBaseApi(ff, stateCache, m.BlockReader, agg, false, rpccfg.DefaultEvmCallTimeout, m.Engine, m.Dirs, nil, nil), m.DB, nil, nil, nil, 5000000, 1e18, 100_000, false, 100_000, 128, log.New())
 
-	db := memdb.New("")
+	db := m.DB
 	defer db.Close()
 
 	tx, err := db.BeginRw(context.Background())
@@ -50,7 +48,7 @@ func TestGetReceipts(t *testing.T) {
 	require.NoError(t, err)
 	defer rTx.Rollback()
 
-	receipt, err := api.getReceipts(m.Ctx, rTx, m.ChainConfig, block, []libcommon.Address{})
+	receipt, err := api.getReceipts(m.Ctx, rTx, block, []common.Address{})
 	require.NoError(t, err)
 	require.Equal(t, 0, len(receipt))
 
@@ -71,8 +69,8 @@ func TestGetReceipts(t *testing.T) {
 
 	systemTx := buildSystemTx(l1BaseFee, overhead, scalar)
 
-	tx1 := types.NewTransaction(1, libcommon.HexToAddress("0x1"), u256.Num1, 1, u256.Num1, systemTx)
-	tx2 := types.NewTransaction(2, libcommon.HexToAddress("0x2"), u256.Num2, 2, u256.Num2, nil)
+	tx1 := types.NewTransaction(1, common.HexToAddress("0x1"), u256.Num1, 1, u256.Num1, systemTx)
+	tx2 := types.NewTransaction(2, common.HexToAddress("0x2"), u256.Num2, 2, u256.Num2, nil)
 
 	header = &types.Header{Number: bedrockBlock, Difficulty: big.NewInt(100)}
 	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}
@@ -81,23 +79,23 @@ func TestGetReceipts(t *testing.T) {
 		Status:            types.ReceiptStatusFailed,
 		CumulativeGasUsed: 1,
 		Logs: []*types.Log{
-			{Address: libcommon.BytesToAddress([]byte{0x11})},
-			{Address: libcommon.BytesToAddress([]byte{0x01, 0x11})},
+			{Address: common.BytesToAddress([]byte{0x11})},
+			{Address: common.BytesToAddress([]byte{0x01, 0x11})},
 		},
 		TxHash:          tx1.Hash(),
-		ContractAddress: libcommon.BytesToAddress([]byte{0x01, 0x11, 0x11}),
+		ContractAddress: common.BytesToAddress([]byte{0x01, 0x11, 0x11}),
 		GasUsed:         111111,
 		L1Fee:           big.NewInt(7),
 	}
 	receipt2 := &types.Receipt{
-		PostState:         libcommon.Hash{2}.Bytes(),
+		PostState:         common.Hash{2}.Bytes(),
 		CumulativeGasUsed: 2,
 		Logs: []*types.Log{
-			{Address: libcommon.BytesToAddress([]byte{0x22})},
-			{Address: libcommon.BytesToAddress([]byte{0x02, 0x22})},
+			{Address: common.BytesToAddress([]byte{0x22})},
+			{Address: common.BytesToAddress([]byte{0x02, 0x22})},
 		},
 		TxHash:          tx2.Hash(),
-		ContractAddress: libcommon.BytesToAddress([]byte{0x02, 0x22, 0x22}),
+		ContractAddress: common.BytesToAddress([]byte{0x02, 0x22, 0x22}),
 		GasUsed:         222222,
 		L1Fee:           big.NewInt(1),
 	}
@@ -121,7 +119,7 @@ func TestGetReceipts(t *testing.T) {
 	require.NoError(t, err)
 	defer rTx.Rollback()
 
-	receipts, err = api.getReceipts(m.Ctx, rTx, m.ChainConfig, b, senders)
+	receipts, err = api.getReceipts(m.Ctx, rTx, b, senders)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(receipts))
 

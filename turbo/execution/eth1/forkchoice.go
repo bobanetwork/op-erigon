@@ -75,7 +75,7 @@ func (e *EthereumExecutionModule) UpdateForkChoice(ctx context.Context, req *exe
 	outcomeCh := make(chan forkchoiceOutcome, 1)
 
 	// So we wait at most the amount specified by req.Timeout before just sending out
-	go e.updateForkChoice(ctx, blockHash, safeHash, finalizedHash, outcomeCh)
+	go e.updateForkChoice(e.bacgroundCtx, blockHash, safeHash, finalizedHash, outcomeCh)
 
 	var fcuTimer *time.Timer
 	if e.config.IsOptimism() {
@@ -131,7 +131,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 		return
 	}
 	defer e.semaphore.Release(1)
-
+	var validationError string
 	type canonicalEntry struct {
 		hash   libcommon.Hash
 		number uint64
@@ -360,6 +360,7 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 	status := execution.ExecutionStatus_Success
 	if headHash != blockHash {
 		status = execution.ExecutionStatus_BadBlock
+		validationError = "headHash and blockHash mismatch"
 		if log {
 			e.logger.Warn("bad forkchoice", "head", headHash, "hash", blockHash)
 		}
@@ -407,5 +408,6 @@ func (e *EthereumExecutionModule) updateForkChoice(ctx context.Context, blockHas
 	sendForkchoiceReceiptWithoutWaiting(outcomeCh, &execution.ForkChoiceReceipt{
 		LatestValidHash: gointerfaces.ConvertHashToH256(headHash),
 		Status:          status,
+		ValidationError: validationError,
 	})
 }

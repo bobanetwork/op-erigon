@@ -45,9 +45,8 @@ import (
 	"github.com/ledgerwatch/erigon/rpc"
 )
 
-// AggregationStep number of transactions in smallest static file
-const HistoryV3AggregationStep = 3_125_000 // 100M / 32
-//const HistoryV3AggregationStep = 3_125_000 / 100 // use this to reduce step size for dev/debug
+// BorDefaultMinerGasPrice defines the minimum gas price for bor validators to mine a transaction.
+var BorDefaultMinerGasPrice = big.NewInt(30 * params.GWei)
 
 // FullNodeGPO contains default gasprice oracle settings for full node.
 var FullNodeGPO = gaspricecfg.Config{
@@ -96,6 +95,7 @@ var Defaults = Config{
 		Recommit: 3 * time.Second,
 	},
 	DeprecatedTxPool: DeprecatedDefaultTxPoolConfig,
+	TxPool:           txpoolcfg.DefaultConfig,
 	RPCGasCap:        50000000,
 	GPO:              FullNodeGPO,
 	RPCTxFeeCap:      1, // 1 ether
@@ -128,7 +128,7 @@ func init() {
 		if xdgDataDir := os.Getenv("XDG_DATA_HOME"); xdgDataDir != "" {
 			Defaults.Ethash.DatasetDir = filepath.Join(xdgDataDir, "erigon-ethash")
 		}
-		Defaults.Ethash.DatasetDir = filepath.Join(home, ".local/share/erigon-ethash")
+		Defaults.Ethash.DatasetDir = filepath.Join(home, ".local/share/erigon-ethash") //nolint:gocritic
 	}
 }
 
@@ -232,11 +232,15 @@ type Config struct {
 
 	// URL to connect to Heimdall node
 	HeimdallURL string
-
 	// No heimdall service
 	WithoutHeimdall bool
 	// Heimdall services active
 	WithHeimdallMilestones bool
+	// Heimdall waypoint recording active
+	WithHeimdallWaypointRecording bool
+	// Use polygon checkpoint sync in preference to POW downloader
+	PolygonSync bool
+
 	// Ethstats service
 	Ethstats string
 	// Consensus layer
@@ -251,15 +255,25 @@ type Config struct {
 
 	OverrideCancunTime   *big.Int `toml:",omitempty"`
 	OverrideShanghaiTime *big.Int `toml:",omitempty"`
+	OverridePragueTime   *big.Int `toml:",omitempty"`
 
 	OverrideOptimismCanyonTime  *big.Int `toml:",omitempty"`
 	OverrideOptimismEcotoneTime *big.Int `toml:",omitempty"`
 	OverrideOptimismFjordTime   *big.Int `toml:",omitempty"`
 
 	// Embedded Silkworm support
-	SilkwormExecution bool
-	SilkwormRpcDaemon bool
-	SilkwormSentry    bool
+	SilkwormExecution            bool
+	SilkwormRpcDaemon            bool
+	SilkwormSentry               bool
+	SilkwormVerbosity            string
+	SilkwormNumContexts          uint32
+	SilkwormRpcLogEnabled        bool
+	SilkwormRpcLogDirPath        string
+	SilkwormRpcLogMaxFileSize    uint16
+	SilkwormRpcLogMaxFiles       uint16
+	SilkwormRpcLogDumpResponse   bool
+	SilkwormRpcNumWorkers        uint32
+	SilkwormRpcJsonCompatibility bool
 
 	DisableTxPoolGossip bool
 
@@ -277,7 +291,7 @@ type Sync struct {
 
 	BodyCacheLimit             datasize.ByteSize
 	BodyDownloadTimeoutSeconds int // TODO: change to duration
-	PruneLimit                 int //the maxumum records to delete from the DB during pruning
+	PruneLimit                 int //the maximum records to delete from the DB during pruning
 	BreakAfterStage            string
 	LoopBlockLimit             uint
 

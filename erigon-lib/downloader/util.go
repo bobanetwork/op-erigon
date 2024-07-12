@@ -20,27 +20,26 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
-	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
-	"github.com/anacrolix/torrent/mmap_span"
-	"github.com/anacrolix/torrent/storage"
-	"github.com/edsrzf/mmap-go"
 	"github.com/ledgerwatch/log/v3"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ledgerwatch/erigon-lib/chain/snapcfg"
 	common2 "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/datadir"
+	"github.com/ledgerwatch/erigon-lib/common/dbg"
 	dir2 "github.com/ledgerwatch/erigon-lib/common/dir"
 	"github.com/ledgerwatch/erigon-lib/downloader/downloadercfg"
 	"github.com/ledgerwatch/erigon-lib/downloader/snaptype"
@@ -50,13 +49,10 @@ import (
 // udpOrHttpTrackers - torrent library spawning several goroutines and producing many requests for each tracker. So we limit amout of trackers by 8
 var udpOrHttpTrackers = []string{
 	"udp://tracker.opentrackr.org:1337/announce",
-	"udp://9.rarbg.com:2810/announce",
 	"udp://tracker.openbittorrent.com:6969/announce",
-	"http://tracker.openbittorrent.com:80/announce",
 	"udp://opentracker.i2p.rocks:6969/announce",
-	"https://opentracker.i2p.rocks:443/announce",
 	"udp://tracker.torrent.eu.org:451/announce",
-	"udp://tracker.moeking.me:6969/announce",
+	"udp://open.stealth.si:80/announce",
 }
 
 // nolint
@@ -70,22 +66,31 @@ var Trackers = [][]string{
 	//websocketTrackers // TODO: Ws protocol producing too many errors and flooding logs. But it's also very fast and reactive.
 }
 
-func seedableSegmentFiles(dir string) ([]string, error) {
-	files, err := dir2.ListFiles(dir, ".seg")
+type torrentInfo struct {
+	Name      string     `json:"name"`
+	Hash      []byte     `json:"hash"`
+	Length    *int64     `json:"length,omitempty"`
+	Created   *time.Time `json:"created,omitempty"`
+	Completed *time.Time `json:"completed,omitempty"`
+}
+
+func seedableSegmentFiles(dir string, chainName string) ([]string, error) {
+	files, err := dir2.ListFiles(dir, snaptype.SeedableV2Extensions()...)
 	if err != nil {
 		return nil, err
 	}
 	res := make([]string, 0, len(files))
 	for _, fPath := range files {
+
 		_, name := filepath.Split(fPath)
 		if !snaptype.IsCorrectFileName(name) {
 			continue
 		}
-		ff, ok := snaptype.ParseFileName(dir, name)
+		ff, _, ok := snaptype.ParseFileName(dir, name)
 		if !ok {
 			continue
 		}
-		if !ff.Seedable() {
+		if !snapcfg.Seedable(chainName, ff) {
 			continue
 		}
 		res = append(res, name)
@@ -93,19 +98,17 @@ func seedableSegmentFiles(dir string) ([]string, error) {
 	return res, nil
 }
 
-var historyFileRegex = regexp.MustCompile("^([[:lower:]]+).([0-9]+)-([0-9]+).(.*)$")
-
-func seedableSnapshotsBySubDir(dir, subDir string) ([]string, error) {
+func seedableStateFilesBySubDir(dir, subDir string) ([]string, error) {
 	historyDir := filepath.Join(dir, subDir)
 	dir2.MustExist(historyDir)
-	files, err := dir2.ListFiles(historyDir, ".kv", ".v", ".ef")
+	files, err := dir2.ListFiles(historyDir, snaptype.SeedableV3Extensions()...)
 	if err != nil {
 		return nil, err
 	}
 	res := make([]string, 0, len(files))
 	for _, fPath := range files {
 		_, name := filepath.Split(fPath)
-		if !e3seedable(name) {
+		if !snaptype.E3Seedable(name) {
 			continue
 		}
 		res = append(res, filepath.Join(subDir, name))
@@ -113,25 +116,6 @@ func seedableSnapshotsBySubDir(dir, subDir string) ([]string, error) {
 	return res, nil
 }
 
-func e3seedable(name string) bool {
-	subs := historyFileRegex.FindStringSubmatch(name)
-	if len(subs) != 5 {
-		return false
-	}
-	// Check that it's seedable
-	from, err := strconv.ParseUint(subs[2], 10, 64)
-	if err != nil {
-		return false
-	}
-	to, err := strconv.ParseUint(subs[3], 10, 64)
-	if err != nil {
-		return false
-	}
-	if (to-from)%snaptype.Erigon3SeedableSteps != 0 {
-		return false
-	}
-	return true
-}
 func ensureCantLeaveDir(fName, root string) (string, error) {
 	if filepath.IsAbs(fName) {
 		newFName, err := filepath.Rel(root, fName)
@@ -149,55 +133,66 @@ func ensureCantLeaveDir(fName, root string) (string, error) {
 	return fName, nil
 }
 
-func BuildTorrentIfNeed(ctx context.Context, fName, root string, torrentFiles *TorrentFiles) (err error) {
+func BuildTorrentIfNeed(ctx context.Context, fName, root string, torrentFiles *AtomicTorrentFS) (ok bool, err error) {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return false, ctx.Err()
 	default:
 	}
 	fName, err = ensureCantLeaveDir(fName, root)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if torrentFiles.Exists(fName) {
-		return nil
+		return false, nil
 	}
 
 	fPath := filepath.Join(root, fName)
 	if !dir2.FileExist(fPath) {
-		return nil
+		return false, nil
 	}
 
 	info := &metainfo.Info{PieceLength: downloadercfg.DefaultPieceSize, Name: fName}
 	if err := info.BuildFromFilePath(fPath); err != nil {
-		return fmt.Errorf("createTorrentFileFromSegment: %w", err)
+		return false, fmt.Errorf("createTorrentFileFromSegment: %w", err)
 	}
 	info.Name = fName
 
-	return CreateTorrentFileFromInfo(root, info, nil, torrentFiles)
+	return torrentFiles.CreateWithMetaInfo(info, nil)
 }
 
 // BuildTorrentFilesIfNeed - create .torrent files from .seg files (big IO) - if .seg files were added manually
-func BuildTorrentFilesIfNeed(ctx context.Context, dirs datadir.Dirs, torrentFiles *TorrentFiles) error {
+func BuildTorrentFilesIfNeed(ctx context.Context, dirs datadir.Dirs, torrentFiles *AtomicTorrentFS, chain string, ignore snapcfg.Preverified) (int, error) {
 	logEvery := time.NewTicker(20 * time.Second)
 	defer logEvery.Stop()
 
-	files, err := seedableFiles(dirs)
+	files, err := SeedableFiles(dirs, chain)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(runtime.GOMAXPROCS(-1) * 4)
+	g.SetLimit(runtime.GOMAXPROCS(-1) * 16)
 	var i atomic.Int32
+	var createdAmount atomic.Int32
 
 	for _, file := range files {
 		file := file
+
+		if ignore.Contains(file) {
+			i.Add(1)
+			continue
+		}
+
 		g.Go(func() error {
 			defer i.Add(1)
-			if err := BuildTorrentIfNeed(ctx, file, dirs.Snap, torrentFiles); err != nil {
+			ok, err := BuildTorrentIfNeed(ctx, file, dirs.Snap, torrentFiles)
+			if err != nil {
 				return err
+			}
+			if ok {
+				createdAmount.Add(1)
 			}
 			return nil
 		})
@@ -216,19 +211,9 @@ Loop:
 		}
 	}
 	if err := g.Wait(); err != nil {
-		return err
+		return int(createdAmount.Load()), err
 	}
-	return nil
-}
-
-func CreateTorrentFileIfNotExists(root string, info *metainfo.Info, mi *metainfo.MetaInfo, torrentFiles *TorrentFiles) error {
-	if torrentFiles.Exists(info.Name) {
-		return nil
-	}
-	if err := CreateTorrentFileFromInfo(root, info, mi, torrentFiles); err != nil {
-		return err
-	}
-	return nil
+	return int(createdAmount.Load()), nil
 }
 
 func CreateMetaInfo(info *metainfo.Info, mi *metainfo.MetaInfo) (*metainfo.MetaInfo, error) {
@@ -248,14 +233,6 @@ func CreateMetaInfo(info *metainfo.Info, mi *metainfo.MetaInfo) (*metainfo.MetaI
 	}
 	return mi, nil
 }
-func CreateTorrentFileFromInfo(root string, info *metainfo.Info, mi *metainfo.MetaInfo, torrentFiles *TorrentFiles) (err error) {
-	mi, err = CreateMetaInfo(info, mi)
-	if err != nil {
-		return err
-	}
-	fPath := filepath.Join(root, info.Name+".torrent")
-	return torrentFiles.CreateTorrentFromMetaInfo(fPath, mi)
-}
 
 func AllTorrentPaths(dirs datadir.Dirs) ([]string, error) {
 	files, err := dir2.ListFiles(dirs.Snap, ".torrent")
@@ -270,7 +247,7 @@ func AllTorrentPaths(dirs datadir.Dirs) ([]string, error) {
 	return files, nil
 }
 
-func AllTorrentSpecs(dirs datadir.Dirs, torrentFiles *TorrentFiles) (res []*torrent.TorrentSpec, err error) {
+func AllTorrentSpecs(dirs datadir.Dirs, torrentFiles *AtomicTorrentFS) (res []*torrent.TorrentSpec, err error) {
 	files, err := AllTorrentPaths(dirs)
 	if err != nil {
 		return nil, err
@@ -288,11 +265,23 @@ func AllTorrentSpecs(dirs datadir.Dirs, torrentFiles *TorrentFiles) (res []*torr
 	return res, nil
 }
 
+// if $DOWNLOADER_ONLY_BLOCKS!="" filters out all non-v1 snapshots
+func IsSnapNameAllowed(name string) bool {
+	if dbg.DownloaderOnlyBlocks {
+		for _, p := range []string{"domain", "history", "idx"} {
+			if strings.HasPrefix(name, p) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // addTorrentFile - adding .torrent file to torrentClient (and checking their hashes), if .torrent file
 // added first time - pieces verification process will start (disk IO heavy) - Progress
 // kept in `piece completion storage` (surviving reboot). Once it done - no disk IO needed again.
 // Don't need call torrent.VerifyData manually
-func addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient *torrent.Client, webseeds *WebSeeds) (t *torrent.Torrent, ok bool, err error) {
+func addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient *torrent.Client, db kv.RwDB, webseeds *WebSeeds) (t *torrent.Torrent, ok bool, err error) {
 	ts.ChunkSize = downloadercfg.DefaultNetworkChunkSize
 	ts.DisallowDataDownload = true
 	ts.DisableInitialPieceCheck = true
@@ -301,47 +290,138 @@ func addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient 
 		rec := recover()
 		if rec != nil {
 			ts.ChunkSize = 0
-			t, ok, err = _addTorrentFile(ctx, ts, torrentClient, webseeds)
+			t, ok, err = _addTorrentFile(ctx, ts, torrentClient, db, webseeds)
 		}
 	}()
 
-	t, ok, err = _addTorrentFile(ctx, ts, torrentClient, webseeds)
+	t, ok, err = _addTorrentFile(ctx, ts, torrentClient, db, webseeds)
+
 	if err != nil {
 		ts.ChunkSize = 0
-		return _addTorrentFile(ctx, ts, torrentClient, webseeds)
+		return _addTorrentFile(ctx, ts, torrentClient, db, webseeds)
 	}
 	return t, ok, err
 }
 
-func _addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient *torrent.Client, webseeds *WebSeeds) (t *torrent.Torrent, ok bool, err error) {
+func _addTorrentFile(ctx context.Context, ts *torrent.TorrentSpec, torrentClient *torrent.Client, db kv.RwDB, webseeds *WebSeeds) (t *torrent.Torrent, ok bool, err error) {
 	select {
 	case <-ctx.Done():
 		return nil, false, ctx.Err()
 	default:
 	}
-
+	if !IsSnapNameAllowed(ts.DisplayName) {
+		return nil, false, nil
+	}
 	ts.Webseeds, _ = webseeds.ByFileName(ts.DisplayName)
 	var have bool
 	t, have = torrentClient.Torrent(ts.InfoHash)
+
 	if !have {
 		t, _, err := torrentClient.AddTorrentSpec(ts)
 		if err != nil {
 			return nil, false, fmt.Errorf("addTorrentFile %s: %w", ts.DisplayName, err)
 		}
+
+		if t.Complete.Bool() {
+			if err := db.Update(ctx, torrentInfoUpdater(ts.DisplayName, ts.InfoHash.Bytes(), 0, nil)); err != nil {
+				return nil, false, fmt.Errorf("addTorrentFile %s: update failed: %w", ts.DisplayName, err)
+			}
+		} else {
+			t.AddWebSeeds(ts.Webseeds)
+			if err := db.Update(ctx, torrentInfoReset(ts.DisplayName, ts.InfoHash.Bytes(), 0)); err != nil {
+				return nil, false, fmt.Errorf("addTorrentFile %s: reset failed: %w", ts.DisplayName, err)
+			}
+		}
+
 		return t, true, nil
 	}
 
-	select {
-	case <-t.GotInfo():
+	if t.Info() != nil {
 		t.AddWebSeeds(ts.Webseeds)
-	default:
+		if err := db.Update(ctx, torrentInfoUpdater(ts.DisplayName, ts.InfoHash.Bytes(), t.Info().Length, nil)); err != nil {
+			return nil, false, fmt.Errorf("update torrent info %s: %w", ts.DisplayName, err)
+		}
+	} else {
 		t, _, err = torrentClient.AddTorrentSpec(ts)
 		if err != nil {
-			return nil, false, fmt.Errorf("addTorrentFile %s: %w", ts.DisplayName, err)
+			return nil, false, fmt.Errorf("add torrent file %s: %w", ts.DisplayName, err)
 		}
+
+		db.Update(ctx, torrentInfoUpdater(ts.DisplayName, ts.InfoHash.Bytes(), 0, nil))
 	}
 
 	return t, true, nil
+}
+
+func torrentInfoUpdater(fileName string, infoHash []byte, length int64, completionTime *time.Time) func(tx kv.RwTx) error {
+	return func(tx kv.RwTx) error {
+		infoBytes, err := tx.GetOne(kv.BittorrentInfo, []byte(fileName))
+
+		if err != nil {
+			return err
+		}
+
+		var info torrentInfo
+
+		err = json.Unmarshal(infoBytes, &info)
+
+		changed := false
+
+		if err != nil || (len(infoHash) > 0 && !bytes.Equal(info.Hash, infoHash)) {
+			now := time.Now()
+			info.Name = fileName
+			info.Hash = infoHash
+			info.Created = &now
+			info.Completed = nil
+			changed = true
+		}
+
+		if length > 0 && (info.Length == nil || *info.Length != length) {
+			info.Length = &length
+			changed = true
+		}
+
+		if completionTime != nil {
+			info.Completed = completionTime
+			changed = true
+		}
+
+		if !changed {
+			return nil
+		}
+
+		infoBytes, err = json.Marshal(info)
+
+		if err != nil {
+			return err
+		}
+
+		return tx.Put(kv.BittorrentInfo, []byte(fileName), infoBytes)
+	}
+}
+
+func torrentInfoReset(fileName string, infoHash []byte, length int64) func(tx kv.RwTx) error {
+	return func(tx kv.RwTx) error {
+		now := time.Now()
+
+		info := torrentInfo{
+			Name:    fileName,
+			Hash:    infoHash,
+			Created: &now,
+		}
+
+		if length > 0 {
+			info.Length = &length
+		}
+
+		infoBytes, err := json.Marshal(info)
+
+		if err != nil {
+			return err
+		}
+
+		return tx.Put(kv.BittorrentInfo, []byte(fileName), infoBytes)
+	}
 }
 
 func savePeerID(db kv.RwDB, peerID torrent.PeerID) error {
@@ -370,41 +450,75 @@ func IsLocal(path string) bool {
 }
 
 func ScheduleVerifyFile(ctx context.Context, t *torrent.Torrent, completePieces *atomic.Uint64) error {
-	for i := 0; i < t.NumPieces(); i++ {
-		t.Piece(i).VerifyData()
+	ctx, cancel := context.WithCancel(ctx)
+	wg, wgctx := errgroup.WithContext(ctx)
+	wg.SetLimit(16)
 
-		completePieces.Add(1)
+	// piece changes happen asynchronously - we need to wait from them to complete
+	pieceChanges := t.SubscribePieceStateChanges()
+	inprogress := map[int]struct{}{}
+
+	for i := 0; i < t.NumPieces(); i++ {
+		inprogress[i] = struct{}{}
+
+		i := i
+		wg.Go(func() error {
+			t.Piece(i).VerifyData()
+			return nil
+		})
+	}
+
+	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		case <-wgctx.Done():
+			cancel()
+			return wg.Wait()
+		case change := <-pieceChanges.Values:
+			if !change.Ok {
+				var err error
+
+				if change.Err != nil {
+					err = change.Err
+				} else {
+					err = fmt.Errorf("unexpected piece change error")
+				}
+
+				cancel()
+				return fmt.Errorf("piece %s:%d verify failed: %w", t.Name(), change.Index, err)
+			}
+
+			if change.Complete && !(change.Checking || change.Hashing || change.QueuedForHash || change.Marking) {
+				completePieces.Add(1)
+				delete(inprogress, change.Index)
+			}
+
+			if len(inprogress) == 0 {
+				cancel()
+				return wg.Wait()
+			}
 		}
 	}
-	return nil
 }
 
 func VerifyFileFailFast(ctx context.Context, t *torrent.Torrent, root string, completePieces *atomic.Uint64) error {
-	span := new(mmap_span.MMapSpan)
-	defer span.Close()
 	info := t.Info()
-	for _, file := range info.UpvertedFiles() {
-		filename := filepath.Join(append([]string{root, info.Name}, file.Path...)...)
-		mm, err := mmapFile(filename)
-		if err != nil {
-			return err
-		}
-		if int64(len(mm.Bytes())) != file.Length {
-			return fmt.Errorf("file %q has wrong length", filename)
-		}
-		span.Append(mm)
+	file := info.UpvertedFiles()[0]
+	fPath := filepath.Join(append([]string{root, info.Name}, file.Path...)...)
+	f, err := os.Open(fPath)
+	if err != nil {
+		return err
 	}
-	span.InitIndex()
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
 
 	hasher := sha1.New()
 	for i := 0; i < info.NumPieces(); i++ {
 		p := info.Piece(i)
 		hasher.Reset()
-		_, err := io.Copy(hasher, io.NewSectionReader(span, p.Offset(), p.Length()))
+		_, err := io.Copy(hasher, io.NewSectionReader(f, p.Offset(), p.Length()))
 		if err != nil {
 			return err
 		}
@@ -421,28 +535,4 @@ func VerifyFileFailFast(ctx context.Context, t *torrent.Torrent, root string, co
 		}
 	}
 	return nil
-}
-
-func mmapFile(name string) (mm storage.FileMapping, err error) {
-	f, err := os.Open(name)
-	if err != nil {
-		return
-	}
-	defer func() {
-		if err != nil {
-			f.Close()
-		}
-	}()
-	fi, err := f.Stat()
-	if err != nil {
-		return
-	}
-	if fi.Size() == 0 {
-		return
-	}
-	reg, err := mmap.MapRegion(f, -1, mmap.RDONLY, mmap.COPY, 0)
-	if err != nil {
-		return
-	}
-	return storage.WrapFileMapping(reg, f), nil
 }

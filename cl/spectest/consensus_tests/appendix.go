@@ -49,6 +49,8 @@ func init() {
 		With("", spectest.UnimplementedHandler)
 	TestFormats.Add("light_client").
 		WithFn("single_merkle_proof", LightClientBeaconBlockBodyExecutionMerkleProof)
+	TestFormats.Add("merkle_proof").
+		With("single_merkle_proof", Eip4844MerkleProof)
 	TestFormats.Add("operations").
 		WithFn("attestation", operationAttestationHandler).
 		WithFn("attester_slashing", operationAttesterSlashingHandler).
@@ -90,18 +92,18 @@ func addSszTests() {
 		With("BeaconBlockBody", getSSZStaticConsensusTest(cltypes.NewBeaconBody(&clparams.MainnetBeaconConfig))).
 		With("BeaconBlockHeader", getSSZStaticConsensusTest(&cltypes.BeaconBlockHeader{})).
 		With("BeaconState", getSSZStaticConsensusTest(state.New(&clparams.MainnetBeaconConfig))).
-		//With("BlobIdentifier", getSSZStaticConsensusTest(&cltypes.BlobIdentifier{})).
-		//With("BlobSidecar", getSSZStaticConsensusTest(&cltypes.BlobSideCar{})).
+		With("BlobIdentifier", getSSZStaticConsensusTest(&cltypes.BlobIdentifier{})).
+		With("BlobSidecar", getSSZStaticConsensusTest(&cltypes.BlobSidecar{})).
 		With("BLSToExecutionChange", getSSZStaticConsensusTest(&cltypes.BLSToExecutionChange{})).
 		With("Checkpoint", getSSZStaticConsensusTest(solid.Checkpoint{})).
-		//	With("ContributionAndProof", getSSZStaticConsensusTest(&cltypes.ContributionAndProof{})).
+		With("ContributionAndProof", getSSZStaticConsensusTest(&cltypes.ContributionAndProof{})).
 		With("Deposit", getSSZStaticConsensusTest(&cltypes.Deposit{})).
 		With("DepositData", getSSZStaticConsensusTest(&cltypes.DepositData{})).
 		//	With("DepositMessage", getSSZStaticConsensusTest(&cltypes.DepositMessage{})).
 		// With("Eth1Block", getSSZStaticConsensusTest(&cltypes.Eth1Block{})).
 		With("Eth1Data", getSSZStaticConsensusTest(&cltypes.Eth1Data{})).
-		//With("ExecutionPayload", getSSZStaticConsensusTest(&cltypes.NewEth1Block(mainn))).
-		With("ExecutionPayloadHeader", getSSZStaticConsensusTest(&cltypes.Eth1Header{})).
+		With("ExecutionPayload", getSSZStaticConsensusTest(cltypes.NewEth1Block(clparams.Phase0Version, &clparams.MainnetBeaconConfig))).
+		//With("ExecutionPayloadHeader", getSSZStaticConsensusTest(&cltypes.Eth1Header{})).
 		With("Fork", getSSZStaticConsensusTest(&cltypes.Fork{})).
 		//With("ForkData", getSSZStaticConsensusTest(&cltypes.ForkData{})).
 		//With("HistoricalBatch", getSSZStaticConsensusTest(&cltypes.HistoricalBatch{})).
@@ -120,11 +122,11 @@ func addSszTests() {
 		With("SignedBeaconBlockHeader", getSSZStaticConsensusTest(&cltypes.SignedBeaconBlockHeader{})).
 		//With("SignedBlobSidecar", getSSZStaticConsensusTest(&cltypes.SignedBlobSideCar{})).
 		With("SignedBLSToExecutionChange", getSSZStaticConsensusTest(&cltypes.SignedBLSToExecutionChange{})).
-		//		With("SignedContributionAndProof", getSSZStaticConsensusTest(&cltypes.SignedContributionAndProof{})).
+		With("SignedContributionAndProof", getSSZStaticConsensusTest(&cltypes.SignedContributionAndProof{})).
 		With("SignedVoluntaryExit", getSSZStaticConsensusTest(&cltypes.SignedVoluntaryExit{})).
 		//	With("SigningData", getSSZStaticConsensusTest(&cltypes.SigningData{})). Not needed.
 		With("SyncAggregate", getSSZStaticConsensusTest(&cltypes.SyncAggregate{})).
-		//	With("SyncAggregatorSelectionData", getSSZStaticConsensusTest(&cltypes.SyncAggregatorSelectionData{})). Unimplemented
+		With("SyncAggregatorSelectionData", getSSZStaticConsensusTest(&cltypes.SyncAggregatorSelectionData{})).
 		With("SyncCommittee", getSSZStaticConsensusTest(&solid.SyncCommittee{})).
 		//	With("SyncCommitteeContribution", getSSZStaticConsensusTest(&cltypes.SyncCommitteeContribution{})).
 		//	With("SyncCommitteeMessage", getSSZStaticConsensusTest(&cltypes.SyncCommitteeMessage{})).

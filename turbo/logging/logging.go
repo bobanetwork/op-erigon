@@ -10,7 +10,24 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"github.com/ledgerwatch/erigon-lib/common/metrics"
 )
+
+// Determine the log dir path based on the given urfave context
+func LogDirPath(ctx *cli.Context) string {
+	dirPath := ""
+	if !ctx.Bool(LogDirDisableFlag.Name) {
+		dirPath = ctx.String(LogDirPathFlag.Name)
+		if dirPath == "" {
+			datadir := ctx.String("datadir")
+			if datadir != "" {
+				dirPath = filepath.Join(datadir, "logs")
+			}
+		}
+	}
+	return dirPath
+}
 
 // SetupLoggerCtx performs the logging setup according to the parameters
 // containted in the given urfave context. It returns either root logger,
@@ -24,6 +41,8 @@ func SetupLoggerCtx(filePrefix string, ctx *cli.Context,
 	consoleDefaultLevel log.Lvl, dirDefaultLevel log.Lvl, rootHandler bool) log.Logger {
 	var consoleJson = ctx.Bool(LogJsonFlag.Name) || ctx.Bool(LogConsoleJsonFlag.Name)
 	var dirJson = ctx.Bool(LogDirJsonFlag.Name)
+
+	metrics.DelayLoggingEnabled = ctx.Bool(LogBlockDelayFlag.Name)
 
 	consoleLevel, lErr := tryGetLogLevel(ctx.String(LogConsoleVerbosityFlag.Name))
 	if lErr != nil {
@@ -212,7 +231,6 @@ func initSeparatedLogging(
 	mux := log.MultiHandler(consoleHandler, log.LvlFilterHandler(dirLevel, userLog))
 	logger.SetHandler(mux)
 	logger.Info("logging to file system", "log dir", dirPath, "file prefix", filePrefix, "log level", dirLevel, "json", dirJson)
-	return
 }
 
 func tryGetLogLevel(s string) (log.Lvl, error) {

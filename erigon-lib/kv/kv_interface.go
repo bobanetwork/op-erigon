@@ -29,12 +29,12 @@ import (
 
 //Variables Naming:
 //  tx - Database Transaction
-//  txn - Ethereum Transaction (and TxNum - is also number of Etherum Transaction)
-//  blockNum - Ethereum block number - same across all nodes. blockID - auto-increment ID - which can be differrent across all nodes
+//  txn - Ethereum Transaction (and TxNum - is also number of Ethereum Transaction)
+//  blockNum - Ethereum block number - same across all nodes. blockID - auto-increment ID - which can be different across all nodes
 //  txNum/txID - same
 //  RoTx - Read-Only Database Transaction. RwTx - read-write
 //  k, v - key, value
-//  ts - TimeStamp. Usually it's Etherum's TransactionNumber (auto-increment ID). Or BlockNumber.
+//  ts - TimeStamp. Usually it's Ethereum's TransactionNumber (auto-increment ID). Or BlockNumber.
 //  Cursor - low-level mdbx-tide api to navigate over Table
 //  Iter - high-level iterator-like api over Table/InvertedIndex/History/Domain. Has less features than Cursor. See package `iter`.
 
@@ -60,11 +60,11 @@ import (
 //
 // MediumLevel:
 //    1. TemporalDB - abstracting DB+Snapshots. Target is:
-//         - provide 'time-travel' API for data: consistan snapshot of data as of given Timestamp.
+//         - provide 'time-travel' API for data: consistent snapshot of data as of given Timestamp.
 //         - auto-close iterators on Commit/Rollback
-//         - auto-open/close agg.MakeContext() on Begin/Commit/Rollback
+//         - auto-open/close agg.BeginFilesRo() on Begin/Commit/Rollback
 //         - to keep DB small - only for Hot/Recent data (can be update/delete by re-org).
-//         - And TemporalRoTx/TemporalRwTx actaully open Read-Only files view (MakeContext) - no concept of "Read-Write view of snapshot files".
+//         - And TemporalRoTx/TemporalRwTx actually open Read-Only files view (BeginFilesRo) - no concept of "Read-Write view of snapshot files".
 //         - using next entities:
 //               - InvertedIndex: supports range-scans
 //               - History: can return value of key K as of given TimeStamp. Doesn't know about latest/current
@@ -149,12 +149,13 @@ type DBVerbosityLvl int8
 type Label uint8
 
 const (
-	ChainDB      Label = 0
-	TxPoolDB     Label = 1
-	SentryDB     Label = 2
-	ConsensusDB  Label = 3
-	DownloaderDB Label = 4
-	InMem        Label = 5
+	ChainDB       Label = 0
+	TxPoolDB      Label = 1
+	SentryDB      Label = 2
+	ConsensusDB   Label = 3
+	DownloaderDB  Label = 4
+	InMem         Label = 5
+	DiagnosticsDB Label = 6
 )
 
 func (l Label) String() string {
@@ -171,6 +172,8 @@ func (l Label) String() string {
 		return "downloader"
 	case InMem:
 		return "inMem"
+	case DiagnosticsDB:
+		return "diagnostics"
 	default:
 		return "unknown"
 	}
@@ -189,6 +192,8 @@ func UnmarshalLabel(s string) Label {
 		return DownloaderDB
 	case "inMem":
 		return InMem
+	case "diagnostics":
+		return DiagnosticsDB
 	default:
 		panic(fmt.Sprintf("unexpected label: %s", s))
 	}

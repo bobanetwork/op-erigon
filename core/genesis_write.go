@@ -25,13 +25,14 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"slices"
 	"sync"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/ethereum-optimism/superchain-registry/superchain"
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/config3"
 	"github.com/ledgerwatch/log/v3"
-	"golang.org/x/exp/slices"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/chain/networkname"
@@ -49,7 +50,6 @@ import (
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/crypto"
-	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/turbo/trie"
 )
@@ -58,6 +58,7 @@ import (
 type ChainOverrides struct {
 	OverrideShanghaiTime *big.Int
 	OverrideCancunTime   *big.Int
+	OverridePragueTime   *big.Int
 	// optimism
 	OverrideOptimismCanyonTime  *big.Int
 	OverrideOptimismEcotoneTime *big.Int
@@ -118,6 +119,9 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrides *ChainOverr
 		}
 		if overrides.OverrideCancunTime != nil {
 			config.CancunTime = overrides.OverrideCancunTime
+		}
+		if overrides.OverridePragueTime != nil {
+			config.PragueTime = overrides.OverridePragueTime
 		}
 		if config.IsOptimism() && overrides.OverrideOptimismCanyonTime != nil {
 			config.CanyonTime = overrides.OverrideOptimismCanyonTime
@@ -250,7 +254,7 @@ func WriteGenesisState(g *types.Genesis, tx kv.RwTx, tmpDir string, logger log.L
 	}
 
 	var stateWriter state.StateWriter
-	if ethconfig.EnableHistoryV4InTest {
+	if config3.EnableHistoryV4InTest {
 		panic("implement me")
 		//tx.(*temporal.Tx).Agg().SetTxNum(0)
 		//stateWriter = state.NewWriterV4(tx.(kv.TemporalTx))

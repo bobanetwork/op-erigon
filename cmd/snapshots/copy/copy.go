@@ -8,13 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/urfave/cli/v2"
+
 	"github.com/ledgerwatch/erigon-lib/downloader"
 	"github.com/ledgerwatch/erigon-lib/downloader/snaptype"
 	"github.com/ledgerwatch/erigon/cmd/snapshots/flags"
 	"github.com/ledgerwatch/erigon/cmd/snapshots/sync"
 	"github.com/ledgerwatch/erigon/cmd/utils"
 	"github.com/ledgerwatch/erigon/turbo/logging"
-	"github.com/urfave/cli/v2"
 )
 
 var (
@@ -126,7 +127,8 @@ func copy(cliCtx *cli.Context) error {
 
 	switch src.LType {
 	case sync.TorrentFs:
-		torrentCli, err = sync.NewTorrentClient(cliCtx, dst.Chain)
+		config := sync.NewTorrentClientConfigFromCobra(cliCtx, dst.Chain)
+		torrentCli, err = sync.NewTorrentClient(config)
 		if err != nil {
 			return fmt.Errorf("can't create torrent: %w", err)
 		}
@@ -167,7 +169,7 @@ func copy(cliCtx *cli.Context) error {
 	version := cliCtx.Int(VersionFlag.Name)
 
 	if version != 0 {
-		dst.Version = uint8(version)
+		dst.Version = snaptype.Version(version)
 	}
 
 	if cliCtx.Args().Len() > pos {
@@ -242,7 +244,7 @@ func remoteToLocal(ctx context.Context, rcCli *downloader.RCloneClient, src *syn
 		return fmt.Errorf("no remote downloader")
 	}
 
-	session, err := rcCli.NewSession(ctx, dst.Root, src.Src+":"+src.Root)
+	session, err := rcCli.NewSession(ctx, dst.Root, src.Src+":"+src.Root, nil)
 
 	if err != nil {
 		return err
@@ -270,7 +272,7 @@ type sinf struct {
 	snaptype.FileInfo
 }
 
-func (i sinf) Version() uint8 {
+func (i sinf) Version() snaptype.Version {
 	return i.FileInfo.Version
 }
 
@@ -283,10 +285,10 @@ func (i sinf) To() uint64 {
 }
 
 func (i sinf) Type() snaptype.Type {
-	return i.FileInfo.T
+	return i.FileInfo.Type
 }
 
-func selectFiles(entries []fs.DirEntry, version uint8, firstBlock, lastBlock uint64, snapTypes []snaptype.Type, torrents, hashes, manifest bool) []string {
+func selectFiles(entries []fs.DirEntry, version snaptype.Version, firstBlock, lastBlock uint64, snapTypes []snaptype.Type, torrents, hashes, manifest bool) []string {
 	var files []string
 
 	for _, ent := range entries {
@@ -297,14 +299,18 @@ func selectFiles(entries []fs.DirEntry, version uint8, firstBlock, lastBlock uin
 				if ext := filepath.Ext(info.Name()); ext == ".torrent" {
 					fileName := strings.TrimSuffix(info.Name(), ".torrent")
 
-					if fileInfo, ok := snaptype.ParseFileName("", fileName); ok {
-						snapInfo = sinf{fileInfo}
+					if fileInfo, isStateFile, ok := snaptype.ParseFileName("", fileName); ok {
+						if isStateFile {
+							//TODO
+						} else {
+							snapInfo = sinf{fileInfo}
+						}
 					}
 				}
 			}
 
 			switch {
-			case snapInfo != nil && snapInfo.Type() != snaptype.Unknown:
+			case snapInfo != nil && snapInfo.Type() != nil:
 				if (version == 0 || version == snapInfo.Version()) &&
 					(firstBlock == 0 || snapInfo.From() >= firstBlock) &&
 					(lastBlock == 0 || snapInfo.From() < lastBlock) {

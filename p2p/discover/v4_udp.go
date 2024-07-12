@@ -97,6 +97,8 @@ type UDPv4 struct {
 	errors              map[string]uint
 	unsolicitedNodes    *lru.Cache[enode.ID, *enode.Node]
 	privateKeyGenerator func() (*ecdsa.PrivateKey, error)
+
+	trace bool
 }
 
 // replyMatcher represents a pending reply.
@@ -603,14 +605,15 @@ func (t *UDPv4) loop() {
 			return
 
 		case p := <-t.addReplyMatcher:
-			func() {
-				mutex.Lock()
-				defer mutex.Unlock()
-				p.deadline = time.Now().Add(t.replyTimeout)
-				listUpdate <- plist.PushBack(p)
-			}()
+			mutex.Lock()
+			p.deadline = time.Now().Add(t.replyTimeout)
+			back := plist.PushBack(p)
+			mutex.Unlock()
+			listUpdate <- back
 
 		case r := <-t.gotreply:
+			var removals []*list.Element
+
 			func() {
 				mutex.Lock()
 				defer mutex.Unlock()
@@ -626,7 +629,7 @@ func (t *UDPv4) loop() {
 						if requestDone {
 							p.errc <- nil
 							plist.Remove(el)
-							listUpdate <- el
+							removals = append(removals, el)
 						}
 						// Reset the continuous timeout counter (time drift detection)
 						contTimeouts = 0
@@ -634,6 +637,10 @@ func (t *UDPv4) loop() {
 				}
 				r.matched <- matched
 			}()
+
+			for _, el := range removals {
+				listUpdate <- el
+			}
 
 		case key := <-t.gotkey:
 			go func() {
@@ -677,7 +684,9 @@ func (t *UDPv4) send(toaddr *net.UDPAddr, toid enode.ID, req v4wire.Packet) ([]b
 
 func (t *UDPv4) write(toaddr *net.UDPAddr, toid enode.ID, what string, packet []byte) error {
 	_, err := t.conn.WriteToUDP(packet, toaddr)
-	t.log.Trace(">> "+what, "id", toid, "addr", toaddr, "err", err)
+	if t.trace {
+		t.log.Trace(">> "+what, "id", toid, "addr", toaddr, "err", err)
+	}
 	return err
 }
 
@@ -751,7 +760,9 @@ func (t *UDPv4) handlePacket(from *net.UDPAddr, buf []byte) error {
 	if packet.preverify != nil {
 		err = packet.preverify(packet, from, fromID, fromKey)
 	}
-	t.log.Trace("<< "+packet.Name(), "id", fromID, "addr", from, "err", err)
+	if t.trace {
+		t.log.Trace("<< "+packet.Name(), "id", fromID, "addr", from, "err", err)
+	}
 	if err == nil && packet.handle != nil {
 		packet.handle(packet, from, fromID, hash)
 	}

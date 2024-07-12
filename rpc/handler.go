@@ -27,8 +27,9 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 	"github.com/ledgerwatch/log/v3"
+
+	"github.com/ledgerwatch/erigon/rpc/rpccfg"
 )
 
 // handler handles JSON-RPC messages. There is one handler per connection. Note that
@@ -82,9 +83,8 @@ type callProc struct {
 	notifiers []*Notifier
 }
 
-func HandleError(err error, stream *jsoniter.Stream) error {
+func HandleError(err error, stream *jsoniter.Stream) {
 	if err != nil {
-		//return msg.errorResponse(err)
 		stream.WriteObjectField("error")
 		stream.WriteObjectStart()
 		stream.WriteObjectField("code")
@@ -103,15 +103,15 @@ func HandleError(err error, stream *jsoniter.Stream) error {
 			stream.WriteObjectField("data")
 			data, derr := json.Marshal(de.ErrorData())
 			if derr == nil {
-				stream.Write(data)
+				if _, err := stream.Write(data); err != nil {
+					stream.WriteNil()
+				}
 			} else {
 				stream.WriteString(derr.Error())
 			}
 		}
 		stream.WriteObjectEnd()
 	}
-
-	return nil
 }
 
 func newHandler(connCtx context.Context, conn jsonWriter, idgen func() ID, reg *serviceRegistry, allowList AllowList, maxBatchConcurrency uint, traceRequests bool, logger log.Logger, rpcSlowLogThreshold time.Duration) *handler {
@@ -578,9 +578,28 @@ func writeNilIfNotPresent(stream *jsoniter.Stream) {
 	} else {
 		hasNil = false
 	}
-	if !hasNil {
-		stream.WriteNil()
+	if hasNil {
+		// not needed
+		return
 	}
+
+	var validJsonEnd bool
+	if len(b) > 0 {
+		// assumption is that api call handlers would write valid json in case of errors
+		// we are not guaranteed that they did write valid json if last elem is "}" or "]"
+		// since we don't check json nested-ness
+		// however appending "null" after "}" or "]" does not help much either
+		lastIdx := len(b) - 1
+		validJsonEnd = b[lastIdx] == '}' || b[lastIdx] == ']'
+	}
+	if validJsonEnd {
+		// not needed
+		return
+	}
+
+	// does not have nil ending
+	// does not have valid json
+	stream.WriteNil()
 }
 
 // unsubscribe is the callback function for all *_unsubscribe calls.

@@ -42,6 +42,7 @@ func (e *EthereumExecutionModule) evictOldBuilders() {
 // Missing: NewPayload, AssembleBlock
 func (e *EthereumExecutionModule) AssembleBlock(ctx context.Context, req *execution.AssembleBlockRequest) (*execution.AssembleBlockResponse, error) {
 	if !e.semaphore.TryAcquire(1) {
+		e.logger.Warn("ethereumExecutionModule.AssembleBlock: ExecutionStatus_Busy")
 		return &execution.AssembleBlockResponse{
 			Id:   0,
 			Busy: true,
@@ -69,12 +70,15 @@ func (e *EthereumExecutionModule) AssembleBlock(ctx context.Context, req *execut
 	}
 
 	// First check if we're already building a block with the requested parameters
-	if reflect.DeepEqual(e.lastParameters, &param) {
-		e.logger.Info("[ForkChoiceUpdated] duplicate build request")
-		return &execution.AssembleBlockResponse{
-			Id:   e.nextPayloadId,
-			Busy: false,
-		}, nil
+	if e.lastParameters != nil {
+		param.PayloadId = e.lastParameters.PayloadId
+		if reflect.DeepEqual(e.lastParameters, &param) {
+			e.logger.Info("[ForkChoiceUpdated] duplicate build request")
+			return &execution.AssembleBlockResponse{
+				Id:   e.lastParameters.PayloadId,
+				Busy: false,
+			}, nil
+		}
 	}
 
 	// Initiate payload building
@@ -108,6 +112,7 @@ func blockValue(br *types.BlockWithReceipts, baseFee *uint256.Int) *uint256.Int 
 
 func (e *EthereumExecutionModule) GetAssembledBlock(ctx context.Context, req *execution.GetAssembledBlockRequest) (*execution.GetAssembledBlockResponse, error) {
 	if !e.semaphore.TryAcquire(1) {
+		e.logger.Warn("ethereumExecutionModule.GetAssembledBlock: ExecutionStatus_Busy")
 		return &execution.GetAssembledBlockResponse{
 			Busy: true,
 		}, nil

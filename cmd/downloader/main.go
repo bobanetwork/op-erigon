@@ -4,11 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+
+	_ "github.com/ledgerwatch/erigon/core/snaptype"        //hack
+	_ "github.com/ledgerwatch/erigon/polygon/bor/snaptype" //hack
 
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/c2h5oh/datasize"
@@ -20,7 +26,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/dir"
 	"github.com/ledgerwatch/erigon-lib/downloader"
 	"github.com/ledgerwatch/erigon-lib/downloader/downloadercfg"
-	"github.com/ledgerwatch/erigon-lib/downloader/snaptype"
+	"github.com/ledgerwatch/erigon-lib/downloader/downloadergrpc"
 	proto_downloader "github.com/ledgerwatch/erigon-lib/gointerfaces/downloader"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -82,7 +88,8 @@ func init() {
 	utils.CobraFlags(rootCmd, debug.Flags, utils.MetricFlags, logging.Flags)
 
 	withDataDir(rootCmd)
-	rootCmd.Flags().StringVar(&chain, utils.ChainFlag.Name, utils.ChainFlag.Value, utils.ChainFlag.Usage)
+	withChainFlag(rootCmd)
+
 	rootCmd.Flags().StringVar(&webseeds, utils.WebSeedsFlag.Name, utils.WebSeedsFlag.Value, utils.WebSeedsFlag.Usage)
 	rootCmd.Flags().StringVar(&natSetting, "nat", utils.NATFlag.Value, utils.NATFlag.Usage)
 	rootCmd.Flags().StringVar(&downloaderApiAddr, "downloader.api.addr", "127.0.0.1:9093", "external downloader api network address, for example: 127.0.0.1:9093 serves remote downloader interface")
@@ -103,15 +110,26 @@ func init() {
 
 	withDataDir(createTorrent)
 	withFile(createTorrent)
+	withChainFlag(createTorrent)
 	rootCmd.AddCommand(createTorrent)
 
 	rootCmd.AddCommand(torrentCat)
 	rootCmd.AddCommand(torrentMagnet)
 
+	withDataDir(torrentClean)
+	rootCmd.AddCommand(torrentClean)
+
 	withDataDir(manifestCmd)
+	withChainFlag(manifestCmd)
 	rootCmd.AddCommand(manifestCmd)
 
+	manifestVerifyCmd.Flags().StringVar(&webseeds, utils.WebSeedsFlag.Name, utils.WebSeedsFlag.Value, utils.WebSeedsFlag.Usage)
+	manifestVerifyCmd.PersistentFlags().BoolVar(&verifyFailfast, "verify.failfast", false, "Stop on first found error. Report it and exit")
+	withChainFlag(manifestVerifyCmd)
+	rootCmd.AddCommand(manifestVerifyCmd)
+
 	withDataDir(printTorrentHashes)
+	withChainFlag(printTorrentHashes)
 	printTorrentHashes.PersistentFlags().BoolVar(&forceRebuild, "rebuild", false, "Force re-create .torrent files")
 	printTorrentHashes.Flags().StringVar(&targetFile, "targetfile", "", "write output to file")
 	if err := printTorrentHashes.MarkFlagFilename("targetfile"); err != nil {
@@ -123,13 +141,22 @@ func init() {
 
 func withDataDir(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&datadirCli, utils.DataDirFlag.Name, paths.DefaultDataDir(), utils.DataDirFlag.Usage)
-	if err := cmd.MarkFlagDirname(utils.DataDirFlag.Name); err != nil {
-		panic(err)
-	}
+	must(cmd.MarkFlagRequired(utils.DataDirFlag.Name))
+	must(cmd.MarkFlagDirname(utils.DataDirFlag.Name))
+}
+func withChainFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&chain, utils.ChainFlag.Name, utils.ChainFlag.Value, utils.ChainFlag.Usage)
+	must(cmd.MarkFlagRequired(utils.ChainFlag.Name))
 }
 func withFile(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&filePath, "file", "", "")
 	if err := cmd.MarkFlagFilename(utils.DataDirFlag.Name); err != nil {
+		panic(err)
+	}
+}
+
+func must(err error) {
+	if err != nil {
 		panic(err)
 	}
 }
@@ -188,7 +215,7 @@ func Downloader(ctx context.Context, logger log.Logger) error {
 	if known, ok := snapcfg.KnownWebseeds[chain]; ok {
 		webseedsList = append(webseedsList, known...)
 	}
-	cfg, err := downloadercfg.New(dirs, version, torrentLogLevel, downloadRate, uploadRate, torrentPort, torrentConnsPerFile, torrentDownloadSlots, staticPeers, webseedsList, chain)
+	cfg, err := downloadercfg.New(dirs, version, torrentLogLevel, downloadRate, uploadRate, torrentPort, torrentConnsPerFile, torrentDownloadSlots, staticPeers, webseedsList, chain, true)
 	if err != nil {
 		return err
 	}
@@ -205,29 +232,12 @@ func Downloader(ctx context.Context, logger log.Logger) error {
 
 	cfg.AddTorrentsFromDisk = true // always true unless using uploader - which wants control of torrent files
 
-	d, err := downloader.New(ctx, cfg, dirs, logger, log.LvlInfo, seedbox)
+	d, err := downloader.New(ctx, cfg, logger, log.LvlInfo, seedbox)
 	if err != nil {
 		return err
 	}
 	defer d.Close()
 	logger.Info("[snapshots] Start bittorrent server", "my_peer_id", fmt.Sprintf("%x", d.TorrentClient().PeerID()))
-
-	if err := addPreConfiguredHashes(ctx, d); err != nil {
-		return err
-	}
-
-	d.MainLoopInBackground(false)
-
-	bittorrentServer, err := downloader.NewGrpcServer(d)
-	if err != nil {
-		return fmt.Errorf("new server: %w", err)
-	}
-
-	grpcServer, err := StartGrpc(bittorrentServer, downloaderApiAddr, nil /* transportCredentials */, logger)
-	if err != nil {
-		return err
-	}
-	defer grpcServer.GracefulStop()
 
 	if len(_verifyFiles) > 0 {
 		verifyFiles = strings.Split(_verifyFiles, ",")
@@ -238,6 +248,31 @@ func Downloader(ctx context.Context, logger log.Logger) error {
 		}
 	}
 
+	d.MainLoopInBackground(false)
+
+	bittorrentServer, err := downloader.NewGrpcServer(d)
+	if err != nil {
+		return fmt.Errorf("new server: %w", err)
+	}
+	if seedbox {
+		var downloadItems []*proto_downloader.AddItem
+		for _, it := range snapcfg.KnownCfg(chain).Preverified {
+			downloadItems = append(downloadItems, &proto_downloader.AddItem{
+				Path:        it.Name,
+				TorrentHash: downloadergrpc.String2Proto(it.Hash),
+			})
+		}
+		if _, err := bittorrentServer.Add(ctx, &proto_downloader.AddRequest{Items: downloadItems}); err != nil {
+			return err
+		}
+	}
+
+	grpcServer, err := StartGrpc(bittorrentServer, downloaderApiAddr, nil /* transportCredentials */, logger)
+	if err != nil {
+		return err
+	}
+	defer grpcServer.GracefulStop()
+
 	<-ctx.Done()
 	return nil
 }
@@ -246,12 +281,12 @@ var createTorrent = &cobra.Command{
 	Use:     "torrent_create",
 	Example: "go run ./cmd/downloader torrent_create --datadir=<your_datadir> --file=<relative_file_path>",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		//logger := debug.SetupCobra(cmd, "integration")
 		dirs := datadir.New(datadirCli)
-		err := downloader.BuildTorrentFilesIfNeed(cmd.Context(), dirs, downloader.NewAtomicTorrentFiles(dirs.Snap))
+		createdAmount, err := downloader.BuildTorrentFilesIfNeed(cmd.Context(), dirs, downloader.NewAtomicTorrentFS(dirs.Snap), chain, nil)
 		if err != nil {
 			return err
 		}
+		log.Info("created .torent files", "amount", createdAmount)
 		return nil
 	},
 }
@@ -270,11 +305,24 @@ var printTorrentHashes = &cobra.Command{
 
 var manifestCmd = &cobra.Command{
 	Use:     "manifest",
-	Example: "go run ./cmd/downloader torrent_hashes --datadir <your_datadir>",
+	Example: "go run ./cmd/downloader manifest --datadir <your_datadir>",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := debug.SetupCobra(cmd, "downloader")
 		if err := manifest(cmd.Context(), logger); err != nil {
 			log.Error(err.Error())
+		}
+		return nil
+	},
+}
+
+var manifestVerifyCmd = &cobra.Command{
+	Use:     "manifest-verify",
+	Example: "go run ./cmd/downloader manifest-verify --chain <chain> [--webseeds 'a','b','c']",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := debug.SetupCobra(cmd, "downloader")
+		if err := manifestVerify(cmd.Context(), logger); err != nil {
+			log.Error(err.Error())
+			os.Exit(1) // to mark CI as failed
 		}
 		return nil
 	},
@@ -302,6 +350,44 @@ var torrentCat = &cobra.Command{
 		return nil
 	},
 }
+var torrentClean = &cobra.Command{
+	Use:     "torrent_clean",
+	Short:   "Remove all .torrent files from datadir directory",
+	Example: "go run ./cmd/downloader torrent_clean --datadir=<datadir>",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dirs := datadir.New(datadirCli)
+
+		logger.Info("[snapshots.webseed] processing local file etags")
+		removedTorrents := 0
+		walker := func(path string, de fs.DirEntry, err error) error {
+			if err != nil || de.IsDir() {
+				if err != nil {
+					logger.Warn("[snapshots.torrent] walk and cleanup", "err", err, "path", path)
+				}
+				return nil //nolint
+			}
+
+			if !strings.HasSuffix(de.Name(), ".torrent") || strings.HasPrefix(de.Name(), ".") {
+				return nil
+			}
+			err = os.Remove(filepath.Join(dirs.Snap, path))
+			if err != nil {
+				logger.Warn("[snapshots.torrent] remove", "err", err, "path", path)
+				return err
+			}
+			removedTorrents++
+			return nil
+		}
+
+		sfs := os.DirFS(dirs.Snap)
+		if err := fs.WalkDir(sfs, ".", walker); err != nil {
+			return err
+		}
+		logger.Info("[snapshots.torrent] cleanup finished", "count", removedTorrents)
+		return nil
+	},
+}
+
 var torrentMagnet = &cobra.Command{
 	Use:     "torrent_magnet",
 	Example: "go run ./cmd/downloader torrent_magnet <path_to_torrent_file>",
@@ -319,25 +405,78 @@ var torrentMagnet = &cobra.Command{
 	},
 }
 
+func manifestVerify(ctx context.Context, logger log.Logger) error {
+	webseedsList := common.CliString2Array(webseeds)
+	if len(webseedsList) == 0 {
+		if known, ok := snapcfg.KnownWebseeds[chain]; ok {
+			webseedsList = append(webseedsList, known...)
+		}
+	}
+
+	webseedUrlsOrFiles := webseedsList
+	webseedHttpProviders := make([]*url.URL, 0, len(webseedUrlsOrFiles))
+	webseedFileProviders := make([]string, 0, len(webseedUrlsOrFiles))
+	for _, webseed := range webseedUrlsOrFiles {
+		if !strings.HasPrefix(webseed, "v") { // has marker v1/v2/...
+			uri, err := url.ParseRequestURI(webseed)
+			if err != nil {
+				if strings.HasSuffix(webseed, ".toml") && dir.FileExist(webseed) {
+					webseedFileProviders = append(webseedFileProviders, webseed)
+				}
+				continue
+			}
+			webseedHttpProviders = append(webseedHttpProviders, uri)
+			continue
+		}
+
+		if strings.HasPrefix(webseed, "v1:") {
+			withoutVerisonPrefix := webseed[3:]
+			if !strings.HasPrefix(withoutVerisonPrefix, "https:") {
+				continue
+			}
+			uri, err := url.ParseRequestURI(withoutVerisonPrefix)
+			if err != nil {
+				log.Warn("[webseed] can't parse url", "err", err, "url", withoutVerisonPrefix)
+				continue
+			}
+			webseedHttpProviders = append(webseedHttpProviders, uri)
+		} else {
+			continue
+		}
+	}
+	if len(webseedFileProviders) > 0 {
+		logger.Warn("file providers are not supported yet", "fileProviders", webseedFileProviders)
+	}
+
+	wseed := downloader.NewWebSeeds(webseedHttpProviders, log.LvlDebug, logger)
+	return wseed.VerifyManifestedBuckets(ctx, verifyFailfast)
+}
+
 func manifest(ctx context.Context, logger log.Logger) error {
 	dirs := datadir.New(datadirCli)
+
+	files, err := downloader.SeedableFiles(dirs, chain)
+	if err != nil {
+		return err
+	}
+
 	extList := []string{
 		".torrent",
-		".seg", ".idx", // e2
-		".kv", ".kvi", ".bt", ".kvei", // e3 domain
-		".v", ".vi", //e3 hist
-		".ef", ".efi", //e3 idx
-		".txt", //salt.txt
+		//".seg", ".idx", // e2
+		//".kv", ".kvi", ".bt", ".kvei", // e3 domain
+		//".v", ".vi", //e3 hist
+		//".ef", ".efi", //e3 idx
+		".txt", //salt.txt, manifest.txt
 	}
 	l, _ := dir.ListFiles(dirs.Snap, extList...)
 	for _, fPath := range l {
 		_, fName := filepath.Split(fPath)
-		fmt.Printf("%s\n", fName)
+		files = append(files, fName)
 	}
 	l, _ = dir.ListFiles(dirs.SnapDomain, extList...)
 	for _, fPath := range l {
 		_, fName := filepath.Split(fPath)
-		fmt.Printf("domain/%s\n", fName)
+		files = append(files, "domain/"+fName)
 	}
 	l, _ = dir.ListFiles(dirs.SnapHistory, extList...)
 	for _, fPath := range l {
@@ -345,7 +484,7 @@ func manifest(ctx context.Context, logger log.Logger) error {
 		if strings.Contains(fName, "commitment") {
 			continue
 		}
-		fmt.Printf("history/%s\n", fName)
+		files = append(files, "history/"+fName)
 	}
 	l, _ = dir.ListFiles(dirs.SnapIdx, extList...)
 	for _, fPath := range l {
@@ -353,15 +492,12 @@ func manifest(ctx context.Context, logger log.Logger) error {
 		if strings.Contains(fName, "commitment") {
 			continue
 		}
-		fmt.Printf("idx/%s\n", fName)
+		files = append(files, "idx/"+fName)
 	}
-	l, _ = dir.ListFiles(dirs.SnapAccessors, extList...)
-	for _, fPath := range l {
-		_, fName := filepath.Split(fPath)
-		if strings.Contains(fName, "commitment") {
-			continue
-		}
-		fmt.Printf("accessors/%s\n", fName)
+
+	sort.Strings(files)
+	for _, f := range files {
+		fmt.Printf("%s\n", f)
 	}
 	return nil
 }
@@ -372,7 +508,7 @@ func doPrintTorrentHashes(ctx context.Context, logger log.Logger) error {
 		return err
 	}
 
-	tf := downloader.NewAtomicTorrentFiles(dirs.Snap)
+	tf := downloader.NewAtomicTorrentFS(dirs.Snap)
 
 	if forceRebuild { // remove and create .torrent files (will re-read all snapshots)
 		//removePieceCompletionStorage(snapDir)
@@ -385,9 +521,11 @@ func doPrintTorrentHashes(ctx context.Context, logger log.Logger) error {
 				return err
 			}
 		}
-		if err := downloader.BuildTorrentFilesIfNeed(ctx, dirs, tf); err != nil {
+		createdAmount, err := downloader.BuildTorrentFilesIfNeed(ctx, dirs, tf, chain, nil)
+		if err != nil {
 			return fmt.Errorf("BuildTorrentFilesIfNeed: %w", err)
 		}
+		log.Info("created .torent files", "amount", createdAmount)
 	}
 
 	res := map[string]string{}
@@ -487,16 +625,6 @@ func StartGrpc(snServer *downloader.GrpcServer, addr string, creds *credentials.
 	}()
 	logger.Info("Started gRPC server", "on", addr)
 	return grpcServer, nil
-}
-
-// Add pre-configured
-func addPreConfiguredHashes(ctx context.Context, d *downloader.Downloader) error {
-	for _, it := range snapcfg.KnownCfg(chain, 0).Preverified {
-		if err := d.AddMagnetLink(ctx, snaptype.Hex2InfoHash(it.Hash), it.Name); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func checkChainName(ctx context.Context, dirs datadir.Dirs, chainName string) error {

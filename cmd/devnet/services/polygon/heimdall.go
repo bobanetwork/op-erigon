@@ -78,8 +78,8 @@ type Heimdall struct {
 	pendingCheckpoint  *heimdall.Checkpoint
 	latestCheckpoint   *CheckpointAck
 	ackWaiter          *sync.Cond
-	currentSpan        *heimdall.HeimdallSpan
-	spans              map[uint64]*heimdall.HeimdallSpan
+	currentSpan        *heimdall.Span
+	spans              map[heimdall.SpanId]*heimdall.Span
 	logger             log.Logger
 	cancelFunc         context.CancelFunc
 	syncSenderAddress  libcommon.Address
@@ -105,7 +105,7 @@ func NewHeimdall(
 		borConfig:          chainConfig.Bor.(*borcfg.BorConfig),
 		listenAddr:         serverURL[7:],
 		checkpointConfig:   *checkpointConfig,
-		spans:              map[uint64]*heimdall.HeimdallSpan{},
+		spans:              map[heimdall.SpanId]*heimdall.Span{},
 		pendingSyncRecords: map[syncRecordKey]*EventRecordWithBlock{},
 		logger:             logger}
 
@@ -142,24 +142,26 @@ func NewHeimdall(
 	return heimdall
 }
 
-func (h *Heimdall) Span(ctx context.Context, spanID uint64) (*heimdall.HeimdallSpan, error) {
+func (h *Heimdall) FetchSpan(ctx context.Context, spanID uint64) (*heimdall.Span, error) {
 	h.Lock()
 	defer h.Unlock()
 
-	if span, ok := h.spans[spanID]; ok {
+	if span, ok := h.spans[heimdall.SpanId(spanID)]; ok {
 		h.currentSpan = span
 		return span, nil
 	}
 
 	var nextSpan = heimdall.Span{
-		ID: spanID,
+		Id:           heimdall.SpanId(spanID),
+		ValidatorSet: *h.validatorSet,
+		ChainID:      h.chainConfig.ChainID.String(),
 	}
 
 	if h.currentSpan == nil || spanID == 0 {
 		nextSpan.StartBlock = 1 //256
 	} else {
-		if spanID != h.currentSpan.ID+1 {
-			return nil, fmt.Errorf("Can't initialize span: non consecutive span")
+		if spanID != uint64(h.currentSpan.Id+1) {
+			return nil, fmt.Errorf("can't initialize span: non consecutive span")
 		}
 
 		nextSpan.StartBlock = h.currentSpan.EndBlock + 1
@@ -169,22 +171,21 @@ func (h *Heimdall) Span(ctx context.Context, spanID uint64) (*heimdall.HeimdallS
 
 	// TODO we should use a subset here - see: https://wiki.polygon.technology/docs/pos/bor/
 
-	selectedProducers := make([]valset.Validator, len(h.validatorSet.Validators))
+	nextSpan.SelectedProducers = make([]valset.Validator, len(h.validatorSet.Validators))
 
 	for i, v := range h.validatorSet.Validators {
-		selectedProducers[i] = *v
+		nextSpan.SelectedProducers[i] = *v
 	}
 
-	h.currentSpan = &heimdall.HeimdallSpan{
-		Span:              nextSpan,
-		ValidatorSet:      *h.validatorSet,
-		SelectedProducers: selectedProducers,
-		ChainID:           h.chainConfig.ChainID.String(),
-	}
+	h.currentSpan = &nextSpan
 
-	h.spans[h.currentSpan.ID] = h.currentSpan
+	h.spans[h.currentSpan.Id] = h.currentSpan
 
 	return h.currentSpan, nil
+}
+
+func (h *Heimdall) FetchLatestSpan(ctx context.Context) (*heimdall.Span, error) {
+	return nil, fmt.Errorf("TODO")
 }
 
 func (h *Heimdall) currentSprintLength() int {
@@ -209,6 +210,10 @@ func (h *Heimdall) FetchCheckpointCount(ctx context.Context) (int64, error) {
 	return 0, fmt.Errorf("TODO")
 }
 
+func (h *Heimdall) FetchCheckpoints(ctx context.Context, page uint64, limit uint64) (heimdall.Checkpoints, error) {
+	return nil, fmt.Errorf("TODO")
+}
+
 func (h *Heimdall) FetchMilestone(ctx context.Context, number int64) (*heimdall.Milestone, error) {
 	return nil, fmt.Errorf("TODO")
 }
@@ -227,6 +232,14 @@ func (h *Heimdall) FetchLastNoAckMilestone(ctx context.Context) (string, error) 
 
 func (h *Heimdall) FetchMilestoneID(ctx context.Context, milestoneID string) error {
 	return fmt.Errorf("TODO")
+}
+
+func (h *Heimdall) FetchStateSyncEvents(ctx context.Context, fromID uint64, to time.Time, limit int) ([]*heimdall.EventRecordWithTime, error) {
+	return nil, fmt.Errorf("TODO")
+}
+
+func (h *Heimdall) FetchStateSyncEvent(ctx context.Context, id uint64) (*heimdall.EventRecordWithTime, error) {
+	return nil, fmt.Errorf("TODO")
 }
 
 func (h *Heimdall) Close() {
@@ -434,7 +447,7 @@ func makeHeimdallRouter(ctx context.Context, client heimdall.HeimdallClient) *ch
 			return
 		}
 
-		result, err := client.StateSyncEvents(ctx, fromId, toTime)
+		result, err := client.FetchStateSyncEvents(ctx, fromId, time.Unix(toTime, 0), 0)
 		writeResponse(w, result, err)
 	})
 
@@ -445,7 +458,7 @@ func makeHeimdallRouter(ctx context.Context, client heimdall.HeimdallClient) *ch
 			http.Error(w, http.StatusText(400), 400)
 			return
 		}
-		result, err := client.Span(ctx, id)
+		result, err := client.FetchSpan(ctx, id)
 		writeResponse(w, result, err)
 	})
 
@@ -467,6 +480,25 @@ func makeHeimdallRouter(ctx context.Context, client heimdall.HeimdallClient) *ch
 
 	router.Get("/checkpoints/count", func(w http.ResponseWriter, r *http.Request) {
 		result, err := client.FetchCheckpointCount(ctx)
+		writeResponse(w, wrapResult(result), err)
+	})
+
+	router.Get("/checkpoints/list", func(w http.ResponseWriter, r *http.Request) {
+		pageStr := r.URL.Query().Get("page")
+		page, err := strconv.ParseUint(pageStr, 10, 64)
+		if err != nil {
+			http.Error(w, http.StatusText(400), 400)
+			return
+		}
+
+		limitStr := r.URL.Query().Get("limit")
+		limit, err := strconv.ParseUint(limitStr, 10, 64)
+		if err != nil {
+			http.Error(w, http.StatusText(400), 400)
+			return
+		}
+
+		result, err := client.FetchCheckpoints(ctx, page, limit)
 		writeResponse(w, wrapResult(result), err)
 	})
 

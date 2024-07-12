@@ -22,18 +22,41 @@ type attesterDutyResponse struct {
 	Slot                    uint64            `json:"slot,string"`
 }
 
+func (a *ApiHandler) getDependentRoot(s *state.CachingBeaconState, epoch uint64) libcommon.Hash {
+	dependentRootSlot := ((epoch - 1) * a.beaconChainCfg.SlotsPerEpoch) - 3
+	maxIterations := 2048
+	for i := 0; i < maxIterations; i++ {
+		if dependentRootSlot > epoch*a.beaconChainCfg.SlotsPerEpoch {
+			return libcommon.Hash{}
+		}
+
+		dependentRoot, err := s.GetBlockRootAtSlot(dependentRootSlot)
+		if err != nil {
+			dependentRootSlot--
+			continue
+		}
+		return dependentRoot
+	}
+	return libcommon.Hash{}
+}
+
 func (a *ApiHandler) getAttesterDuties(w http.ResponseWriter, r *http.Request) (*beaconhttp.BeaconResponse, error) {
 	epoch, err := beaconhttp.EpochFromRequest(r)
 	if err != nil {
 		return nil, err
 	}
+	s := a.syncedData.HeadState()
+	if s == nil {
+		return nil, beaconhttp.NewEndpointError(http.StatusServiceUnavailable, fmt.Errorf("node is syncing"))
+	}
+	dependentRoot := a.getDependentRoot(s, epoch)
 
 	var idxsStr []string
 	if err := json.NewDecoder(r.Body).Decode(&idxsStr); err != nil {
-		return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not decode request body: %w. request body is required", err).Error())
+		return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not decode request body: %w. request body is required", err))
 	}
 	if len(idxsStr) == 0 {
-		return newBeaconResponse([]string{}).WithOptimistic(false), nil
+		return newBeaconResponse([]string{}).WithOptimistic(false).With("dependent_root", dependentRoot), nil
 	}
 	idxSet := map[int]struct{}{}
 	// convert the request to uint64
@@ -41,7 +64,7 @@ func (a *ApiHandler) getAttesterDuties(w http.ResponseWriter, r *http.Request) (
 
 		idx, err := strconv.ParseUint(idxStr, 10, 64)
 		if err != nil {
-			return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not parse validator index: %w", err).Error())
+			return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not parse validator index: %w", err))
 		}
 		if _, ok := idxSet[int(idx)]; ok {
 			continue
@@ -60,14 +83,13 @@ func (a *ApiHandler) getAttesterDuties(w http.ResponseWriter, r *http.Request) (
 	// get the duties
 	if a.forkchoiceStore.LowestAvaiableSlot() <= epoch*a.beaconChainCfg.SlotsPerEpoch {
 		// non-finality case
-		s, cn := a.syncedData.HeadState()
-		defer cn()
+
 		if s == nil {
-			return nil, beaconhttp.NewEndpointError(http.StatusServiceUnavailable, "node is syncing")
+			return nil, beaconhttp.NewEndpointError(http.StatusServiceUnavailable, fmt.Errorf("node is syncing"))
 		}
 
-		if epoch > state.Epoch(s)+1 {
-			return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Sprintf("epoch %d is too far in the future", epoch))
+		if epoch > state.Epoch(s)+3 {
+			return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("epoch %d is too far in the future", epoch))
 		}
 
 		// get active validator indicies
@@ -100,7 +122,7 @@ func (a *ApiHandler) getAttesterDuties(w http.ResponseWriter, r *http.Request) (
 				}
 			}
 		}
-		return newBeaconResponse(resp).WithOptimistic(false), nil
+		return newBeaconResponse(resp).WithOptimistic(false).With("dependent_root", dependentRoot), nil
 	}
 
 	stageStateProgress, err := state_accessors.GetStateProcessingProgress(tx)
@@ -108,7 +130,7 @@ func (a *ApiHandler) getAttesterDuties(w http.ResponseWriter, r *http.Request) (
 		return nil, err
 	}
 	if (epoch)*a.beaconChainCfg.SlotsPerEpoch >= stageStateProgress {
-		return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Sprintf("epoch %d is too far in the future", epoch))
+		return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("epoch %d is too far in the future", epoch))
 	}
 	// finality case
 	activeIdxs, err := state_accessors.ReadActiveIndicies(tx, epoch*a.beaconChainCfg.SlotsPerEpoch)
@@ -127,7 +149,7 @@ func (a *ApiHandler) getAttesterDuties(w http.ResponseWriter, r *http.Request) (
 	mixPosition := (epoch + a.beaconChainCfg.EpochsPerHistoricalVector - a.beaconChainCfg.MinSeedLookahead - 1) % a.beaconChainCfg.EpochsPerHistoricalVector
 	mix, err := a.stateReader.ReadRandaoMixBySlotAndIndex(tx, epoch*a.beaconChainCfg.SlotsPerEpoch, mixPosition)
 	if err != nil {
-		return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Sprintf("could not read randao mix: %v", err))
+		return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Errorf("could not read randao mix: %v", err))
 	}
 
 	for currSlot := epoch * a.beaconChainCfg.SlotsPerEpoch; currSlot < (epoch+1)*a.beaconChainCfg.SlotsPerEpoch; currSlot++ {
@@ -159,5 +181,5 @@ func (a *ApiHandler) getAttesterDuties(w http.ResponseWriter, r *http.Request) (
 			}
 		}
 	}
-	return newBeaconResponse(resp).WithOptimistic(false), nil
+	return newBeaconResponse(resp).WithOptimistic(false).With("dependent_root", dependentRoot), nil
 }

@@ -3,12 +3,12 @@ package stagedsync
 import (
 	"context"
 
+	"github.com/ledgerwatch/erigon-lib/config3"
 	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon-lib/common/dbg"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/wrap"
-	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
 )
 
@@ -133,7 +133,7 @@ func DefaultStages(ctx context.Context,
 		{
 			ID:          stages.HashState,
 			Description: "Hash the key in the state",
-			Disabled:    bodies.historyV3 || ethconfig.EnableHistoryV4InTest || dbg.StagesOnlyBlocks,
+			Disabled:    bodies.historyV3 || config3.EnableHistoryV4InTest || dbg.StagesOnlyBlocks,
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, txc wrap.TxContainer, logger log.Logger) error {
 				return SpawnHashStateStage(s, txc.Tx, hashState, ctx, logger)
 			},
@@ -147,9 +147,9 @@ func DefaultStages(ctx context.Context,
 		{
 			ID:          stages.IntermediateHashes,
 			Description: "Generate intermediate hashes and computing state root",
-			Disabled:    bodies.historyV3 || ethconfig.EnableHistoryV4InTest || dbg.StagesOnlyBlocks,
+			Disabled:    bodies.historyV3 || config3.EnableHistoryV4InTest || dbg.StagesOnlyBlocks,
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, txc wrap.TxContainer, logger log.Logger) error {
-				if exec.chainConfig.IsPrague(0) {
+				if exec.chainConfig.IsOsaka(0) {
 					_, err := SpawnVerkleTrie(s, u, txc.Tx, trieCfg, ctx, logger)
 					return err
 				}
@@ -157,7 +157,7 @@ func DefaultStages(ctx context.Context,
 				return err
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, txc wrap.TxContainer, logger log.Logger) error {
-				if exec.chainConfig.IsPrague(0) {
+				if exec.chainConfig.IsOsaka(0) {
 					return UnwindVerkleTrie(u, s, txc.Tx, trieCfg, ctx, logger)
 				}
 				return UnwindIntermediateHashesStage(u, s, txc.Tx, trieCfg, ctx, logger)
@@ -313,7 +313,7 @@ func PipelineStages(ctx context.Context, snapshots SnapshotsCfg, blockHashCfg Bl
 		{
 			ID:          stages.HashState,
 			Description: "Hash the key in the state",
-			Disabled:    exec.historyV3 && ethconfig.EnableHistoryV4InTest,
+			Disabled:    exec.historyV3 && config3.EnableHistoryV4InTest,
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, txc wrap.TxContainer, logger log.Logger) error {
 				return SpawnHashStateStage(s, txc.Tx, hashState, ctx, logger)
 			},
@@ -327,9 +327,9 @@ func PipelineStages(ctx context.Context, snapshots SnapshotsCfg, blockHashCfg Bl
 		{
 			ID:          stages.IntermediateHashes,
 			Description: "Generate intermediate hashes and computing state root",
-			Disabled:    exec.historyV3 && ethconfig.EnableHistoryV4InTest,
+			Disabled:    exec.historyV3 && config3.EnableHistoryV4InTest,
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, txc wrap.TxContainer, logger log.Logger) error {
-				if exec.chainConfig.IsPrague(0) {
+				if exec.chainConfig.IsOsaka(0) {
 					_, err := SpawnVerkleTrie(s, u, txc.Tx, trieCfg, ctx, logger)
 					return err
 				}
@@ -337,7 +337,7 @@ func PipelineStages(ctx context.Context, snapshots SnapshotsCfg, blockHashCfg Bl
 				return err
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, txc wrap.TxContainer, logger log.Logger) error {
-				if exec.chainConfig.IsPrague(0) {
+				if exec.chainConfig.IsOsaka(0) {
 					return UnwindVerkleTrie(u, s, txc.Tx, trieCfg, ctx, logger)
 				}
 				return UnwindIntermediateHashesStage(u, s, txc.Tx, trieCfg, ctx, logger)
@@ -522,7 +522,7 @@ func UploaderPipelineStages(ctx context.Context, snapshots SnapshotsCfg, headers
 		{
 			ID:          stages.HashState,
 			Description: "Hash the key in the state",
-			Disabled:    exec.historyV3 && ethconfig.EnableHistoryV4InTest,
+			Disabled:    exec.historyV3 && config3.EnableHistoryV4InTest,
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, txc wrap.TxContainer, logger log.Logger) error {
 				return SpawnHashStateStage(s, txc.Tx, hashState, ctx, logger)
 			},
@@ -536,9 +536,9 @@ func UploaderPipelineStages(ctx context.Context, snapshots SnapshotsCfg, headers
 		{
 			ID:          stages.IntermediateHashes,
 			Description: "Generate intermediate hashes and computing state root",
-			Disabled:    exec.historyV3 && ethconfig.EnableHistoryV4InTest,
+			Disabled:    exec.historyV3 && config3.EnableHistoryV4InTest,
 			Forward: func(firstCycle bool, badBlockUnwind bool, s *StageState, u Unwinder, txc wrap.TxContainer, logger log.Logger) error {
-				if exec.chainConfig.IsPrague(0) {
+				if exec.chainConfig.IsOsaka(0) {
 					_, err := SpawnVerkleTrie(s, u, txc.Tx, trieCfg, ctx, logger)
 					return err
 				}
@@ -546,7 +546,7 @@ func UploaderPipelineStages(ctx context.Context, snapshots SnapshotsCfg, headers
 				return err
 			},
 			Unwind: func(firstCycle bool, u *UnwindState, s *StageState, txc wrap.TxContainer, logger log.Logger) error {
-				if exec.chainConfig.IsPrague(0) {
+				if exec.chainConfig.IsOsaka(0) {
 					return UnwindVerkleTrie(u, s, txc.Tx, trieCfg, ctx, logger)
 				}
 				return UnwindIntermediateHashesStage(u, s, txc.Tx, trieCfg, ctx, logger)

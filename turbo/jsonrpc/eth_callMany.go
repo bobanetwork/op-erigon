@@ -7,12 +7,12 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/log/v3"
+
+	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/hexutil"
 	"github.com/ledgerwatch/erigon-lib/opstack"
-
-	"github.com/holiman/uint256"
-	"github.com/ledgerwatch/erigon-lib/common"
-	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/core"
@@ -79,7 +79,6 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 		blockCtx           evmtypes.BlockContext
 		txCtx              evmtypes.TxContext
 		overrideBlockHash  map[uint64]common.Hash
-		baseFee            uint256.Int
 	)
 
 	overrideBlockHash = make(map[uint64]common.Hash)
@@ -88,7 +87,7 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 		return nil, err
 	}
 	defer tx.Rollback()
-	chainConfig, err := api.chainConfig(tx)
+	chainConfig, err := api.chainConfig(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +112,7 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 		return nil, err
 	}
 
-	block, err := api.blockWithSenders(tx, hash, blockNum)
+	block, err := api.blockWithSenders(ctx, tx, hash, blockNum)
 	if err != nil {
 		return nil, err
 	}
@@ -140,9 +139,9 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 
 	st := state.New(stateReader)
 
-	parent := block.Header()
+	header := block.Header()
 
-	if parent == nil {
+	if header == nil {
 		return nil, fmt.Errorf("block %d(%x) not found", blockNum, hash)
 	}
 
@@ -157,21 +156,7 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 		return hash
 	}
 
-	if parent.BaseFee != nil {
-		baseFee.SetFromBig(parent.BaseFee)
-	}
-
-	blockCtx = evmtypes.BlockContext{
-		CanTransfer: core.CanTransfer,
-		Transfer:    core.Transfer,
-		GetHash:     getHash,
-		Coinbase:    parent.Coinbase,
-		BlockNumber: parent.Number.Uint64(),
-		Time:        parent.Time,
-		Difficulty:  new(big.Int).Set(parent.Difficulty),
-		GasLimit:    parent.GasLimit,
-		BaseFee:     &baseFee,
-	}
+	blockCtx = core.NewEVMBlockContext(header, getHash, api.engine(), nil /* author */)
 	blockCtx.L1CostFunc = opstack.NewL1CostFunc(chainConfig, st)
 
 	// Get a new instance of the EVM

@@ -80,30 +80,6 @@ type registry struct {
 var providers = map[Type]*registry{}
 var providerMutex sync.RWMutex
 
-func RegisterProvider(provider Provider, infoType Type, logger log.Logger) {
-	providerMutex.Lock()
-	defer providerMutex.Unlock()
-
-	reg := providers[infoType]
-
-	if reg != nil {
-		for _, p := range reg.providers {
-			if p == provider {
-				return
-			}
-		}
-	} else {
-		reg = &registry{}
-		providers[infoType] = reg
-	}
-
-	reg.providers = append(reg.providers, provider)
-
-	if reg.context != nil {
-		go startProvider(reg.context, infoType, provider, logger)
-	}
-}
-
 func StartProviders(ctx context.Context, infoType Type, logger log.Logger) {
 	providerMutex.Lock()
 
@@ -140,17 +116,21 @@ func startProvider(ctx context.Context, infoType Type, provider Provider, logger
 	}
 }
 
-func Send[I Info](info I) error {
+func Send[I Info](info I) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Debug("diagnostic Send panic recovered: %v, stack: %s", r, dbg.Stack())
+		}
+	}()
+
 	ctx := info.Type().Context()
 
 	if ctx.Err() != nil {
-		if !errors.Is(ctx.Err(), context.Canceled) {
-			// drop the diagnostic message if there is
-			// no active diagnostic context for the type
-			return nil
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
 		}
 
-		return ctx.Err()
+		log.Debug("diagnostic send failed: context error", "err", ctx.Err())
 	}
 
 	cval := ctx.Value(ckChan)
@@ -165,10 +145,12 @@ func Send[I Info](info I) error {
 			}
 		}
 	} else {
-		return fmt.Errorf("unexpected channel type: %T", cval)
-	}
+		if cval == nil {
+			return
+		}
 
-	return nil
+		log.Debug(fmt.Sprintf("unexpected channel type: %T", cval))
+	}
 }
 
 func Context[I Info](ctx context.Context, buffer int) (context.Context, <-chan I, context.CancelFunc) {

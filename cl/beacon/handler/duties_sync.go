@@ -9,15 +9,14 @@ import (
 
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/cl/beacon/beaconhttp"
-	"github.com/ledgerwatch/erigon/cl/cltypes/solid"
-	"github.com/ledgerwatch/erigon/cl/persistence/beacon_indicies"
 	state_accessors "github.com/ledgerwatch/erigon/cl/persistence/state"
+	"github.com/ledgerwatch/log/v3"
 )
 
 type syncDutyResponse struct {
 	Pubkey                         libcommon.Bytes48 `json:"pubkey"`
 	ValidatorIndex                 uint64            `json:"validator_index,string"`
-	ValidatorSyncCommitteeIndicies []string          `json:"validator_sync_committee_indicies"`
+	ValidatorSyncCommitteeIndicies []string          `json:"validator_sync_committee_indices"`
 }
 
 func (a *ApiHandler) getSyncDuties(w http.ResponseWriter, r *http.Request) (*beaconhttp.BeaconResponse, error) {
@@ -31,7 +30,7 @@ func (a *ApiHandler) getSyncDuties(w http.ResponseWriter, r *http.Request) (*bea
 
 	var idxsStr []string
 	if err := json.NewDecoder(r.Body).Decode(&idxsStr); err != nil {
-		return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not decode request body: %w. request body is required.", err).Error())
+		return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not decode request body: %w. request body is required.", err))
 	}
 	if len(idxsStr) == 0 {
 		return newBeaconResponse([]string{}).WithOptimistic(false), nil
@@ -43,7 +42,7 @@ func (a *ApiHandler) getSyncDuties(w http.ResponseWriter, r *http.Request) (*bea
 
 		idx, err := strconv.ParseUint(idxStr, 10, 64)
 		if err != nil {
-			return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not parse validator index: %w", err).Error())
+			return nil, beaconhttp.NewEndpointError(http.StatusBadRequest, fmt.Errorf("could not parse validator index: %w", err))
 		}
 		if _, ok := duplicates[int(idx)]; ok {
 			continue
@@ -59,45 +58,27 @@ func (a *ApiHandler) getSyncDuties(w http.ResponseWriter, r *http.Request) (*bea
 	defer tx.Rollback()
 
 	// Try to find a slot in the epoch or close to it
-	referenceSlot := ((epoch + 1) * a.beaconChainCfg.SlotsPerEpoch) - 1
+	startSlotAtEpoch := (epoch * a.beaconChainCfg.SlotsPerEpoch) - (a.beaconChainCfg.SlotsPerEpoch - 1)
 
-	// Find the first slot in the epoch (or close enough that have a sync committee)
-	var referenceRoot libcommon.Hash
-	for ; referenceRoot != (libcommon.Hash{}); referenceSlot-- {
-		referenceRoot, err = beacon_indicies.ReadCanonicalBlockRoot(tx, referenceSlot)
-		if err != nil {
-			return nil, err
-		}
-	}
-	referencePeriod := (referenceSlot / a.beaconChainCfg.SlotsPerEpoch) / a.beaconChainCfg.EpochsPerSyncCommitteePeriod
 	// Now try reading the sync committee
-	currentSyncCommittee, nextSyncCommittee, ok := a.forkchoiceStore.GetSyncCommittees(referenceRoot)
+	syncCommittee, _, ok := a.forkchoiceStore.GetSyncCommittees(period)
 	if !ok {
-		roundedSlotToPeriod := a.beaconChainCfg.RoundSlotToSyncCommitteePeriod(referenceSlot)
-		switch {
-		case referencePeriod == period:
-			currentSyncCommittee, err = state_accessors.ReadCurrentSyncCommittee(tx, roundedSlotToPeriod)
-		case referencePeriod+1 == period:
-			nextSyncCommittee, err = state_accessors.ReadNextSyncCommittee(tx, roundedSlotToPeriod)
-		default:
-			return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Sprintf("could not find sync committee for epoch %d", epoch))
+		_, syncCommittee, ok = a.forkchoiceStore.GetSyncCommittees(period - 1)
+	}
+	// Read them from the archive node if we do not have them in the fast-access storage
+	if !ok {
+		syncCommittee, err = state_accessors.ReadCurrentSyncCommittee(tx, a.beaconChainCfg.RoundSlotToSyncCommitteePeriod(startSlotAtEpoch))
+		if syncCommittee == nil {
+			log.Warn("could not find sync committee for epoch", "epoch", epoch, "period", period)
+			return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Errorf("could not find sync committee for epoch %d", epoch))
 		}
 		if err != nil {
 			return nil, err
 		}
 	}
-	var syncCommittee *solid.SyncCommittee
-	// Determine which one to use. TODO(Giulio2002): Make this less rendundant.
-	switch {
-	case referencePeriod == period:
-		syncCommittee = currentSyncCommittee
-	case referencePeriod+1 == period:
-		syncCommittee = nextSyncCommittee
-	default:
-		return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Sprintf("could not find sync committee for epoch %d", epoch))
-	}
+
 	if syncCommittee == nil {
-		return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Sprintf("could not find sync committee for epoch %d", epoch))
+		return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Errorf("could not find sync committee for epoch %d", epoch))
 	}
 	// Now we have the sync committee, we can initialize our response set
 	dutiesSet := map[uint64]*syncDutyResponse{}
@@ -107,7 +88,7 @@ func (a *ApiHandler) getSyncDuties(w http.ResponseWriter, r *http.Request) (*bea
 			return nil, err
 		}
 		if publicKey == (libcommon.Bytes48{}) {
-			return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Sprintf("could not find validator with index %d", idx))
+			return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Errorf("could not find validator with index %d", idx))
 		}
 		dutiesSet[idx] = &syncDutyResponse{
 			Pubkey:         publicKey,
@@ -121,7 +102,7 @@ func (a *ApiHandler) getSyncDuties(w http.ResponseWriter, r *http.Request) (*bea
 			return nil, err
 		}
 		if !ok {
-			return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Sprintf("could not find validator with public key %x", committeePartecipantPublicKey))
+			return nil, beaconhttp.NewEndpointError(http.StatusNotFound, fmt.Errorf("could not find validator with public key %x", committeePartecipantPublicKey))
 		}
 		if _, ok := dutiesSet[committeePartecipantIndex]; !ok {
 			continue

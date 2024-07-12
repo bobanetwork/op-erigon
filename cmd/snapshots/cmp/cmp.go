@@ -12,6 +12,10 @@ import (
 	"time"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/ledgerwatch/log/v3"
+	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/downloader"
@@ -19,14 +23,12 @@ import (
 	"github.com/ledgerwatch/erigon/cmd/snapshots/flags"
 	"github.com/ledgerwatch/erigon/cmd/snapshots/sync"
 	"github.com/ledgerwatch/erigon/cmd/utils"
+	coresnaptype "github.com/ledgerwatch/erigon/core/snaptype"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/params"
 	"github.com/ledgerwatch/erigon/turbo/logging"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync/freezeblocks"
-	"github.com/ledgerwatch/log/v3"
-	"github.com/urfave/cli/v2"
-	"golang.org/x/sync/errgroup"
 )
 
 var Command = cli.Command{
@@ -140,7 +142,8 @@ func cmp(cliCtx *cli.Context) error {
 	}
 
 	if loc1.LType == sync.TorrentFs || loc2.LType == sync.TorrentFs {
-		torrentCli, err = sync.NewTorrentClient(cliCtx, chain)
+		config := sync.NewTorrentClientConfigFromCobra(cliCtx, chain)
+		torrentCli, err = sync.NewTorrentClient(config)
 		if err != nil {
 			return fmt.Errorf("can't create torrent: %w", err)
 		}
@@ -174,7 +177,7 @@ func cmp(cliCtx *cli.Context) error {
 
 	if rcCli != nil {
 		if loc1.LType == sync.RemoteFs {
-			session1, err = rcCli.NewSession(cliCtx.Context, filepath.Join(tempDir, "l1"), loc1.Src+":"+loc1.Root)
+			session1, err = rcCli.NewSession(cliCtx.Context, filepath.Join(tempDir, "l1"), loc1.Src+":"+loc1.Root, nil)
 
 			if err != nil {
 				return err
@@ -182,7 +185,7 @@ func cmp(cliCtx *cli.Context) error {
 		}
 
 		if loc2.LType == sync.RemoteFs {
-			session2, err = rcCli.NewSession(cliCtx.Context, filepath.Join(tempDir, "l2"), loc2.Src+":"+loc2.Root)
+			session2, err = rcCli.NewSession(cliCtx.Context, filepath.Join(tempDir, "l2"), loc2.Src+":"+loc2.Root, nil)
 
 			if err != nil {
 				return err
@@ -257,13 +260,13 @@ func cmp(cliCtx *cli.Context) error {
 		})
 	} else {
 		for _, snapType := range snapTypes {
-			if snapType == snaptype.Headers {
+			if snapType.Enum() == coresnaptype.Enums.Headers {
 				funcs = append(funcs, func(ctx context.Context) (time.Duration, time.Duration, time.Duration, error) {
 					return c.compareHeaders(ctx, h1ents, h2ents, headerWorkers, logger)
 				})
 			}
 
-			if snapType == snaptype.Bodies {
+			if snapType.Enum() == coresnaptype.Enums.Bodies {
 				funcs = append(funcs, func(ctx context.Context) (time.Duration, time.Duration, time.Duration, error) {
 					return c.compareBodies(ctx, b1ents, b2ents, bodyWorkers, logger)
 				})
@@ -314,7 +317,7 @@ type BodyEntry struct {
 	Body, Transactions fs.DirEntry
 }
 
-func splitEntries(files []fs.DirEntry, version uint8, firstBlock, lastBlock uint64) (hents []fs.DirEntry, bents []*BodyEntry) {
+func splitEntries(files []fs.DirEntry, version snaptype.Version, firstBlock, lastBlock uint64) (hents []fs.DirEntry, bents []*BodyEntry) {
 	for _, ent := range files {
 		if info, err := ent.Info(); err == nil {
 			if snapInfo, ok := info.Sys().(downloader.SnapInfo); ok && snapInfo.Version() > 0 {
@@ -322,11 +325,11 @@ func splitEntries(files []fs.DirEntry, version uint8, firstBlock, lastBlock uint
 					(firstBlock == 0 || snapInfo.From() >= firstBlock) &&
 					(lastBlock == 0 || snapInfo.From() < lastBlock) {
 
-					if snapInfo.Type() == snaptype.Headers {
+					if snapInfo.Type().Enum() == coresnaptype.Enums.Headers {
 						hents = append(hents, ent)
 					}
 
-					if snapInfo.Type() == snaptype.Bodies {
+					if snapInfo.Type().Enum() == coresnaptype.Enums.Bodies {
 						found := false
 
 						for _, bent := range bents {
@@ -342,7 +345,7 @@ func splitEntries(files []fs.DirEntry, version uint8, firstBlock, lastBlock uint
 						}
 					}
 
-					if snapInfo.Type() == snaptype.Transactions {
+					if snapInfo.Type().Enum() == coresnaptype.Enums.Transactions {
 						found := false
 
 						for _, bent := range bents {
@@ -454,19 +457,23 @@ func (c comparitor) compareHeaders(ctx context.Context, f1ents []fs.DirEntry, f2
 					return err
 				}
 
+				info1, _, _ := snaptype.ParseFileName(c.session1.LocalFsRoot(), ent1.Name())
+
 				f1snaps := freezeblocks.NewRoSnapshots(ethconfig.BlocksFreezing{
 					Enabled:      true,
 					Produce:      false,
 					NoDownloader: true,
-				}, c.session1.LocalFsRoot(), c.loc1.Version, logger)
+				}, info1.Dir(), info1.From, logger)
 
 				f1snaps.ReopenList([]string{ent1.Name()}, false)
+
+				info2, _, _ := snaptype.ParseFileName(c.session2.LocalFsRoot(), ent1.Name())
 
 				f2snaps := freezeblocks.NewRoSnapshots(ethconfig.BlocksFreezing{
 					Enabled:      true,
 					Produce:      false,
 					NoDownloader: true,
-				}, c.session2.LocalFsRoot(), c.loc2.Version, logger)
+				}, info2.Dir(), info2.From, logger)
 
 				f2snaps.ReopenList([]string{ent2.Name()}, false)
 
@@ -578,8 +585,14 @@ func (c comparitor) compareBodies(ctx context.Context, f1ents []*BodyEntry, f2en
 
 				g.Go(func() error {
 
+					info, _, ok := snaptype.ParseFileName(c.session1.LocalFsRoot(), ent1.Body.Name())
+
 					err := func() error {
 						startTime := time.Now()
+
+						if !ok {
+							return fmt.Errorf("can't parse file name %s", ent1.Body.Name())
+						}
 
 						defer func() {
 							atomic.AddUint64(&downloadTime, uint64(time.Since(startTime)))
@@ -602,14 +615,18 @@ func (c comparitor) compareBodies(ctx context.Context, f1ents []*BodyEntry, f2en
 					}()
 
 					logger.Info(fmt.Sprintf("Indexing %s", ent1.Body.Name()))
-					return freezeblocks.BodiesIdx(ctx,
-						filepath.Join(c.session1.LocalFsRoot(), ent1.Body.Name()), ent1.From, c.session1.LocalFsRoot(), nil, log.LvlDebug, logger)
+
+					return coresnaptype.Bodies.BuildIndexes(ctx, info, c.chainConfig(), c.session1.LocalFsRoot(), nil, log.LvlDebug, logger)
 				})
 
 				g.Go(func() error {
+					info, _, ok := snaptype.ParseFileName(c.session1.LocalFsRoot(), ent1.Transactions.Name())
+					if !ok {
+						return fmt.Errorf("can't parse file name %s", ent1.Transactions.Name())
+					}
+
 					err := func() error {
 						startTime := time.Now()
-
 						defer func() {
 							atomic.AddUint64(&downloadTime, uint64(time.Since(startTime)))
 						}()
@@ -637,15 +654,20 @@ func (c comparitor) compareBodies(ctx context.Context, f1ents []*BodyEntry, f2en
 					}()
 
 					logger.Info(fmt.Sprintf("Indexing %s", ent1.Transactions.Name()))
-					return freezeblocks.TransactionsIdx(ctx, c.chainConfig(), c.loc1.Version, ent1.From, ent1.To,
-						c.session1.LocalFsRoot(), c.session1.LocalFsRoot(), nil, log.LvlDebug, logger)
+					return coresnaptype.Transactions.BuildIndexes(ctx, info, c.chainConfig(), c.session1.LocalFsRoot(), nil, log.LvlDebug, logger)
 				})
 
 				b2err := make(chan error, 1)
 
 				g.Go(func() error {
+					info, _, ok := snaptype.ParseFileName(c.session1.LocalFsRoot(), ent1.Body.Name())
+
 					err := func() error {
 						startTime := time.Now()
+
+						if !ok {
+							return fmt.Errorf("can't parse file name %s", ent1.Body.Name())
+						}
 
 						defer func() {
 							atomic.AddUint64(&downloadTime, uint64(time.Since(startTime)))
@@ -668,17 +690,23 @@ func (c comparitor) compareBodies(ctx context.Context, f1ents []*BodyEntry, f2en
 					}()
 
 					logger.Info(fmt.Sprintf("Indexing %s", ent2.Body.Name()))
-					return freezeblocks.BodiesIdx(ctx,
-						filepath.Join(c.session2.LocalFsRoot(), ent2.Body.Name()), ent2.From, c.session1.LocalFsRoot(), nil, log.LvlDebug, logger)
+					return coresnaptype.Bodies.BuildIndexes(ctx, info, c.chainConfig(), c.session1.LocalFsRoot(), nil, log.LvlDebug, logger)
 				})
 
 				g.Go(func() error {
+					info, _, ok := snaptype.ParseFileName(c.session1.LocalFsRoot(), ent1.Transactions.Name())
+
 					err := func() error {
 						startTime := time.Now()
+
+						if !ok {
+							return fmt.Errorf("can't parse file name %s", ent1.Transactions.Name())
+						}
 
 						defer func() {
 							atomic.AddUint64(&downloadTime, uint64(time.Since(startTime)))
 						}()
+
 						logger.Info(fmt.Sprintf("Downloading %s", ent2.Transactions.Name()), "entry", fmt.Sprint(i2+1, "/", len(f2ents)))
 						return c.session2.Download(ctx, ent2.Transactions.Name())
 					}()
@@ -703,27 +731,30 @@ func (c comparitor) compareBodies(ctx context.Context, f1ents []*BodyEntry, f2en
 					}()
 
 					logger.Info(fmt.Sprintf("Indexing %s", ent2.Transactions.Name()))
-					return freezeblocks.TransactionsIdx(ctx, c.chainConfig(), c.loc2.Version, ent2.From, ent2.To,
-						c.session2.LocalFsRoot(), c.session2.LocalFsRoot(), nil, log.LvlDebug, logger)
+					return coresnaptype.Transactions.BuildIndexes(ctx, info, c.chainConfig(), c.session2.LocalFsRoot(), nil, log.LvlDebug, logger)
 				})
 
 				if err := g.Wait(); err != nil {
 					return err
 				}
 
+				info1, _, _ := snaptype.ParseFileName(c.session1.LocalFsRoot(), ent1.Body.Name())
+
 				f1snaps := freezeblocks.NewRoSnapshots(ethconfig.BlocksFreezing{
 					Enabled:      true,
 					Produce:      false,
 					NoDownloader: true,
-				}, c.session1.LocalFsRoot(), c.loc1.Version, logger)
+				}, info1.Dir(), info1.From, logger)
 
 				f1snaps.ReopenList([]string{ent1.Body.Name(), ent1.Transactions.Name()}, false)
+
+				info2, _, _ := snaptype.ParseFileName(c.session2.LocalFsRoot(), ent2.Body.Name())
 
 				f2snaps := freezeblocks.NewRoSnapshots(ethconfig.BlocksFreezing{
 					Enabled:      true,
 					Produce:      false,
 					NoDownloader: true,
-				}, c.session2.LocalFsRoot(), c.loc2.Version, logger)
+				}, info2.Dir(), info2.From, logger)
 
 				f2snaps.ReopenList([]string{ent2.Body.Name(), ent2.Transactions.Name()}, false)
 

@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/holiman/uint256"
+	"github.com/ledgerwatch/erigon-lib/config3"
 	"golang.org/x/crypto/sha3"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
@@ -43,7 +44,6 @@ import (
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/crypto"
-	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/rlp"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/erigon/turbo/trie"
@@ -201,7 +201,7 @@ func (t *StateTest) RunNoVerify(tx kv.RwTx, subtest StateSubtest, vmconfig vm.Co
 	statedb := state.New(r)
 
 	var w state.StateWriter
-	if ethconfig.EnableHistoryV4InTest {
+	if config3.EnableHistoryV4InTest {
 		panic("implement me")
 	} else {
 		w = state.NewPlainStateWriter(tx, nil, writeBlockNr)
@@ -222,7 +222,7 @@ func (t *StateTest) RunNoVerify(tx kv.RwTx, subtest StateSubtest, vmconfig vm.Co
 		return nil, libcommon.Hash{}, err
 	}
 	if len(post.Tx) != 0 {
-		txn, err := types.UnmarshalTransactionFromBinary(post.Tx)
+		txn, err := types.UnmarshalTransactionFromBinary(post.Tx, false /* blobTxnsAreWrappedWithBlobs */)
 		if err != nil {
 			return nil, libcommon.Hash{}, err
 		}
@@ -338,7 +338,7 @@ func MakePreState(rules *chain.Rules, tx kv.RwTx, accounts types.GenesisAlloc, b
 	}
 
 	var w state.StateWriter
-	if ethconfig.EnableHistoryV4InTest {
+	if config3.EnableHistoryV4InTest {
 		panic("implement me")
 	} else {
 		w = state.NewPlainStateWriter(tx, nil, blockNr+1)

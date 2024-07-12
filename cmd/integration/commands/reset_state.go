@@ -8,7 +8,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/ledgerwatch/erigon/turbo/backup"
+	"github.com/ledgerwatch/erigon-lib/kv/backup"
 	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon-lib/common"
@@ -31,14 +31,14 @@ var cmdResetState = &cobra.Command{
 	Short: "Reset StateStages (5,6,7,8,9,10) and buckets",
 	Run: func(cmd *cobra.Command, args []string) {
 		logger := debug.SetupCobra(cmd, "integration")
-		db, err := openDB(dbCfg(kv.ChainDB, chaindata), true, snapshotVersion, logger)
+		db, err := openDB(dbCfg(kv.ChainDB, chaindata), true, logger)
 		if err != nil {
 			logger.Error("Opening DB", "error", err)
 			return
 		}
 		ctx, _ := common.RootContext()
 		defer db.Close()
-		sn, borSn, agg := allSnapshots(ctx, db, snapshotVersion, logger)
+		sn, borSn, agg := allSnapshots(ctx, db, logger)
 		defer sn.Close()
 		defer borSn.Close()
 		defer agg.Close()
@@ -74,7 +74,7 @@ var cmdClearBadBlocks = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := debug.SetupCobra(cmd, "integration")
 		ctx, _ := common.RootContext()
-		db, err := openDB(dbCfg(kv.ChainDB, chaindata), true, snapshotVersion, logger)
+		db, err := openDB(dbCfg(kv.ChainDB, chaindata), true, logger)
 		if err != nil {
 			logger.Error("Opening DB", "error", err)
 			return err
@@ -91,15 +91,13 @@ func init() {
 	withConfig(cmdResetState)
 	withDataDir(cmdResetState)
 	withChain(cmdResetState)
-	withSnapshotVersion(cmdResetState)
 	rootCmd.AddCommand(cmdResetState)
 
 	withDataDir(cmdClearBadBlocks)
-	withSnapshotVersion(cmdClearBadBlocks)
 	rootCmd.AddCommand(cmdClearBadBlocks)
 }
 
-func printStages(tx kv.Tx, snapshots *freezeblocks.RoSnapshots, borSn *freezeblocks.BorRoSnapshots, agg *state.AggregatorV3) error {
+func printStages(tx kv.Tx, snapshots *freezeblocks.RoSnapshots, borSn *freezeblocks.BorRoSnapshots, agg *state.Aggregator) error {
 	var err error
 	var progress uint64
 	w := new(tabwriter.Writer)

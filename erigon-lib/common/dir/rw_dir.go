@@ -19,11 +19,17 @@ package dir
 import (
 	"os"
 	"path/filepath"
+	"strings"
+
+	"golang.org/x/sync/errgroup"
 )
 
 func MustExist(path ...string) {
 	const perm = 0764 // user rwx, group rw, other r
 	for _, p := range path {
+		if Exist(p) {
+			continue
+		}
 		if err := os.MkdirAll(p, perm); err != nil {
 			panic(err)
 		}
@@ -86,7 +92,7 @@ func Recreate(dir string) {
 }
 
 func HasFileOfType(dir, ext string) bool {
-	files, err := os.ReadDir(dir)
+	files, err := ReadDir(dir)
 	if err != nil {
 		return false
 	}
@@ -103,28 +109,32 @@ func HasFileOfType(dir, ext string) bool {
 
 // nolint
 func DeleteFiles(dirs ...string) error {
+	g := errgroup.Group{}
 	for _, dir := range dirs {
 		files, err := ListFiles(dir)
 		if err != nil {
 			return err
 		}
 		for _, fPath := range files {
-			if err := os.Remove(fPath); err != nil {
-				return err
-			}
+			fPath := fPath
+			g.Go(func() error { return os.Remove(fPath) })
 		}
 	}
-	return nil
+	return g.Wait()
 }
 
-func ListFiles(dir string, extensions ...string) ([]string, error) {
-	files, err := os.ReadDir(dir)
+func ListFiles(dir string, extensions ...string) (paths []string, err error) {
+	files, err := ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	res := make([]string, 0, len(files))
+
+	paths = make([]string, 0, len(files))
 	for _, f := range files {
 		if f.IsDir() && !f.Type().IsRegular() {
+			continue
+		}
+		if strings.HasPrefix(f.Name(), ".") {
 			continue
 		}
 		match := false
@@ -139,7 +149,7 @@ func ListFiles(dir string, extensions ...string) ([]string, error) {
 		if !match {
 			continue
 		}
-		res = append(res, filepath.Join(dir, f.Name()))
+		paths = append(paths, filepath.Join(dir, f.Name()))
 	}
-	return res, nil
+	return paths, nil
 }

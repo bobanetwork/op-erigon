@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/big"
 	"os"
@@ -28,20 +29,22 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/datadir"
 	"github.com/ledgerwatch/erigon-lib/common/dbg"
 	"github.com/ledgerwatch/erigon-lib/common/dir"
+	"github.com/ledgerwatch/erigon-lib/diagnostics"
 	"github.com/ledgerwatch/erigon-lib/downloader"
 	"github.com/ledgerwatch/erigon-lib/downloader/snaptype"
 	"github.com/ledgerwatch/erigon-lib/etl"
-	proto_downloader "github.com/ledgerwatch/erigon-lib/gointerfaces/downloader"
+	protodownloader "github.com/ledgerwatch/erigon-lib/gointerfaces/downloader"
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/kvcfg"
 	"github.com/ledgerwatch/erigon-lib/kv/rawdbv3"
 	"github.com/ledgerwatch/erigon-lib/state"
-
 	"github.com/ledgerwatch/erigon/core/rawdb"
+	coresnaptype "github.com/ledgerwatch/erigon/core/snaptype"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/eth/ethconfig/estimate"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
+	borsnaptype "github.com/ledgerwatch/erigon/polygon/bor/snaptype"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/turbo/shards"
@@ -56,13 +59,14 @@ type SnapshotsCfg struct {
 	dirs        datadir.Dirs
 
 	blockRetire        services.BlockRetire
-	snapshotDownloader proto_downloader.DownloaderClient
+	snapshotDownloader protodownloader.DownloaderClient
 	blockReader        services.FullBlockReader
 	notifier           *shards.Notifications
 
 	historyV3        bool
 	caplin           bool
-	agg              *state.AggregatorV3
+	blobs            bool
+	agg              *state.Aggregator
 	silkworm         *silkworm.Silkworm
 	snapshotUploader *snapshotUploader
 	syncConfig       ethconfig.Sync
@@ -73,12 +77,13 @@ func StageSnapshotsCfg(db kv.RwDB,
 	syncConfig ethconfig.Sync,
 	dirs datadir.Dirs,
 	blockRetire services.BlockRetire,
-	snapshotDownloader proto_downloader.DownloaderClient,
+	snapshotDownloader protodownloader.DownloaderClient,
 	blockReader services.FullBlockReader,
 	notifier *shards.Notifications,
 	historyV3 bool,
-	agg *state.AggregatorV3,
+	agg *state.Aggregator,
 	caplin bool,
+	blobs bool,
 	silkworm *silkworm.Silkworm,
 ) SnapshotsCfg {
 	cfg := SnapshotsCfg{
@@ -94,6 +99,7 @@ func StageSnapshotsCfg(db kv.RwDB,
 		agg:                agg,
 		silkworm:           silkworm,
 		syncConfig:         syncConfig,
+		blobs:              blobs,
 	}
 
 	if uploadFs := cfg.syncConfig.UploadLocation; len(uploadFs) > 0 {
@@ -101,8 +107,7 @@ func StageSnapshotsCfg(db kv.RwDB,
 		cfg.snapshotUploader = &snapshotUploader{
 			cfg:          &cfg,
 			uploadFs:     uploadFs,
-			version:      snapcfg.KnownCfg(chainConfig.ChainName, 0).Version,
-			torrentFiles: downloader.NewAtomicTorrentFiles(cfg.dirs.Snap),
+			torrentFiles: downloader.NewAtomicTorrentFS(cfg.dirs.Snap),
 		}
 
 		cfg.blockRetire.SetWorkers(estimate.CompressSnapshot.Workers())
@@ -149,6 +154,7 @@ func SpawnStageSnapshots(
 		}
 		defer tx.Rollback()
 	}
+
 	if err := DownloadAndIndexSnapshotsIfNeed(s, ctx, tx, cfg, initialCycle, logger); err != nil {
 		return err
 	}
@@ -188,18 +194,27 @@ func DownloadAndIndexSnapshotsIfNeed(s *StageState, ctx context.Context, tx kv.R
 	if !cfg.blockReader.FreezingCfg().Enabled {
 		return nil
 	}
+
+	diagnostics.Send(diagnostics.CurrentSyncStage{Stage: string(stages.Snapshots)})
+
 	cstate := snapshotsync.NoCaplin
 	if cfg.caplin { //TODO(Giulio2002): uncomment
 		cstate = snapshotsync.AlsoCaplin
 	}
 
 	if cfg.snapshotUploader != nil {
+		subStages := diagnostics.InitSubStagesFromList([]string{"Indexing", "Fill DB"})
+		diagnostics.Send(diagnostics.SetSyncSubStageList{
+			Stage: string(stages.Snapshots),
+			List:  subStages,
+		})
+
 		u := cfg.snapshotUploader
 
 		u.init(ctx, logger)
 
 		if cfg.syncConfig.UploadFrom != rpc.EarliestBlockNumber {
-			u.downloadLatestSnapshots(ctx, cfg.syncConfig.UploadFrom, u.version)
+			u.downloadLatestSnapshots(ctx, cfg.syncConfig.UploadFrom)
 		}
 
 		if maxSeedable := u.maxSeedableHeader(); u.cfg.syncConfig.FrozenBlockLimit > 0 && maxSeedable > u.cfg.syncConfig.FrozenBlockLimit {
@@ -231,10 +246,18 @@ func DownloadAndIndexSnapshotsIfNeed(s *StageState, ctx context.Context, tx kv.R
 			cfg.notifier.Events.OnNewSnapshot()
 		}
 	} else {
-		if err := snapshotsync.WaitForDownloader(ctx, s.LogPrefix(), cfg.historyV3, cstate, cfg.agg, tx, cfg.blockReader, &cfg.chainConfig, cfg.snapshotDownloader, s.state.StagesIdsList()); err != nil {
+		subStages := diagnostics.InitSubStagesFromList([]string{"Download snapshots", "Indexing", "Fill DB"})
+		diagnostics.Send(diagnostics.SetSyncSubStageList{
+			Stage: string(stages.Snapshots),
+			List:  subStages,
+		})
+
+		diagnostics.Send(diagnostics.CurrentSyncSubStage{SubStage: "Download snapshots"})
+		if err := snapshotsync.WaitForDownloader(ctx, s.LogPrefix(), cfg.historyV3, cfg.blobs, cstate, cfg.agg, tx, cfg.blockReader, &cfg.chainConfig, cfg.snapshotDownloader, s.state.StagesIdsList()); err != nil {
 			return err
 		}
 	}
+
 	// It's ok to notify before tx.Commit(), because RPCDaemon does read list of files by gRPC (not by reading from db)
 	if cfg.notifier.Events != nil {
 		cfg.notifier.Events.OnNewSnapshot()
@@ -246,6 +269,7 @@ func DownloadAndIndexSnapshotsIfNeed(s *StageState, ctx context.Context, tx kv.R
 		return histBlockNumProgress
 	})
 
+	diagnostics.Send(diagnostics.CurrentSyncSubStage{SubStage: "Indexing"})
 	if err := cfg.blockRetire.BuildMissedIndicesIfNeed(ctx, s.LogPrefix(), cfg.notifier.Events, &cfg.chainConfig); err != nil {
 		return err
 	}
@@ -276,6 +300,7 @@ func DownloadAndIndexSnapshotsIfNeed(s *StageState, ctx context.Context, tx kv.R
 		s.BlockNumber = frozenBlocks
 	}
 
+	diagnostics.Send(diagnostics.CurrentSyncSubStage{SubStage: "Fill DB"})
 	if err := FillDBFromSnapshots(s.LogPrefix(), ctx, tx, cfg.dirs, cfg.blockReader, cfg.agg, logger); err != nil {
 		return err
 	}
@@ -283,7 +308,7 @@ func DownloadAndIndexSnapshotsIfNeed(s *StageState, ctx context.Context, tx kv.R
 	return nil
 }
 
-func FillDBFromSnapshots(logPrefix string, ctx context.Context, tx kv.RwTx, dirs datadir.Dirs, blockReader services.FullBlockReader, agg *state.AggregatorV3, logger log.Logger) error {
+func FillDBFromSnapshots(logPrefix string, ctx context.Context, tx kv.RwTx, dirs datadir.Dirs, blockReader services.FullBlockReader, agg *state.Aggregator, logger log.Logger) error {
 	blocksAvailable := blockReader.FrozenBlocks()
 	logEvery := time.NewTicker(logInterval)
 	defer logEvery.Stop()
@@ -300,6 +325,7 @@ func FillDBFromSnapshots(logPrefix string, ctx context.Context, tx kv.RwTx, dirs
 		if err = stages.SaveStageProgress(tx, stage, blocksAvailable); err != nil {
 			return fmt.Errorf("advancing %s stage: %w", stage, err)
 		}
+
 		switch stage {
 		case stages.Headers:
 			h2n := etl.NewCollector(logPrefix, dirs.Tmp, etl.NewSortableBuffer(etl.BufferOptimalSize), logger)
@@ -348,10 +374,7 @@ func FillDBFromSnapshots(logPrefix string, ctx context.Context, tx kv.RwTx, dirs
 			}
 
 		case stages.Bodies:
-			type LastTxNumProvider interface {
-				FirstTxNumNotInSnapshots() uint64
-			}
-			firstTxNum := blockReader.(LastTxNumProvider).FirstTxNumNotInSnapshots()
+			firstTxNum := blockReader.FirstTxnNumNotInSnapshots()
 			// ResetSequence - allow set arbitrary value to sequence (for example to decrement it to exact value)
 			if err := rawdb.ResetSequence(tx, kv.EthTx, firstTxNum); err != nil {
 				return err
@@ -366,10 +389,7 @@ func FillDBFromSnapshots(logPrefix string, ctx context.Context, tx kv.RwTx, dirs
 			}
 			if historyV3 {
 				_ = tx.ClearBucket(kv.MaxTxNum)
-				type IterBody interface {
-					IterateFrozenBodies(f func(blockNum, baseTxNum, txAmount uint64) error) error
-				}
-				if err := blockReader.(IterBody).IterateFrozenBodies(func(blockNum, baseTxNum, txAmount uint64) error {
+				if err := blockReader.IterateFrozenBodies(func(blockNum, baseTxNum, txAmount uint64) error {
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
@@ -448,7 +468,7 @@ func SnapshotsPrune(s *PruneState, initialCycle bool, cfg SnapshotsCfg, ctx cont
 				//}
 
 				if !(cfg.snapshotDownloader == nil || reflect.ValueOf(cfg.snapshotDownloader).IsNil()) {
-					_, err := cfg.snapshotDownloader.Delete(ctx, &proto_downloader.DeleteRequest{Paths: l})
+					_, err := cfg.snapshotDownloader.Delete(ctx, &protodownloader.DeleteRequest{Paths: l})
 					return err
 				}
 
@@ -517,8 +537,7 @@ type snapshotUploader struct {
 	uploadScheduled atomic.Bool
 	uploading       atomic.Bool
 	manifestMutex   sync.Mutex
-	version         uint8
-	torrentFiles    *downloader.TorrentFiles
+	torrentFiles    *downloader.AtomicTorrentFS
 }
 
 func (u *snapshotUploader) init(ctx context.Context, logger log.Logger) {
@@ -539,14 +558,14 @@ func (u *snapshotUploader) maxUploadedHeader() uint64 {
 		for _, state := range u.files {
 			if state.local && state.remote {
 				if state.info != nil {
-					if state.info.T == snaptype.Headers {
+					if state.info.Type.Enum() == coresnaptype.Enums.Headers {
 						if state.info.To > max {
 							max = state.info.To
 						}
 					}
 				} else {
-					if info, ok := snaptype.ParseFileName(u.cfg.dirs.Snap, state.file); ok {
-						if info.T == snaptype.Headers {
+					if info, _, ok := snaptype.ParseFileName(u.cfg.dirs.Snap, state.file); ok {
+						if info.Type.Enum() == coresnaptype.Enums.Headers {
 							if info.To > max {
 								max = info.To
 							}
@@ -563,6 +582,26 @@ func (u *snapshotUploader) maxUploadedHeader() uint64 {
 
 type dirEntry struct {
 	name string
+}
+
+type snapInfo struct {
+	snaptype.FileInfo
+}
+
+func (i *snapInfo) Version() snaptype.Version {
+	return i.FileInfo.Version
+}
+
+func (i *snapInfo) From() uint64 {
+	return i.FileInfo.From
+}
+
+func (i *snapInfo) To() uint64 {
+	return i.FileInfo.To
+}
+
+func (i *snapInfo) Type() snaptype.Type {
+	return i.FileInfo.Type
 }
 
 func (e dirEntry) Name() string {
@@ -590,6 +629,10 @@ func (e dirEntry) ModTime() time.Time {
 }
 
 func (e dirEntry) Sys() any {
+	if info, _, ok := snaptype.ParseFileName("", e.name); ok {
+		return &snapInfo{info}
+	}
+
 	return nil
 }
 
@@ -600,13 +643,13 @@ func (e dirEntry) Info() (fs.FileInfo, error) {
 var checkKnownSizes = false
 
 func (u *snapshotUploader) seedable(fi snaptype.FileInfo) bool {
-	if !fi.Seedable() {
+	if !snapcfg.Seedable(u.cfg.chainConfig.ChainName, fi) {
 		return false
 	}
 
 	if checkKnownSizes {
-		for _, it := range snapcfg.KnownCfg(u.cfg.chainConfig.ChainName, 1).Preverified {
-			info, _ := snaptype.ParseFileName("", it.Name)
+		for _, it := range snapcfg.KnownCfg(u.cfg.chainConfig.ChainName).Preverified {
+			info, _, _ := snaptype.ParseFileName("", it.Name)
 
 			if fi.From == info.From {
 				return fi.To == info.To
@@ -645,6 +688,10 @@ func (u *snapshotUploader) downloadManifest(ctx context.Context) ([]fs.DirEntry,
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+
+	if len(entries) == 0 {
+		return nil, io.ErrUnexpectedEOF
 	}
 
 	return entries, nil
@@ -727,9 +774,12 @@ func (u *snapshotUploader) updateRemotes(remoteFiles []fs.DirEntry) {
 			}
 
 		} else {
-			info, ok := snaptype.ParseFileName(u.cfg.dirs.Snap, fi.Name())
-
-			if !ok || info.Version != u.version {
+			info, isStateFile, ok := snaptype.ParseFileName(u.cfg.dirs.Snap, fi.Name())
+			if !ok {
+				continue
+			}
+			if isStateFile {
+				//TODO
 				continue
 			}
 
@@ -743,7 +793,7 @@ func (u *snapshotUploader) updateRemotes(remoteFiles []fs.DirEntry) {
 	}
 }
 
-func (u *snapshotUploader) downloadLatestSnapshots(ctx context.Context, blockNumber rpc.BlockNumber, version uint8) error {
+func (u *snapshotUploader) downloadLatestSnapshots(ctx context.Context, blockNumber rpc.BlockNumber) error {
 
 	entries, err := u.downloadManifest(ctx)
 
@@ -755,7 +805,7 @@ func (u *snapshotUploader) downloadLatestSnapshots(ctx context.Context, blockNum
 		return err
 	}
 
-	lastSegments := map[snaptype.Type]fs.FileInfo{}
+	lastSegments := map[snaptype.Enum]fs.FileInfo{}
 	torrents := map[string]string{}
 
 	for _, ent := range entries {
@@ -767,13 +817,13 @@ func (u *snapshotUploader) downloadLatestSnapshots(ctx context.Context, blockNum
 
 			snapInfo, ok := info.Sys().(downloader.SnapInfo)
 
-			if ok && snapInfo.Type() != snaptype.Unknown && snapInfo.Version() == version {
-				if last, ok := lastSegments[snapInfo.Type()]; ok {
+			if ok && snapInfo.Type() != nil {
+				if last, ok := lastSegments[snapInfo.Type().Enum()]; ok {
 					if lastInfo, ok := last.Sys().(downloader.SnapInfo); ok && snapInfo.To() > lastInfo.To() {
-						lastSegments[snapInfo.Type()] = info
+						lastSegments[snapInfo.Type().Enum()] = info
 					}
 				} else {
-					lastSegments[snapInfo.Type()] = info
+					lastSegments[snapInfo.Type().Enum()] = info
 				}
 			} else {
 				if ext := filepath.Ext(info.Name()); ext == ".torrent" {
@@ -801,8 +851,7 @@ func (u *snapshotUploader) downloadLatestSnapshots(ctx context.Context, blockNum
 					if info, err := ent.Info(); err == nil {
 						snapInfo, ok := info.Sys().(downloader.SnapInfo)
 
-						if ok && snapInfo.Type() == segType &&
-							snapInfo.Version() == version &&
+						if ok && snapInfo.Type().Enum() == segType &&
 							snapInfo.From() == min {
 							lastSegments[segType] = info
 						}
@@ -829,23 +878,13 @@ func (u *snapshotUploader) downloadLatestSnapshots(ctx context.Context, blockNum
 }
 
 func (u *snapshotUploader) maxSeedableHeader() uint64 {
-	var max uint64
-
-	if list, err := snaptype.Segments(u.cfg.dirs.Snap, u.version); err == nil {
-		for _, info := range list {
-			if u.seedable(info) && info.T == snaptype.Headers && info.To > max {
-				max = info.To
-			}
-		}
-	}
-
-	return max
+	return snapcfg.MaxSeedableSegment(u.cfg.chainConfig.ChainName, u.cfg.dirs.Snap)
 }
 
 func (u *snapshotUploader) minBlockNumber() uint64 {
 	var min uint64
 
-	if list, err := snaptype.Segments(u.cfg.dirs.Snap, u.version); err == nil {
+	if list, err := snaptype.Segments(u.cfg.dirs.Snap); err == nil {
 		for _, info := range list {
 			if u.seedable(info) && min == 0 || info.From < min {
 				min = info.From
@@ -915,7 +954,7 @@ func (u *snapshotUploader) start(ctx context.Context, logger log.Logger) {
 		}
 	}
 
-	u.uploadSession, err = u.rclone.NewSession(ctx, u.cfg.dirs.Snap, uploadFs)
+	u.uploadSession, err = u.rclone.NewSession(ctx, u.cfg.dirs.Snap, uploadFs, nil)
 
 	if err != nil {
 		logger.Warn("[uploader] Uploading disabled: rclone session failed", "err", err)
@@ -984,7 +1023,7 @@ func (u *snapshotUploader) scheduleUpload(ctx context.Context, logger log.Logger
 }
 
 func (u *snapshotUploader) removeBefore(before uint64) {
-	list, err := snaptype.Segments(u.cfg.dirs.Snap, u.version)
+	list, err := snaptype.Segments(u.cfg.dirs.Snap)
 
 	if err != nil {
 		return
@@ -997,8 +1036,9 @@ func (u *snapshotUploader) removeBefore(before uint64) {
 
 	for _, f := range list {
 		if f.To > before {
-			switch f.T {
-			case snaptype.BorEvents, snaptype.BorSpans:
+			switch f.Type.Enum() {
+			case borsnaptype.Enums.BorEvents, borsnaptype.Enums.BorSpans,
+				borsnaptype.Enums.BorCheckpoints, borsnaptype.Enums.BorMilestones:
 				borToReopen = append(borToReopen, filepath.Base(f.Path))
 			default:
 				toReopen = append(toReopen, filepath.Base(f.Path))
@@ -1052,7 +1092,12 @@ func (u *snapshotUploader) upload(ctx context.Context, logger log.Logger) {
 
 		for _, f := range u.cfg.blockReader.FrozenFiles() {
 			if state, ok := u.files[f]; !ok {
-				if fi, ok := snaptype.ParseFileName(u.cfg.dirs.Snap, f); ok {
+				if fi, isStateFile, ok := snaptype.ParseFileName(u.cfg.dirs.Snap, f); ok {
+					if isStateFile {
+						//TODO
+						continue
+					}
+
 					if u.seedable(fi) {
 						state := &uploadState{
 							file:  f,
@@ -1130,7 +1175,7 @@ func (u *snapshotUploader) upload(ctx context.Context, logger log.Logger) {
 				g.Go(func() error {
 					defer i.Add(1)
 
-					err := downloader.BuildTorrentIfNeed(gctx, state.file, u.cfg.dirs.Snap, u.torrentFiles)
+					_, err := downloader.BuildTorrentIfNeed(gctx, state.file, u.cfg.dirs.Snap, u.torrentFiles)
 
 					state.Lock()
 					state.buildingTorrent = false
