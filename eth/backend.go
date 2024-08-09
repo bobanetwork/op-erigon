@@ -338,6 +338,12 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		if chainConfig.EcotoneTime == nil {
 			log.Warn("Optimism EcotoneTime has not been set")
 		}
+		if chainConfig.FjordTime == nil {
+			log.Warn("Optimism FjordTime has not been set")
+		}
+		if chainConfig.GraniteTime == nil {
+			log.Warn("Optimism GraniteTime has not been set")
+		}
 	}
 
 	setBorDefaultMinerGasPrice(chainConfig, config, logger)
