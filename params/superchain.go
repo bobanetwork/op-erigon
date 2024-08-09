@@ -124,6 +124,7 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		CanyonTime:                    nil,
 		EcotoneTime:                   nil,
 		FjordTime:                     nil,
+		GraniteTime:                   nil,
 		TerminalTotalDifficulty:       common.Big0,
 		TerminalTotalDifficultyPassed: true,
 		Ethash:                        nil,
@@ -145,6 +146,9 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 	}
 	if opStackChainCfg.FjordTime != nil {
 		out.FjordTime = new(big.Int).SetUint64(*opStackChainCfg.FjordTime)
+	}
+	if opStackChainCfg.GraniteTime != nil {
+		out.GraniteTime = new(big.Int).SetUint64(*opStackChainCfg.GraniteTime)
 	}
 
 	// note: no actual parameters are being loaded, yet.

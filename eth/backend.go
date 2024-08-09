@@ -312,6 +312,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			OverrideOptimismCanyonTime:  config.OverrideOptimismCanyonTime,
 			OverrideOptimismEcotoneTime: config.OverrideOptimismEcotoneTime,
 			OverrideOptimismFjordTime:   config.OverrideOptimismFjordTime,
+			OverrideOptimismGraniteTime: config.OverrideOptimismGraniteTime,
 			OverridePragueTime:          config.OverridePragueTime,
 		}
 		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, overrides, tmpdir, logger)
