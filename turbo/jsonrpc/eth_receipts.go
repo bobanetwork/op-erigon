@@ -803,6 +803,9 @@ func marshalReceipt(receipt *types.Receipt, txn types.Transaction, chainConfig *
 			if receipt.L1BaseFeeScalar != nil { // added in Ecotone
 				fields["l1BaseFeeScalar"] = hexutil.Uint64(*receipt.L1BaseFeeScalar)
 			}
+			if receipt.L1BlobBaseFee != nil { // added in Ecotone
+				fields["l1BlobBaseFee"] = hexutil.Big(*receipt.L1BlobBaseFee)
+			}
 			if receipt.L1BlobBaseFeeScalar != nil { // added in Ecotone
 				fields["l1BlobBaseFeeScalar"] = hexutil.Uint64(*receipt.L1BlobBaseFeeScalar)
 			}
