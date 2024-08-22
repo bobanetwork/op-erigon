@@ -4,8 +4,8 @@ go 1.20
 
 require github.com/ledgerwatch/erigon devel
 
-replace github.com/ledgerwatch/erigon => github.com/bobanetwork/v3-erigon $COMMIT_SHA
+replace github.com/ledgerwatch/erigon => github.com/bobanetwork/op-erigon $COMMIT_SHA
 
-replace github.com/ledgerwatch/erigon-lib => github.com/bobanetwork/v3-erigon/erigon-lib $COMMIT_SHA
+replace github.com/ledgerwatch/erigon-lib => github.com/bobanetwork/op-erigon/erigon-lib $COMMIT_SHA
 
 require github.com/ethereum/go-ethereum v1.13.3

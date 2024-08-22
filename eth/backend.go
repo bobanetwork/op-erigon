@@ -312,6 +312,7 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 			OverrideOptimismCanyonTime:  config.OverrideOptimismCanyonTime,
 			OverrideOptimismEcotoneTime: config.OverrideOptimismEcotoneTime,
 			OverrideOptimismFjordTime:   config.OverrideOptimismFjordTime,
+			OverrideOptimismGraniteTime: config.OverrideOptimismGraniteTime,
 			OverridePragueTime:          config.OverridePragueTime,
 		}
 		chainConfig, genesis, genesisErr = core.WriteGenesisBlock(tx, genesisSpec, overrides, tmpdir, logger)
@@ -336,6 +337,12 @@ func New(ctx context.Context, stack *node.Node, config *ethconfig.Config, logger
 		}
 		if chainConfig.EcotoneTime == nil {
 			log.Warn("Optimism EcotoneTime has not been set")
+		}
+		if chainConfig.FjordTime == nil {
+			log.Warn("Optimism FjordTime has not been set")
+		}
+		if chainConfig.GraniteTime == nil {
+			log.Warn("Optimism GraniteTime has not been set")
 		}
 	}
 

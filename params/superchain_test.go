@@ -17,6 +17,7 @@ type hardforkConfig struct {
 	CanyonTime               *big.Int
 	EcotoneTime              *big.Int
 	FjordTime                *big.Int
+	GraniteTime              *big.Int
 	EIP1559Elasticity        uint64
 	EIP1559Denominator       uint64
 	EIP1559DenominatorCanyon uint64
@@ -31,6 +32,7 @@ var bobaSepoliaCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1705600788),
 	EcotoneTime:              big.NewInt(1709078400),
 	FjordTime:                big.NewInt(1722297600),
+	GraniteTime:              nil,
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -45,6 +47,7 @@ var bobaMainnetCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1713302879),
 	EcotoneTime:              big.NewInt(1713302880),
 	FjordTime:                big.NewInt(1725951600),
+	GraniteTime:              nil,
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -59,6 +62,7 @@ var bobaBnbTestnetCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1718920167),
 	EcotoneTime:              big.NewInt(1718920168),
 	FjordTime:                big.NewInt(1722297600),
+	GraniteTime:              nil,
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -73,6 +77,7 @@ var opSepoliaCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1699981200),
 	EcotoneTime:              big.NewInt(1708534800),
 	FjordTime:                big.NewInt(1716998400),
+	GraniteTime:              nil,
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -87,6 +92,7 @@ var opMainnetCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1704992401),
 	EcotoneTime:              big.NewInt(1710374401),
 	FjordTime:                big.NewInt(1720627201),
+	GraniteTime:              nil,
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,

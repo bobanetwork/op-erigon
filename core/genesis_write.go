@@ -63,6 +63,7 @@ type ChainOverrides struct {
 	OverrideOptimismCanyonTime  *big.Int
 	OverrideOptimismEcotoneTime *big.Int
 	OverrideOptimismFjordTime   *big.Int
+	OverrideOptimismGraniteTime *big.Int
 }
 
 // CommitGenesisBlock writes or updates the genesis block in db.
@@ -151,6 +152,9 @@ func WriteGenesisBlock(tx kv.RwTx, genesis *types.Genesis, overrides *ChainOverr
 		}
 		if overrides.OverrideOptimismFjordTime != nil {
 			config.FjordTime = overrides.OverrideOptimismFjordTime
+		}
+		if overrides.OverrideOptimismGraniteTime != nil {
+			config.GraniteTime = overrides.OverrideOptimismGraniteTime
 		}
 	}
 
