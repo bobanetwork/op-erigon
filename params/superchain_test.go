@@ -73,7 +73,7 @@ var bobaSepoliaDev0Cfg = hardforkConfig{
 	ShanghaiTime:             big.NewInt(1724692140),
 	CancunTime:               big.NewInt(1724692141),
 	BedrockBlock:             big.NewInt(0),
-	RegolithTime:             big.NewInt(1724692140),
+	RegolithTime:             big.NewInt(0),
 	CanyonTime:               big.NewInt(1724692140),
 	EcotoneTime:              big.NewInt(1724692141),
 	FjordTime:                big.NewInt(1724692150),
