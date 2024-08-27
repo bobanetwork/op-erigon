@@ -68,6 +68,21 @@ var bobaBnbTestnetCfg = hardforkConfig{
 	EIP1559DenominatorCanyon: 250,
 }
 
+var bobaSepoliaDev0Cfg = hardforkConfig{
+	chainID:                  288882,
+	ShanghaiTime:             big.NewInt(1724692140),
+	CancunTime:               big.NewInt(1724692141),
+	BedrockBlock:             big.NewInt(0),
+	RegolithTime:             big.NewInt(0),
+	CanyonTime:               big.NewInt(1724692140),
+	EcotoneTime:              big.NewInt(1724692141),
+	FjordTime:                big.NewInt(1724692150),
+	GraniteTime:              nil,
+	EIP1559Elasticity:        6,
+	EIP1559Denominator:       50,
+	EIP1559DenominatorCanyon: 250,
+}
+
 var opSepoliaCfg = hardforkConfig{
 	chainID:                  11155420,
 	ShanghaiTime:             big.NewInt(1699981200),
@@ -132,11 +147,12 @@ func TestChainConfigByOpStackChainName(t *testing.T) {
 
 func TestChainConfigByOpStackGenesisHash(t *testing.T) {
 	hardforkConfigsByName := map[common.Hash]hardforkConfig{
-		BobaSepoliaGenesisHash:    bobaSepoliaCfg,
-		BobaMainnetGenesisHash:    bobaMainnetCfg,
-		BobaBnbTestnetGenesisHash: bobaBnbTestnetCfg,
-		OPSepoliaGenesisHash:      opSepoliaCfg,
-		OPMainnetGenesisHash:      opMainnetCfg,
+		BobaSepoliaDev0GenesisHash: bobaSepoliaDev0Cfg,
+		BobaSepoliaGenesisHash:     bobaSepoliaCfg,
+		BobaMainnetGenesisHash:     bobaMainnetCfg,
+		BobaBnbTestnetGenesisHash:  bobaBnbTestnetCfg,
+		OPSepoliaGenesisHash:       opSepoliaCfg,
+		OPMainnetGenesisHash:       opMainnetCfg,
 	}
 
 	for genesisHash, expectedHarhardforkCfg := range hardforkConfigsByName {

@@ -76,8 +76,9 @@ var (
 	OPMainnetGenesisHash = libcommon.HexToHash("0x7ca38a1916c42007829c55e69d3e9a73265554b586a499015373241b8a3fa48b")
 	OPSepoliaGenesisHash = libcommon.HexToHash("0x102de6ffb001480cc9b8b548fd05c34cd4f46ae4aa91759393db90ea0409887d")
 
-	BobaMainnetGenesisHash = libcommon.HexToHash("0xdcd9e6a8f9973eaa62da2874959cb152faeb4fd6929177bd6335a1a16074ef9c")
-	BobaSepoliaGenesisHash = libcommon.HexToHash("0xc6171953a6a376ece6e33149686044f24f58a387ce2636a54e391d330b2326b5")
+	BobaMainnetGenesisHash     = libcommon.HexToHash("0xdcd9e6a8f9973eaa62da2874959cb152faeb4fd6929177bd6335a1a16074ef9c")
+	BobaSepoliaGenesisHash     = libcommon.HexToHash("0xc6171953a6a376ece6e33149686044f24f58a387ce2636a54e391d330b2326b5")
+	BobaSepoliaDev0GenesisHash = libcommon.HexToHash("0xe919706177d2c568ed21a4b443d421c8098b4e453a29bd432258fab3f7fe1d07")
 
 	BobaBnbTestnetGenesisHash = libcommon.HexToHash("0x4d26ddc947c7cea924d5ef272c1a5ef40a1dce5ca2cbbaccad59d33f2505a30d")
 )
