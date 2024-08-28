@@ -77,7 +77,7 @@ var bobaSepoliaDev0Cfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1724692140),
 	EcotoneTime:              big.NewInt(1724692141),
 	FjordTime:                big.NewInt(1724692150),
-	GraniteTime:              nil,
+	GraniteTime:              big.NewInt(1724914800),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
