@@ -32,7 +32,7 @@ var bobaSepoliaCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1705600788),
 	EcotoneTime:              big.NewInt(1709078400),
 	FjordTime:                big.NewInt(1722297600),
-	GraniteTime:              nil,
+	GraniteTime:              big.NewInt(1726470000),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -62,7 +62,7 @@ var bobaBnbTestnetCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1718920167),
 	EcotoneTime:              big.NewInt(1718920168),
 	FjordTime:                big.NewInt(1722297600),
-	GraniteTime:              nil,
+	GraniteTime:              big.NewInt(1726470000),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -92,7 +92,7 @@ var opSepoliaCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1699981200),
 	EcotoneTime:              big.NewInt(1708534800),
 	FjordTime:                big.NewInt(1716998400),
-	GraniteTime:              nil,
+	GraniteTime:              big.NewInt(1723478400),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
@@ -137,6 +137,7 @@ func TestChainConfigByOpStackChainName(t *testing.T) {
 		require.Equal(t, expectedHarhardforkCfg.CanyonTime, gotCfg.CanyonTime)
 		require.Equal(t, expectedHarhardforkCfg.EcotoneTime, gotCfg.EcotoneTime)
 		require.Equal(t, expectedHarhardforkCfg.FjordTime, gotCfg.FjordTime)
+		require.Equal(t, expectedHarhardforkCfg.GraniteTime, gotCfg.GraniteTime)
 
 		// EIP-1559
 		require.Equal(t, expectedHarhardforkCfg.EIP1559Elasticity, gotCfg.Optimism.EIP1559Elasticity)
