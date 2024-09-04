@@ -1,18 +1,18 @@
 title: "Boba Network op-erigon"  # Define the HTML page title
 footer: |  # define the footer with markdown
-  Fork-diff overview of [op-erigon](https://github.com/bobanetwork/v3-erigon), a fork of [erigon](https://github.com/ledgerwatch/erigon). and execution-engine of the [OP Stack](https://github.com/ethereum-optimism/optimism) for [Boba Network](https://github.com/bobanetwork/v3-anchorage).
+  Fork-diff overview of [op-erigon](https://github.com/bobanetwork/op-erigon), a fork of [erigon](https://github.com/ledgerwatch/erigon). and execution-engine of the [OP Stack](https://github.com/ethereum-optimism/optimism) for [Boba Network](https://github.com/bobanetwork/v3-anchorage).
 base:
-  name: ledgerwatch/erigon
-  url: https://github.com/ledgerwatch/erigon
-  hash: 3040e2576c29512addaf8ce50528609b4ff9a8e0
+  name: erigontech/erigon
+  url: https://github.com/erigontech/erigon
+  hash: d24e5d45755d7b23075c507ad9216e1d60ad03de
 fork:
-  name: bobanetwork/v3-erigon
-  url: https://github.com/bobanetwork/v3-erigon
+  name: bobanetwork/op-erigon
+  url: https://github.com/bobanetwork/op-erigon
   ref: refs/heads/boba-develop
 def:
   title: "op-erigon"
   description: | # description in markdown
-    This is an overview of the changes in [op-erigon](https://github.com/bobanetwork/v3-erigon), a fork of [erigon](https://github.com/ledgerwatch/erigon), part of the Boba Network OP Stack.
+    This is an overview of the changes in [op-erigon](https://github.com/bobanetwork/op-erigon), a fork of [erigon](https://github.com/ledgerwatch/erigon), part of the Boba Network OP Stack.
 
     There is one more fork of erigon dependencies:
 
