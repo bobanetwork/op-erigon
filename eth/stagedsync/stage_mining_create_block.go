@@ -34,6 +34,7 @@ type MiningBlock struct {
 	PreparedTxs      types.TransactionsStream
 
 	Deposits [][]byte
+	Rejected []*types.RejectedTransaction
 	NoTxPool bool
 	Espresso bool
 }

@@ -1,6 +1,7 @@
 package stagedsync
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -199,7 +200,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	}
 
 	var err error
-	_, current.Txs, current.Receipts, err = core.FinalizeBlockExecution(cfg.engine, stateReader, current.Header, current.Txs, current.Uncles, stateWriter, &cfg.chainConfig, ibs, current.Receipts, current.Withdrawals, ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader, logger: logger}, true, logger)
+	_, current.Txs, current.Receipts, err = core.FinalizeBlockExecution(cfg.engine, stateReader, current.Header, current.Txs, current.Uncles, stateWriter, &cfg.chainConfig, ibs, current.Receipts, current.Withdrawals, current.Rejected, ChainReaderImpl{config: &cfg.chainConfig, tx: tx, blockReader: cfg.blockReader, logger: logger}, true, logger)
 	if err != nil {
 		return err
 	}
@@ -449,6 +450,9 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 
 	done := false
 
+	rejected := make([]types.RejectedTransaction, 0)
+	transactionCount := 0
+
 LOOP:
 	for {
 		// see if we need to stop now
@@ -502,6 +506,9 @@ LOOP:
 		// Start executing the transaction
 		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current)
 
+		// increase the transaction count
+		transactionCount++
+
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
 			logger.Debug(fmt.Sprintf("[%s] Gas limit exceeded for env block", logPrefix), "hash", txn.Hash(), "sender", from)
@@ -525,6 +532,18 @@ LOOP:
 			// nonce-too-high clause will prevent us from executing in vain).
 			logger.Debug(fmt.Sprintf("[%s] Skipping transaction", logPrefix), "hash", txn.Hash(), "sender", from, "err", err)
 			txs.Shift()
+		}
+
+		// record rejected transactions
+		if current.Espresso {
+			var buf bytes.Buffer
+			if err = txn.MarshalBinary(&buf); err != nil {
+				logger.Warn(fmt.Sprintf("[%s] Could not marshal transaction", logPrefix), "hash", txn.Hash(), "err", err)
+			}
+			rejected = append(rejected, types.RejectedTransaction{
+				Data: buf.Bytes(),
+				Pos:  uint64(transactionCount),
+			})
 		}
 	}
 

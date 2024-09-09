@@ -1226,6 +1226,8 @@ func (b *Block) WithdrawalsHash() *libcommon.Hash       { return b.header.Withdr
 func (b *Block) Withdrawals() Withdrawals               { return b.withdrawals }
 func (b *Block) ParentBeaconBlockRoot() *libcommon.Hash { return b.header.ParentBeaconBlockRoot }
 
+func (b *Block) Rejected() []*RejectedTransaction { return b.rejected }
+
 // Header returns a deep-copy of the entire block header using CopyHeader()
 func (b *Block) Header() *Header       { return CopyHeader(b.header) }
 func (b *Block) HeaderNoCopy() *Header { return b.header }
@@ -1420,6 +1422,12 @@ func (b *Block) Hash() libcommon.Hash {
 	v := b.header.Hash()
 	b.hash.Store(v)
 	return v
+}
+
+// WithRejected sets the rejected transactions in a block, does not return a new block.
+func (b *Block) WithRejected(rejected []*RejectedTransaction) *Block {
+	b.rejected = rejected
+	return b
 }
 
 type Blocks []*Block
