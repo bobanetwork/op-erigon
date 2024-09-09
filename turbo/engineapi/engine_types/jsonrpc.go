@@ -54,6 +54,7 @@ type PayloadAttributes struct {
 	// optimism
 	Transactions []hexutility.Bytes `json:"transactions,omitempty"`
 	NoTxPool     bool               `json:"noTxPool,omitempty"`
+	Espresso     bool               `json:"espresso,omitempty"`
 	GasLimit     *hexutil.Uint64    `json:"gasLimit,omitempty"`
 }
 

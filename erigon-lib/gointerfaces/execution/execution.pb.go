@@ -1093,7 +1093,8 @@ type AssembleBlockRequest struct {
 	// Optimism support requires these fields, offset starting at 101 to avoid future conflicts
 	Transactions [][]byte `protobuf:"bytes,101,rep,name=transactions,proto3" json:"transactions,omitempty"`
 	NoTxPool     bool     `protobuf:"varint,102,opt,name=noTxPool,proto3" json:"noTxPool,omitempty"`
-	GasLimit     *uint64  `protobuf:"varint,103,opt,name=gasLimit,proto3,oneof" json:"gasLimit,omitempty"`
+	Espresso 	 	 bool     `protobuf:"varint,103,opt,name=espresso,proto3" json:"espresso,omitempty"`
+	GasLimit     *uint64  `protobuf:"varint,104,opt,name=gasLimit,proto3,oneof" json:"gasLimit,omitempty"`
 }
 
 func (x *AssembleBlockRequest) Reset() {
@@ -1180,6 +1181,13 @@ func (x *AssembleBlockRequest) GetTransactions() [][]byte {
 func (x *AssembleBlockRequest) GetNoTxPool() bool {
 	if x != nil {
 		return x.NoTxPool
+	}
+	return false
+}
+
+func (x *AssembleBlockRequest) GetEspresso() bool {
+	if x != nil {
+		return x.Espresso
 	}
 	return false
 }

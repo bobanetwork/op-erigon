@@ -18,5 +18,6 @@ type BlockBuilderParameters struct {
 	ParentBeaconBlockRoot *libcommon.Hash     // added in Dencun (EIP-4788)
 	Transactions          [][]byte
 	NoTxPool              bool
+	Espresso              bool
 	GasLimit              *uint64
 }

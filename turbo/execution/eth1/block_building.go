@@ -56,6 +56,7 @@ func (e *EthereumExecutionModule) AssembleBlock(ctx context.Context, req *execut
 		Withdrawals:           eth1_utils.ConvertWithdrawalsFromRpc(req.Withdrawals),
 		Transactions:          req.Transactions,
 		NoTxPool:              req.NoTxPool,
+		Espresso:              req.Espresso,
 		GasLimit:              req.GasLimit,
 	}
 

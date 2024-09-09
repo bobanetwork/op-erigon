@@ -527,6 +527,7 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
 		Transactions:          txs,
 		NoTxPool:              payloadAttributes.NoTxPool,
+		Espresso:              payloadAttributes.Espresso,
 	}
 
 	if version >= clparams.CapellaVersion {

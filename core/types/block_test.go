@@ -395,6 +395,17 @@ func TestCanEncodeAndDecodeRawBody(t *testing.T) {
 				0xc0 + 3, 40, 50, 60,
 			},
 		},
+		Withdrawals: []*Withdrawal{},
+		Rejected: []*RejectedTransaction{
+			{
+				Data: []byte("rejected"),
+				Pos:  1,
+			},
+			{
+				Data: []byte("rejected2"),
+				Pos:  2,
+			},
+		},
 	}
 	expectedJson, err := json.Marshal(body)
 	if err != nil {

@@ -35,6 +35,7 @@ type MiningBlock struct {
 
 	Deposits [][]byte
 	NoTxPool bool
+	Espresso bool
 }
 
 type MiningState struct {
@@ -210,6 +211,7 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 
 		current.Deposits = cfg.blockBuilderParameters.Transactions
 		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
+		current.Espresso = cfg.blockBuilderParameters.Espresso
 		return nil
 	}
 

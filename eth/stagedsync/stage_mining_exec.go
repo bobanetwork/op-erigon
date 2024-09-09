@@ -109,7 +109,7 @@ func SpawnMiningExecStage(s *StageState, tx kv.RwTx, cfg MiningExecCfg, quit <-c
 	// But if we disable empty precommit already, ignore it. Since
 	// empty block is necessary to keep the liveness of the network.
 	if noempty {
-		log.Debug("Starting SpawnMiningExecStage", "txs", txs, "numDeposits", len(current.Deposits), "NoTxPool", current.NoTxPool)
+		log.Debug("Starting SpawnMiningExecStage", "txs", txs, "numDeposits", len(current.Deposits), "NoTxPool", current.NoTxPool, "Espresso", current.Espresso)
 
 		if len(current.Deposits) > 0 {
 			var txs []types.Transaction
