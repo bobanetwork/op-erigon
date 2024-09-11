@@ -31,9 +31,9 @@ import (
 type RejectedTransaction struct {
 	// The raw data of the transaction. This allows us to include even completely malformed data
 	// blobs that were forced into the sequence by end users as rejected transactions.
-	Data []byte
+	Data []byte `json:"data"`
 	// The position in the block at which this tranaction would have appeared had it been valid.
-	Pos uint64
+	Pos uint64 `json:"pos"`
 }
 
 func (r *RejectedTransaction) EncodingSize() int {

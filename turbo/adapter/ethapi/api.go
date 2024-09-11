@@ -373,6 +373,19 @@ func RPCMarshalBlockExDeprecated(block *types.Block, inclTx bool, fullTx bool, b
 		fields["withdrawals"] = block.Withdrawals()
 	}
 
+	if block.Rejected() != nil {
+
+		// parse rejected transactions for RPC output
+		parsedRejected := make([]interface{}, len(block.Rejected()))
+		for i, rejected := range block.Rejected() {
+			parsedRejected[i] = map[string]interface{}{
+				"pos":  rejected.Pos,
+				"data": hexutility.Bytes(rejected.Data).String(),
+			}
+		}
+		fields["rejected"] = parsedRejected
+	}
+
 	return fields, nil
 }
 

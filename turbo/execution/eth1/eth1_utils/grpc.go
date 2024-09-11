@@ -186,6 +186,34 @@ func ConvertWithdrawalsToRpc(in []*types.Withdrawal) []*types2.Withdrawal {
 	return out
 }
 
+func ConvertRejectedFromRpc(in []*types2.Rejected) []*types.RejectedTransaction {
+	if in == nil {
+		return nil
+	}
+	out := make([]*types.RejectedTransaction, 0, len(in))
+	for _, w := range in {
+		out = append(out, &types.RejectedTransaction{
+			Data: w.Data,
+			Pos:  w.Pos,
+		})
+	}
+	return out
+}
+
+func ConvertRejectedToRpc(in []*types.RejectedTransaction) []*types2.Rejected {
+	if in == nil {
+		return nil
+	}
+	out := make([]*types2.Rejected, 0, len(in))
+	for _, w := range in {
+		out = append(out, &types2.Rejected{
+			Data: w.Data,
+			Pos:  w.Pos,
+		})
+	}
+	return out
+}
+
 func ConvertRawBlockBodyToRpc(in *types.RawBody, blockNumber uint64, blockHash libcommon.Hash) *execution.BlockBody {
 	if in == nil {
 		return nil
@@ -197,6 +225,7 @@ func ConvertRawBlockBodyToRpc(in *types.RawBody, blockNumber uint64, blockHash l
 		Transactions: in.Transactions,
 		Uncles:       HeadersToHeadersRPC(in.Uncles),
 		Withdrawals:  ConvertWithdrawalsToRpc(in.Withdrawals),
+		Rejected:     ConvertRejectedToRpc(in.Rejected),
 	}
 }
 
@@ -221,6 +250,7 @@ func ConvertRawBlockBodyFromRpc(in *execution.BlockBody) (*types.RawBody, error)
 		Transactions: in.Transactions,
 		Uncles:       uncles,
 		Withdrawals:  ConvertWithdrawalsFromRpc(in.Withdrawals),
+		Rejected:     ConvertRejectedFromRpc(in.Rejected),
 	}, nil
 }
 

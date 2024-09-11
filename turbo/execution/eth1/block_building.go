@@ -163,6 +163,10 @@ func (e *EthereumExecutionModule) GetAssembledBlock(ctx context.Context, req *ex
 		payload.Withdrawals = eth1_utils.ConvertWithdrawalsToRpc(block.Withdrawals())
 	}
 
+	if block.Rejected() != nil {
+		payload.Rejected = eth1_utils.ConvertRejectedToRpc(block.Rejected())
+	}
+
 	if header.BlobGasUsed != nil && header.ExcessBlobGas != nil {
 		payload.Version = 3
 		payload.BlobGasUsed = header.BlobGasUsed

@@ -450,8 +450,24 @@ func addTransactionsToMiningBlock(logPrefix string, current *MiningBlock, chainC
 
 	done := false
 
-	rejected := make([]types.RejectedTransaction, 0)
-	transactionCount := 0
+	rejected := make([]*types.RejectedTransaction, 0)
+	transactionCount := -1
+
+	var appendRejected = func(txn types.Transaction, pos uint64) {
+		// record rejected transactions
+		if current.Espresso {
+			var buf bytes.Buffer
+			if err := txn.MarshalBinary(&buf); err != nil {
+				logger.Warn(fmt.Sprintf("[%s] Could not marshal transaction", logPrefix), "hash", txn.Hash(), "err", err)
+				// This should never happen, but if it does, we should just skip this transaction
+				return
+			}
+			rejected = append(rejected, &types.RejectedTransaction{
+				Data: buf.Bytes(),
+				Pos:  uint64(transactionCount),
+			})
+		}
+	}
 
 LOOP:
 	for {
@@ -486,11 +502,15 @@ LOOP:
 			break
 		}
 
+		// increase the transaction count
+		transactionCount++
+
 		// We use the eip155 signer regardless of the env hf.
 		from, err := txn.Sender(*signer)
 		if err != nil {
 			logger.Warn(fmt.Sprintf("[%s] Could not recover transaction sender", logPrefix), "hash", txn.Hash(), "err", err)
 			txs.Pop()
+			appendRejected(txn, uint64(transactionCount))
 			continue
 		}
 
@@ -500,14 +520,12 @@ LOOP:
 			logger.Debug(fmt.Sprintf("[%s] Ignoring replay protected transaction", logPrefix), "hash", txn.Hash(), "eip155", chainConfig.SpuriousDragonBlock)
 
 			txs.Pop()
+			appendRejected(txn, uint64(transactionCount))
 			continue
 		}
 
 		// Start executing the transaction
 		logs, err := miningCommitTx(txn, coinbase, vmConfig, chainConfig, ibs, current)
-
-		// increase the transaction count
-		transactionCount++
 
 		if errors.Is(err, core.ErrGasLimitReached) {
 			// Pop the env out-of-gas transaction without shifting in the next from the account
@@ -533,19 +551,11 @@ LOOP:
 			logger.Debug(fmt.Sprintf("[%s] Skipping transaction", logPrefix), "hash", txn.Hash(), "sender", from, "err", err)
 			txs.Shift()
 		}
-
-		// record rejected transactions
-		if current.Espresso {
-			var buf bytes.Buffer
-			if err = txn.MarshalBinary(&buf); err != nil {
-				logger.Warn(fmt.Sprintf("[%s] Could not marshal transaction", logPrefix), "hash", txn.Hash(), "err", err)
-			}
-			rejected = append(rejected, types.RejectedTransaction{
-				Data: buf.Bytes(),
-				Pos:  uint64(transactionCount),
-			})
-		}
+		appendRejected(txn, uint64(transactionCount))
 	}
+
+	// Update the rejected transactions
+	current.Rejected = rejected
 
 	/*
 		// Notify resubmit loop to decrease resubmitting interval if env interval is larger
