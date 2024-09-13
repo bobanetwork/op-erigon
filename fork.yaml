@@ -4,7 +4,7 @@ footer: |  # define the footer with markdown
 base:
   name: erigontech/erigon
   url: https://github.com/erigontech/erigon
-  hash: d24e5d45755d7b23075c507ad9216e1d60ad03de
+  hash: 93016a97fca65c2376980da19f3944d15e4aacf4
 fork:
   name: bobanetwork/op-erigon
   url: https://github.com/bobanetwork/op-erigon
