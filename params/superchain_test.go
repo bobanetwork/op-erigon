@@ -107,7 +107,7 @@ var opMainnetCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1704992401),
 	EcotoneTime:              big.NewInt(1710374401),
 	FjordTime:                big.NewInt(1720627201),
-	GraniteTime:              nil,
+	GraniteTime:              big.NewInt(1726070401),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
