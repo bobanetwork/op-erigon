@@ -86,8 +86,9 @@ func (e *EngineServer) Start(
 	eth rpchelper.ApiBackend,
 	txPool txpool.TxpoolClient,
 	mining txpool.MiningClient,
+	seqRPCService, historicalRPCService *rpc.Client,
 ) {
-	base := jsonrpc.NewBaseApi(filters, stateCache, blockReader, agg, httpConfig.WithDatadir, httpConfig.EvmCallTimeout, engineReader, httpConfig.Dirs)
+	base := jsonrpc.NewBaseApi(filters, stateCache, blockReader, agg, httpConfig.WithDatadir, httpConfig.EvmCallTimeout, engineReader, httpConfig.Dirs, seqRPCService, historicalRPCService)
 
 	ethImpl := jsonrpc.NewEthAPI(base, db, eth, txPool, mining, httpConfig.Gascap, httpConfig.Feecap, httpConfig.ReturnDataLimit, httpConfig.AllowUnprotectedTxs, httpConfig.MaxGetProofRewindBlockCount, httpConfig.WebsocketSubscribeLogsChannelSize, e.logger)
 
@@ -423,24 +424,38 @@ func (s *EngineServer) getPayload(ctx context.Context, payloadId uint64, version
 	data := resp.Data
 
 	ts := data.ExecutionPayload.Timestamp
-	if (!s.config.IsCancun(ts) && version >= clparams.DenebVersion) ||
-		(s.config.IsCancun(ts) && version < clparams.DenebVersion) {
+	if s.config.IsCancun(ts) && version < clparams.DenebVersion {
 		return nil, &rpc.UnsupportedForkError{Message: "Unsupported fork"}
 	}
 
-	return &engine_types.GetPayloadResponse{
+	response := engine_types.GetPayloadResponse{
 		ExecutionPayload: engine_types.ConvertPayloadFromRpc(data.ExecutionPayload),
 		BlockValue:       (*hexutil.Big)(gointerfaces.ConvertH256ToUint256Int(data.BlockValue).ToBig()),
 		BlobsBundle:      engine_types.ConvertBlobsFromRpc(data.BlobsBundle),
-	}, nil
+	}
+	if s.config.IsOptimism() && s.config.IsCancun(ts) && version >= clparams.DenebVersion {
+		if data.ParentBeaconBlockRoot == nil {
+			panic("missing ParentBeaconBlockRoot in Ecotone block")
+		}
+		parentBeaconBlockRoot := libcommon.Hash(gointerfaces.ConvertH256ToHash(data.ParentBeaconBlockRoot))
+		response.ParentBeaconBlockRoot = &parentBeaconBlockRoot
+	}
+
+	return &response, nil
 }
 
 // engineForkChoiceUpdated either states new block head or request the assembling of a new block
 func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *engine_types.ForkChoiceState, payloadAttributes *engine_types.PayloadAttributes, version clparams.StateVersion,
 ) (*engine_types.ForkChoiceUpdatedResponse, error) {
-	status, err := s.getQuickPayloadStatusIfPossible(ctx, forkchoiceState.HeadHash, 0, libcommon.Hash{}, forkchoiceState, false)
-	if err != nil {
-		return nil, err
+	var status *engine_types.PayloadStatus
+	var err error
+	// In the Optimism case, we allow arbitrary rewinding of the safe block
+	// hash, so we skip the path which might short-circuit that
+	if s.config.Optimism == nil {
+		status, err = s.getQuickPayloadStatusIfPossible(ctx, forkchoiceState.HeadHash, 0, libcommon.Hash{}, forkchoiceState, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -496,12 +511,22 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	if headHeader.Time >= timestamp {
 		return nil, &engine_helpers.InvalidPayloadAttributesErr
 	}
+	txs := make([][]byte, len(payloadAttributes.Transactions))
+	for i, tx := range payloadAttributes.Transactions {
+		txs[i] = tx
+	}
+	if s.config.Optimism != nil && payloadAttributes.GasLimit == nil {
+		return nil, &engine_helpers.InvalidPayloadAttributesErr
+	}
 
 	req := &execution.AssembleBlockRequest{
 		ParentHash:            gointerfaces.ConvertHashToH256(forkchoiceState.HeadHash),
 		Timestamp:             timestamp,
 		PrevRandao:            gointerfaces.ConvertHashToH256(payloadAttributes.PrevRandao),
 		SuggestedFeeRecipient: gointerfaces.ConvertAddressToH160(payloadAttributes.SuggestedFeeRecipient),
+		GasLimit:              (*uint64)(payloadAttributes.GasLimit),
+		Transactions:          txs,
+		NoTxPool:              payloadAttributes.NoTxPool,
 	}
 
 	if version >= clparams.CapellaVersion {
@@ -519,6 +544,7 @@ func (s *EngineServer) forkchoiceUpdated(ctx context.Context, forkchoiceState *e
 	if resp.Busy {
 		return nil, errors.New("[ForkChoiceUpdated]: execution service is busy, cannot assemble blocks")
 	}
+
 	return &engine_types.ForkChoiceUpdatedResponse{
 		PayloadStatus: &engine_types.PayloadStatus{
 			Status:          engine_types.ValidStatus,

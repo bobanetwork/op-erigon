@@ -32,6 +32,9 @@ type MiningBlock struct {
 	Receipts         types.Receipts
 	Withdrawals      []*types.Withdrawal
 	PreparedTxs      types.TransactionsStream
+
+	Deposits [][]byte
+	NoTxPool bool
 }
 
 type MiningState struct {
@@ -92,7 +95,7 @@ var maxTransactions uint16 = 1000
 // - resubmitAdjustCh - variable is not implemented
 func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBlockCfg, quit <-chan struct{}, logger log.Logger) (err error) {
 	current := cfg.miner.MiningBlock
-	txPoolLocals := []libcommon.Address{} //txPoolV2 has no concept of local addresses (yet?)
+	txPoolLocals := []libcommon.Address{} // txPoolV2 has no concept of local addresses (yet?)
 	coinbase := cfg.miner.MiningConfig.Etherbase
 
 	const (
@@ -171,7 +174,11 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		uncles:    mapset.NewSet[libcommon.Hash](),
 	}
 
-	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, &cfg.miner.MiningConfig.GasLimit)
+	targetGasLimit := &cfg.miner.MiningConfig.GasLimit
+	if cfg.chainConfig.IsOptimism() && cfg.blockBuilderParameters != nil && cfg.blockBuilderParameters.GasLimit != nil {
+		targetGasLimit = cfg.blockBuilderParameters.GasLimit
+	}
+	header := core.MakeEmptyHeader(parent, &cfg.chainConfig, timestamp, targetGasLimit)
 	header.Coinbase = coinbase
 	header.Extra = cfg.miner.MiningConfig.ExtraData
 
@@ -200,6 +207,9 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		current.Header = header
 		current.Uncles = nil
 		current.Withdrawals = cfg.blockBuilderParameters.Withdrawals
+
+		current.Deposits = cfg.blockBuilderParameters.Transactions
+		current.NoTxPool = cfg.blockBuilderParameters.NoTxPool
 		return nil
 	}
 
@@ -296,7 +306,6 @@ func readNonCanonicalHeaders(tx kv.Tx, blockNum uint64, engine consensus.Engine,
 		} else {
 			remoteUncles[u.Hash()] = u
 		}
-
 	}
 	return
 }

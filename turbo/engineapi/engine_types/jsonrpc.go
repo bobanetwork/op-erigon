@@ -50,6 +50,11 @@ type PayloadAttributes struct {
 	SuggestedFeeRecipient common.Address      `json:"suggestedFeeRecipient" gencodec:"required"`
 	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
 	ParentBeaconBlockRoot *common.Hash        `json:"parentBeaconBlockRoot"`
+
+	// optimism
+	Transactions []hexutility.Bytes `json:"transactions,omitempty"`
+	NoTxPool     bool               `json:"noTxPool,omitempty"`
+	GasLimit     *hexutil.Uint64    `json:"gasLimit,omitempty"`
 }
 
 // TransitionConfiguration represents the correct configurations of the CL and the EL
@@ -88,6 +93,9 @@ type GetPayloadResponse struct {
 	BlockValue            *hexutil.Big      `json:"blockValue"`
 	BlobsBundle           *BlobsBundleV1    `json:"blobsBundle"`
 	ShouldOverrideBuilder bool              `json:"shouldOverrideBuilder"`
+
+	// OP-Stack: Ecotone specific fields
+	ParentBeaconBlockRoot *common.Hash `json:"parentBeaconBlockRoot"`
 }
 
 type StringifiedError struct{ err error }
