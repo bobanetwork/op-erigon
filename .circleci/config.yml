@@ -167,7 +167,7 @@ jobs:
           command: make cannon-prestate
           working_directory: ~/project/boba
       - run:
-          name: Build Contracs
+          name: Build Contracts
           command: make build-contracts
           working_directory: ~/project/boba
       - run:
