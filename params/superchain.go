@@ -2,6 +2,7 @@ package params
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -95,13 +96,13 @@ func ChainConfigByOpStackGenesisHash(genesisHash common.Hash) *chain.Config {
 // LoadSuperChainConfig loads superchain config from superchain registry for given chain, and builds erigon chain config.
 // This implementation is based on op-geth(https://github.com/ethereum-optimism/op-geth/blob/c7871bc4454ffc924eb128fa492975b30c9c46ad/params/superchain.go#L39)
 func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config {
-	superchainConfig, ok := superchain.Superchains[opStackChainCfg.Superchain]
+	chConfig, ok := superchain.OPChains[opStackChainCfg.ChainID]
 	if !ok {
-		panic("unknown superchain: " + opStackChainCfg.Superchain)
+		panic("unknown superchain: " + fmt.Sprint(opStackChainCfg.ChainID))
 	}
 	out := &chain.Config{
-		ChainName:                     opStackChainCfg.Name,
-		ChainID:                       new(big.Int).SetUint64(opStackChainCfg.ChainID),
+		ChainName:                     chConfig.Name,
+		ChainID:                       new(big.Int).SetUint64(chConfig.ChainID),
 		HomesteadBlock:                common.Big0,
 		DAOForkBlock:                  nil,
 		TangerineWhistleBlock:         common.Big0,
@@ -129,31 +130,31 @@ func LoadSuperChainConfig(opStackChainCfg *superchain.ChainConfig) *chain.Config
 		TerminalTotalDifficultyPassed: true,
 		Ethash:                        nil,
 		Clique:                        nil,
-		Optimism: &chain.OptimismConfig{
-			EIP1559Elasticity:        6,
-			EIP1559Denominator:       50,
-			EIP1559DenominatorCanyon: 250,
-		},
 	}
 
-	if opStackChainCfg.CanyonTime != nil {
-		out.ShanghaiTime = new(big.Int).SetUint64(*opStackChainCfg.CanyonTime) // Shanghai activates with Canyon
-		out.CanyonTime = new(big.Int).SetUint64(*opStackChainCfg.CanyonTime)
+	if chConfig.CanyonTime != nil {
+		out.ShanghaiTime = new(big.Int).SetUint64(*chConfig.CanyonTime) // Shanghai activates with Canyon
+		out.CanyonTime = new(big.Int).SetUint64(*chConfig.CanyonTime)
 	}
-	if opStackChainCfg.EcotoneTime != nil {
-		out.CancunTime = new(big.Int).SetUint64(*opStackChainCfg.EcotoneTime) // CancunTime activates with Ecotone
-		out.EcotoneTime = new(big.Int).SetUint64(*opStackChainCfg.EcotoneTime)
+	if chConfig.EcotoneTime != nil {
+		out.CancunTime = new(big.Int).SetUint64(*chConfig.EcotoneTime) // CancunTime activates with Ecotone
+		out.EcotoneTime = new(big.Int).SetUint64(*chConfig.EcotoneTime)
 	}
-	if opStackChainCfg.FjordTime != nil {
-		out.FjordTime = new(big.Int).SetUint64(*opStackChainCfg.FjordTime)
+	if chConfig.FjordTime != nil {
+		out.FjordTime = new(big.Int).SetUint64(*chConfig.FjordTime)
 	}
-	if opStackChainCfg.GraniteTime != nil {
-		out.GraniteTime = new(big.Int).SetUint64(*opStackChainCfg.GraniteTime)
+	if chConfig.GraniteTime != nil {
+		out.GraniteTime = new(big.Int).SetUint64(*chConfig.GraniteTime)
 	}
-
-	// note: no actual parameters are being loaded, yet.
-	// Future superchain upgrades are loaded from the superchain chConfig and applied to the geth ChainConfig here.
-	_ = superchainConfig.Config
+	if chConfig.Optimism != nil {
+		out.Optimism = &chain.OptimismConfig{
+			EIP1559Elasticity:  chConfig.Optimism.EIP1559Elasticity,
+			EIP1559Denominator: chConfig.Optimism.EIP1559Denominator,
+		}
+		if chConfig.Optimism.EIP1559DenominatorCanyon != nil {
+			out.Optimism.EIP1559DenominatorCanyon = *chConfig.Optimism.EIP1559DenominatorCanyon
+		}
+	}
 
 	// special overrides for OP-Stack chains with pre-Regolith upgrade history
 	switch opStackChainCfg.ChainID {
