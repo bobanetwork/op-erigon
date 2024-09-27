@@ -47,7 +47,7 @@ var bobaMainnetCfg = hardforkConfig{
 	CanyonTime:               big.NewInt(1713302879),
 	EcotoneTime:              big.NewInt(1713302880),
 	FjordTime:                big.NewInt(1725951600),
-	GraniteTime:              nil,
+	GraniteTime:              big.NewInt(1729753200),
 	EIP1559Elasticity:        6,
 	EIP1559Denominator:       50,
 	EIP1559DenominatorCanyon: 250,
