@@ -136,7 +136,7 @@ jobs:
         description: The make target to execute
         type: string
     docker:
-      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.3.0
+      - image: us-docker.pkg.dev/${GCP_PROJECT_ID}/${GCP_ARTIFACT_REPOSITORY}/images/ci-builder:v1.4.0
     resource_class: xlarge
     steps:
       - attach_workspace: { at: "." }
@@ -165,6 +165,10 @@ jobs:
       - run:
           name: Cannon-prestate
           command: make cannon-prestate
+          working_directory: ~/project/boba
+      - run:
+          name: Build Contracts
+          command: make build-contracts
           working_directory: ~/project/boba
       - run:
           name: print go's available MIPS targets
