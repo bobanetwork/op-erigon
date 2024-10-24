@@ -383,6 +383,7 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 	}
 
 	result, err := st.innerTransitionDb(refunds, gasBailout)
+	fmt.Print("TransitionDb", result, err)
 	// Failed deposits must still be included. Unless we cannot produce the block at all due to the gas limit.
 	// On deposit failure, we rewind any state changes from after the minting, and increment the nonce.
 	if err != nil && err != ErrGasLimitReached && st.msg.IsDepositTx() {
@@ -392,6 +393,7 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 		// Record deposits as using all their gas (matches the gas pool)
 		// System Transactions are special & are not recorded as using any gas (anywhere)
 		gasUsed := st.msg.Gas()
+		fmt.Println("Failed deposit", err)
 		if st.msg.IsSystemTx() && !st.evm.ChainConfig().IsOptimismRegolith(st.evm.Context.Time) {
 			gasUsed = 0
 		}
@@ -402,6 +404,7 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 		}
 		err = nil
 	}
+	fmt.Println("TransitionDb result", result, err)
 	return result, err
 }
 
