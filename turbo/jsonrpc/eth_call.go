@@ -353,6 +353,27 @@ func (api *APIImpl) EstimateGas(ctx context.Context, argsOrNil *ethapi2.CallArgs
 // blocks within maxGetProofRewindBlockCount blocks of the head.
 func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, storageKeys []libcommon.Hash, blockNrOrHash rpc.BlockNumberOrHash) (*accounts.AccProofResult, error) {
 
+    const maxStorageKeysLen = 1000
+
+    // Deduplicate the storageKeys to avoid repeated proof computations
+    uniqueMap := make(map[libcommon.Hash]struct{}, len(storageKeys))
+    uniqueList := make([]libcommon.Hash, 0, len(storageKeys))
+    for _, k := range storageKeys {
+        if _, exists := uniqueMap[k]; !exists {
+            uniqueMap[k] = struct{}{}
+            uniqueList = append(uniqueList, k)
+        }
+    }
+
+    // Enforce maximum allowed storageKeys
+    if len(uniqueList) > maxStorageKeysLen {
+        return nil, fmt.Errorf("too many storage keys in request: got %d, max allowed is %d",
+            len(uniqueList), maxStorageKeysLen)
+    }
+
+    // Replace original slice with deduplicated + capped slice
+    storageKeys = uniqueList
+
 	tx, err := api.db.BeginRo(ctx)
 	if err != nil {
 		return nil, err
@@ -406,7 +427,8 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	var loader *trie.FlatDBTrieLoader
 	if blockNr < latestBlock {
 		if latestBlock-blockNr > uint64(api.MaxGetProofRewindBlockCount) {
-			return nil, fmt.Errorf("requested block is too old, block must be within %d blocks of the head block number (currently %d)", uint64(api.MaxGetProofRewindBlockCount), latestBlock)
+			return nil, fmt.Errorf("requested block is too old, block must be within %d blocks of the head block number (currently %d)",
+				uint64(api.MaxGetProofRewindBlockCount), latestBlock)
 		}
 		batch := membatchwithdb.NewMemoryBatch(tx, api.dirs.Tmp, api.logger)
 		defer batch.Rollback()
@@ -456,6 +478,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	}
 	return pr.ProofResult()
 }
+
 
 func (api *APIImpl) tryBlockFromLru(hash libcommon.Hash) *types.Block {
 	var block *types.Block
