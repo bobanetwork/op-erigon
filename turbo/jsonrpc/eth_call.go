@@ -427,8 +427,7 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	var loader *trie.FlatDBTrieLoader
 	if blockNr < latestBlock {
 		if latestBlock-blockNr > uint64(api.MaxGetProofRewindBlockCount) {
-			return nil, fmt.Errorf("requested block is too old, block must be within %d blocks of the head block number (currently %d)",
-				uint64(api.MaxGetProofRewindBlockCount), latestBlock)
+			return nil, fmt.Errorf("requested block is too old, block must be within %d blocks of the head block number (currently %d)",uint64(api.MaxGetProofRewindBlockCount), latestBlock)
 		}
 		batch := membatchwithdb.NewMemoryBatch(tx, api.dirs.Tmp, api.logger)
 		defer batch.Rollback()
@@ -478,7 +477,6 @@ func (api *APIImpl) GetProof(ctx context.Context, address libcommon.Address, sto
 	}
 	return pr.ProofResult()
 }
-
 
 func (api *APIImpl) tryBlockFromLru(hash libcommon.Hash) *types.Block {
 	var block *types.Block
