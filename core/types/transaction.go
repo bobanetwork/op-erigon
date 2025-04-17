@@ -172,6 +172,10 @@ func DecodeRLPTransaction(s *rlp.Stream, blobTxnsAreWrappedWithBlobs bool) (Tran
 		if err = tx.DecodeRLP(s); err != nil {
 			return nil, err
 		}
+		// Reject any superfluous bytes after the list
+                if s.Remaining() != 0 {
+                        return nil, fmt.Errorf("trailing bytes after rlp encoded transaction")
+                }
 		return tx, nil
 	}
 	if rlp.String != kind {
