@@ -22,8 +22,15 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutility
 		return common.Hash{}, err
 	}
 
-	// If the transaction fee cap is already specified, ensure the
-	// fee of the given transaction is _reasonable_.
+	
+	// For 1559/4844 txs use the fee‑cap instead of the priority tip.
+	 var pricePerGas *big.Int
+         switch txn.Type() {
+         case types.DynamicFeeTxType, types.BlobTxType, types.SetCodeTxType:
+             pricePerGas = txn.GetFeeCap().ToBig()
+         default:
+             pricePerGas = txn.GetPrice().ToBig()
+         }
 	if err := checkTxFee(txn.GetPrice().ToBig(), txn.GetGas(), api.FeeCap); err != nil {
 		return common.Hash{}, err
 	}
